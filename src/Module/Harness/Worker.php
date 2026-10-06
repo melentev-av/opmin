@@ -104,6 +104,20 @@ final class Worker
      */
     public function request(array $request, ?int $timeoutMs = null): array
     {
+        $this->send($request);
+
+        return $this->receive($timeoutMs);
+    }
+
+    /**
+     * Sends a request without waiting: {@see self::receive()} reads the response. Lets two workers
+     * (the two versions of a function) work at the same time.
+     *
+     * @param array<string, mixed> $request
+     * @throws WorkerException
+     */
+    public function send(array $request): void
+    {
         $this->isRunning() or throw new WorkerException(WorkerException::CRASH, 'The harness is not running.', $this->stderr);
         $line = \json_encode($request, \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE | \JSON_PRESERVE_ZERO_FRACTION) . "\n";
         $written = @\fwrite($this->pipes[0], $line);
@@ -113,6 +127,17 @@ final class Worker
         }
 
         \fflush($this->pipes[0]);
+    }
+
+    /**
+     * Waits for the response to the request sent last.
+     *
+     * @param positive-int|null $timeoutMs Default: the call timeout ({@see WorkerOptions::$timeoutMs}).
+     * @return array<string, mixed>
+     * @throws WorkerException
+     */
+    public function receive(?int $timeoutMs = null): array
+    {
         $response = $this->read($timeoutMs ?? $this->options->timeoutMs);
         ++$this->requests;
 

@@ -1,0 +1,418 @@
+{
+    "$schema": "https://json-schema.org/draft-07/schema#",
+    "$id": "https://raw.githubusercontent.com/melentev-av/opmin/master/resources/opmin.schema.json",
+    "title": "opmin configuration",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "paths": {
+            "description": "Directories and files to analyze, relative to the project root",
+            "type": "array",
+            "items": {
+                "type": "string",
+                "minLength": 1
+            },
+            "default": [
+                "src"
+            ]
+        },
+        "exclude": {
+            "description": "Directories and files to skip",
+            "type": "array",
+            "items": {
+                "type": "string",
+                "minLength": 1
+            },
+            "default": [
+                "vendor",
+                "tests"
+            ]
+        },
+        "php": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "binary": {
+                    "description": "PHP binary used to compile, count and run the code; must match production",
+                    "type": "string",
+                    "minLength": 1,
+                    "default": "php"
+                },
+                "target": {
+                    "description": "Target PHP version (e.g. \"8.3\"); null — from composer.json config.platform.php or require.php",
+                    "anyOf": [
+                        {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
+                }
+            }
+        },
+        "tests": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "runner": {
+                    "description": "Test runner of the project: auto | phpunit | pest | testo | command",
+                    "enum": [
+                        "auto",
+                        "phpunit",
+                        "pest",
+                        "testo",
+                        "command"
+                    ],
+                    "default": "auto"
+                },
+                "command": {
+                    "description": "Command for runner \"command\", or an override of the runner binary",
+                    "anyOf": [
+                        {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
+                }
+            }
+        },
+        "commands": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "phpstan": {
+                    "description": "PHPStan command of the project; null — skip the static check",
+                    "anyOf": [
+                        {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": "vendor/bin/phpstan analyse --no-progress --error-format=json"
+                },
+                "format": {
+                    "description": "Formatter run on changed files ({files} is replaced); null — format-preserving printing only",
+                    "anyOf": [
+                        {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
+                }
+            }
+        },
+        "rector": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "custom_rules": {
+                    "description": "opmin rules (enabled by default): FQCN => options, or false to disable a rule",
+                    "type": "object",
+                    "default": {
+                        "Opmin\\Rector\\Rule\\FullyQualifyGlobalCallsRector": [],
+                        "Opmin\\Rector\\Rule\\ExtractRepeatedPropertyFetchRector": {
+                            "min_reads": "auto"
+                        },
+                        "Opmin\\Rector\\Rule\\ExtractRepeatedArrayDimFetchRector": {
+                            "min_reads": "auto"
+                        },
+                        "Opmin\\Rector\\Rule\\HoistLoopInvariantCountRector": []
+                    }
+                },
+                "max_passes": {
+                    "description": "Maximum number of passes over the rule list",
+                    "type": "integer",
+                    "default": 3
+                },
+                "standard": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "description": "The only line to change to enable the standard Rector rules",
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "sets": {
+                            "description": "Rector sets, expanded into single rules (UP_TO_PHP_TARGET follows php.target)",
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "minLength": 1
+                            },
+                            "default": [
+                                "DEAD_CODE",
+                                "EARLY_RETURN",
+                                "CODE_QUALITY",
+                                "UP_TO_PHP_TARGET"
+                            ]
+                        },
+                        "rules": {
+                            "description": "Single standard rules (FQCN)",
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "minLength": 1
+                            },
+                            "default": [
+                                "Rector\\CodeQuality\\Rector\\If_\\SimplifyIfReturnBoolRector",
+                                "Rector\\CodeQuality\\Rector\\Assign\\CombinedAssignRector",
+                                "Rector\\DeadCode\\Rector\\Assign\\RemoveUnusedVariableAssignRector",
+                                "Rector\\EarlyReturn\\Rector\\If_\\ChangeNestedIfsToEarlyReturnRector",
+                                "Rector\\CodeQuality\\Rector\\Class_\\InlineConstructorDefaultToPropertyRector"
+                            ]
+                        },
+                        "skip": {
+                            "description": "Rules to exclude from the sets above (FQCN)",
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "minLength": 1
+                            },
+                            "default": []
+                        }
+                    }
+                }
+            }
+        },
+        "verification": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "warnings": {
+                    "description": "strict — any difference in warnings rolls back; allow_removal — removing a warning is allowed",
+                    "enum": [
+                        "strict",
+                        "allow_removal"
+                    ],
+                    "default": "strict"
+                },
+                "min_branch_coverage": {
+                    "description": "Branch coverage (%) of the original function required from differential tests",
+                    "type": "integer",
+                    "default": 90
+                },
+                "coverage_driver": {
+                    "description": "Coverage driver: auto | xdebug | pcov",
+                    "enum": [
+                        "auto",
+                        "xdebug",
+                        "pcov"
+                    ],
+                    "default": "auto"
+                },
+                "random_inputs": {
+                    "description": "Number of random inputs per function",
+                    "type": "integer",
+                    "default": 200
+                },
+                "fuzz_time_ms": {
+                    "description": "Time limit of coverage-guided input search per function, ms",
+                    "type": "integer",
+                    "default": 2000
+                },
+                "seed": {
+                    "description": "Seed of input generation",
+                    "type": "integer",
+                    "default": 42
+                },
+                "float_tolerance": {
+                    "description": "Relative float tolerance; 0 — bitwise comparison",
+                    "type": "number",
+                    "default": 1.0e-12
+                },
+                "call_timeout_ms": {
+                    "description": "Timeout of a single call in the harness, ms",
+                    "type": "integer",
+                    "default": 1000
+                },
+                "memory_limit": {
+                    "description": "memory_limit of harness workers",
+                    "type": "string",
+                    "minLength": 1,
+                    "default": "256M"
+                },
+                "allow_unverified": {
+                    "description": "Change functions whose behavior is not proven",
+                    "type": "boolean",
+                    "default": false
+                }
+            }
+        },
+        "readability": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "min_gain": {
+                    "description": "Minimal opcode gain to accept a change",
+                    "type": "integer",
+                    "default": 1
+                },
+                "min_gain_per_line": {
+                    "description": "Minimal opcode gain per changed line",
+                    "type": "number",
+                    "default": 0.5
+                },
+                "max_cyclomatic_increase": {
+                    "description": "Allowed growth of cyclomatic complexity",
+                    "type": "integer",
+                    "default": 0
+                },
+                "max_nesting_increase": {
+                    "description": "Allowed growth of nesting depth",
+                    "type": "integer",
+                    "default": 0
+                },
+                "forbid_patterns": {
+                    "description": "Constructs the LLM stage must not introduce",
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "default": [
+                        "nested_ternary",
+                        "assignment_in_condition",
+                        "goto"
+                    ]
+                }
+            }
+        },
+        "signatures": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "phpdoc": {
+                    "description": "Refine phpdoc types",
+                    "type": "boolean",
+                    "default": true
+                },
+                "native_types": {
+                    "description": "Native type changes: none | non_overridable | all",
+                    "enum": [
+                        "none",
+                        "non_overridable",
+                        "all"
+                    ],
+                    "default": "non_overridable"
+                },
+                "public_api": {
+                    "description": "Touch public overridable methods",
+                    "type": "boolean",
+                    "default": false
+                }
+            }
+        },
+        "ignore": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "paths": {
+                    "description": "Paths to never change",
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "default": []
+                },
+                "functions": {
+                    "description": "Functions to never change (FQN, * wildcard allowed)",
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "default": []
+                }
+            }
+        },
+        "llm": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "top_n": {
+                    "description": "Number of functions with the most opcodes to rewrite",
+                    "type": "integer",
+                    "default": 20
+                },
+                "attempts_per_function": {
+                    "description": "Rewrite attempts per function",
+                    "type": "integer",
+                    "default": 3
+                }
+            }
+        },
+        "guard_perf": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "description": "Measure time and roll back slower code",
+                    "type": "boolean",
+                    "default": false
+                },
+                "max_regression_percent": {
+                    "description": "Allowed slowdown, %",
+                    "type": "integer",
+                    "default": 5
+                }
+            }
+        },
+        "check": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "tolerance": {
+                    "description": "By how many opcodes a function may grow",
+                    "type": "integer",
+                    "default": 0
+                },
+                "max_ops_new_function": {
+                    "description": "Opcode limit for new functions; null — no limit",
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
+                },
+                "base_ref": {
+                    "description": "Base ref for \"changed files only\" mode",
+                    "type": "string",
+                    "minLength": 1,
+                    "default": "origin/main"
+                }
+            }
+        },
+        "cache": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "dir": {
+                    "description": "Cache directory (add it to .gitignore)",
+                    "type": "string",
+                    "minLength": 1,
+                    "default": ".opmin-cache"
+                }
+            }
+        }
+    }
+}

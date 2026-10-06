@@ -168,6 +168,9 @@ function buildVanilla(): void
     $dir = scenarioDir('vanilla');
     copySeeds(SEEDS . '/code', $dir . '/lib', 'Vanilla\\Lib');
     copySeeds(SEEDS . '/vanilla', $dir, 'Vanilla');
+    # Bare files have no composer.json: the config marks the project root (the playground itself
+    # lives inside the opmin repository, whose composer.json must not be taken for it).
+    \file_put_contents($dir . '/opmin.yaml', "paths: [global.php, lib]\n");
 }
 
 /**
@@ -251,6 +254,7 @@ function buildLaravel(): void
     writeJson($dir . '/composer.json', $composer);
 
     sh('composer require --dev symfony/phpunit-bridge --no-interaction --no-progress --quiet', $dir);
+    ignoreOpminFiles($dir);
 }
 
 function buildSymfony(): void
@@ -264,6 +268,7 @@ function buildSymfony(): void
 
     sh('cp -R ' . \escapeshellarg($skeleton) . ' ' . \escapeshellarg($dir), ROOT);
     copySeeds(SEEDS . '/code', $dir . '/src/Service', 'App\\Service');
+    ignoreOpminFiles($dir);
     copySeeds(SEEDS . '/tests-phpunit', $dir . '/tests/Service', 'App\\Service', 'App\\Tests\\Service');
 
     $composer = readJson($dir . '/composer.json');
@@ -376,6 +381,7 @@ function run(array $args): int
             };
         }
 
+        $row['ops'] = ($row['count'] ?? '') === 'ok' ? countTotal($dir) : '';
         $row['tests'] = $name === 'git-package' ? 'n/a' : (testScenario($name) ? 'green' : 'RED');
         $rows[] = $row;
     }
@@ -433,14 +439,38 @@ function testScenario(string $name): bool
  */
 function summary(array $rows): void
 {
-    $columns = ['scenario', 'doctor', 'count', 'optimize', 'check', 'tests'];
+    $columns = ['scenario', 'doctor', 'count', 'ops', 'optimize', 'check', 'tests'];
     echo "\n";
-    \printf("  %-18s %-10s %-10s %-10s %-10s %-6s\n", ...$columns);
-    echo '  ' . \str_repeat('-', 68) . "\n";
+    \printf("  %-18s %-10s %-10s %-16s %-10s %-10s %-6s\n", ...$columns);
+    echo '  ' . \str_repeat('-', 85) . "\n";
     foreach ($rows as $row) {
-        \printf("  %-18s %-10s %-10s %-10s %-10s %-6s\n", ...\array_map(static fn(string $c): string => $row[$c] ?? '', $columns));
+        \printf("  %-18s %-10s %-10s %-16s %-10s %-10s %-6s\n", ...\array_map(static fn(string $c): string => $row[$c] ?? '', $columns));
     }
-    echo "\n  Opcode totals and trap results appear here once `count` (M1) and `optimize` (M3) exist.\n\n";
+    echo "\n  ops: opcodes after the optimizer / functions (from `count`). Before/after and trap results\n"
+        . "  appear here once `optimize` (M3) exists.\n\n";
+}
+
+/**
+ * What `opmin init` adds to the .gitignore of a framework skeleton: the scenario stays clean after a run.
+ */
+function ignoreOpminFiles(string $dir): void
+{
+    \file_put_contents($dir . '/.gitignore', "/.opmin-cache/\n/runs/\n", \FILE_APPEND);
+}
+
+/**
+ * `<ops_opt> / <functions>` of the scenario, from `opmin count --format=json` (taken from the cache
+ * right after the full-cycle run).
+ */
+function countTotal(string $dir): string
+{
+    $cmd = \escapeshellarg(\PHP_BINARY) . ' ' . \escapeshellarg(\realpath(ROOT) . '/bin/opmin') . ' --no-interaction count --format=json 2>/dev/null';
+    /** @var mixed $report */
+    $report = \json_decode((string) \shell_exec('cd ' . \escapeshellarg($dir) . ' && ' . $cmd), true);
+
+    return \is_array($report) && isset($report['totals']['ops_opt'], $report['totals']['functions'])
+        ? $report['totals']['ops_opt'] . ' / ' . $report['totals']['functions']
+        : '?';
 }
 
 // ---------------------------------------------------------------------------------------------

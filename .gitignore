@@ -1,2 +1,11 @@
 /plan/
+/playground/
+/vendor/
+/runtime/
+/runs/
+/.build/
+/.opmin-cache/
+/.idea/
+/.env
 .DS_Store
+*.log

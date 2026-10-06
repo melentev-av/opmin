@@ -1,0 +1,72 @@
+<?xml version="1.0"?>
+<psalm xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns="https://getpsalm.org/schema/config"
+       xsi:schemaLocation="https://getpsalm.org/schema/config vendor/vimeo/psalm/config.xsd"
+       errorLevel="1"
+       findUnusedBaselineEntry="false"
+       findUnusedCode="false"
+       phpVersion="8.3"
+>
+    <issueHandlers>
+        <RedundantConditionGivenDocblockType errorLevel="suppress"/>
+        <RedundantCastGivenDocblockType errorLevel="suppress"/>
+        <MissingOverrideAttribute errorLevel="suppress"/>
+        <!-- Config parsing handles untyped YAML/env/CLI values by design; types are enforced by ValueCaster. -->
+        <MixedAssignment>
+            <errorLevel type="suppress">
+                <directory name="src/Module/Config"/>
+                <file name="src/Module/Common/Internal/Injection/ConfigInflector.php"/>
+            </errorLevel>
+        </MixedAssignment>
+        <MixedArgument>
+            <errorLevel type="suppress">
+                <directory name="src/Module/Config"/>
+            </errorLevel>
+        </MixedArgument>
+        <MixedArrayAssignment>
+            <errorLevel type="suppress">
+                <file name="src/Module/Config/JsonSchemaGenerator.php"/>
+            </errorLevel>
+        </MixedArrayAssignment>
+        <MixedArrayAccess>
+            <errorLevel type="suppress">
+                <file name="src/Module/Config/JsonSchemaGenerator.php"/>
+            </errorLevel>
+        </MixedArrayAccess>
+        <MixedReturnStatement>
+            <errorLevel type="suppress">
+                <file name="src/Module/Config/JsonSchemaGenerator.php"/>
+            </errorLevel>
+        </MixedReturnStatement>
+        <MissingConstructor>
+            <errorLevel type="suppress">
+                <directory name="src/Module/Config/Schema"/>
+            </errorLevel>
+        </MissingConstructor>
+        <PropertyNotSetInConstructor>
+            <errorLevel type="suppress">
+                <directory name="src/Command"/>
+            </errorLevel>
+        </PropertyNotSetInConstructor>
+    </issueHandlers>
+    <projectFiles>
+        <directory name="src"/>
+        <ignoreFiles>
+            <directory name="vendor"/>
+            <directory name="tests"/>
+        </ignoreFiles>
+    </projectFiles>
+    <forbiddenFunctions>
+        <function name="dd"/>
+        <function name="exit"/>
+        <function name="die"/>
+        <function name="var_dump"/>
+        <function name="echo"/>
+        <function name="print"/>
+        <function name="trap"/>
+        <function name="td"/>
+        <function name="tr"/>
+        <function name="dump"/>
+        <function name="error_log"/>
+    </forbiddenFunctions>
+</psalm>

@@ -1,0 +1,23 @@
+# Line-ending normalization for text files.
+* text=auto
+
+# PHP-aware hunk headers in `git diff`.
+*.php diff=php
+*.php.inc diff=php
+
+# Nothing is included in the `composer archive` of the package except what an installed copy needs.
+* export-ignore
+
+/composer.json   -export-ignore
+/LICENSE.md      -export-ignore
+/NOTICE.md       -export-ignore
+/README.md       -export-ignore
+/CHANGELOG.md    -export-ignore
+
+/bin             -export-ignore
+/bin/opmin       -export-ignore
+
+/src             -export-ignore
+/src/**          -export-ignore
+/resources       -export-ignore
+/resources/**    -export-ignore

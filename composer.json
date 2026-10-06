@@ -1,0 +1,76 @@
+{
+    "name": "melentev-av/opmin",
+    "description": "Minimizes PHP opcodes without changing behavior: counts opcodes per function, applies Rector and LLM rewrites, verifies behavior on every step.",
+    "license": "MIT",
+    "type": "library",
+    "keywords": [
+        "opcache",
+        "opcodes",
+        "optimization",
+        "rector",
+        "differential testing"
+    ],
+    "authors": [
+        {
+            "name": "Andrey Melentev",
+            "homepage": "https://github.com/melentev-av"
+        }
+    ],
+    "require": {
+        "php": ">=8.3",
+        "internal/container": "^1.1",
+        "internal/path": "^1.4",
+        "psr/container": "1 - 2",
+        "rector/rector": "~2.7.0",
+        "symfony/console": "^7.3 || ^8",
+        "symfony/yaml": "^7.3 || ^8"
+    },
+    "require-dev": {
+        "rasuvaeff/property-testing-core": "1.2.0",
+        "rasuvaeff/property-testing-testo": "1.1.0",
+        "spiral/code-style": "^2.3.1",
+        "testo/bridge-rector": "0.3.3",
+        "testo/testo": "0.10.55",
+        "vimeo/psalm": "^6.10 || ^7.0"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "autoload": {
+        "psr-4": {
+            "Opmin\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Opmin\\Tests\\": "tests/"
+        }
+    },
+    "bin": [
+        "bin/opmin"
+    ],
+    "config": {
+        "audit": {
+            "abandoned": "report"
+        },
+        "platform": {
+            "php": "8.3.16"
+        },
+        "sort-packages": true
+    },
+    "scripts": {
+        "cs:diff": "php-cs-fixer fix --dry-run -v --diff",
+        "cs:fix": "php-cs-fixer fix -v",
+        "psalm": "psalm",
+        "psalm:baseline": "psalm --set-baseline=psalm-baseline.xml",
+        "psalm:ci": "psalm --output-format=github --show-info=false --stats --threads=4",
+        "schema:dump": "@php bin/opmin schema:dump",
+        "test": "testo --ansi --no-coverage",
+        "test:cc": [
+            "@putenv XDEBUG_MODE=coverage",
+            "testo --ansi --coverage-clover=runtime/coverage/clover.xml"
+        ],
+        "test:integration": "testo --ansi --no-coverage --suite=integration",
+        "test:rector": "testo --ansi --no-coverage --suite=rector",
+        "test:unit": "testo --ansi --no-coverage --suite=unit"
+    }
+}

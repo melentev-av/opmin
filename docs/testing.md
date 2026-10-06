@@ -128,8 +128,43 @@ public static function intRoundTripsThroughStringGenerators(): array   // <metho
 - No plugin registration: `#[Property]` registers itself. Do not combine with `#[DataProvider]` or
   `#[ExpectException]` (use `#[Property(throws: X::class)]`).
 - A failure prints the shrunk counterexample and a seed: reproduce with `#[Property(seed: N)]` or `PROPERTY_SEED=N`.
-- The verifier (M2) uses `property-testing-core` directly, behind opmin's own `InputGenerator`/`PropertyRunner`
-  interfaces; how to drive the core runner programmatically is to be documented here in M2.
+- The verifier uses `property-testing-core` directly, behind opmin's own interfaces — see the next section.
+
+## The verifier on `property-testing-core` (programmatic use)
+
+`rasuvaeff/property-testing-core` 1.2.0 is a **runtime** dependency (the differential tester runs it); the old
+`rasuvaeff/property-testing` is abandoned and must not be used. What was learned from its README, `llms.txt` and
+sources in `vendor/rasuvaeff/property-testing-core/`:
+
+- **Runner without a test framework:** `new PropertyRunner()->run(PropertyDefinition, TrialExecutor, listeners,
+  corpus)`. It never prints, exits or reads the environment, and returns a result object: `Passed`, `Falsified`
+  (`counterExample()`: `originalArguments`, `shrunkArguments`, `shrinkSteps`, `isFlaky()`, `failure`),
+  `RegressionFailed` (a corpus entry still fails), `GaveUp` (discards), `TimeBudgetExceeded` (`budgetMs`) and a few
+  more opmin does not use.
+- **Executor:** `TrialExecutor::execute(array $arguments): TrialOutcome` — `passed()`, `failed($e)`, `discarded()`.
+- **Own generators:** `ArbitraryInterface::generate(Random): Shrinkable`; `Shrinkable::of($value, fn() => iterable)`
+  is the lazy shrink tree. There is no `shrink(mixed)`: candidates are attached at generation time.
+- **Shrinking:** greedy descent through the tree; a candidate is accepted only if it fails *the same way* (same
+  exception class thrown from the same line of the body's file). `flakyReplays` (2) re-runs the minimal
+  counterexample; one that passes marks it flaky.
+- **Seed:** explicit `PropertyConfig::$seed` gives the same inputs (`Random` is an object-scoped MT19937).
+- **Corpus:** `FilesystemCorpus($dir)` stores a minimised input verbatim as JSON (array values only — objects
+  become "seed" entries that replay the whole run) and replays it as one run before the random phase.
+- Sequential only: do not run two properties concurrently in one process.
+
+How opmin uses it (`src/Module/Verification/Property/`):
+
+- The verifier sees only `PropertyRunner`, `InputGenerator`, `InputShrinker`, `RandomSource` and `Discard`;
+  `Core/CorePropertyRunner` is the only class that touches the engine, so it can be replaced.
+- The property has **one parameter — the whole `Input`** (argument recipes, `$this`, closure `use` values) as an
+  array, so corpus entries are plain JSON and replay as one run.
+- Generation and shrink candidates are opmin's: inputs are *recipes* for the harness, not PHP values, and the
+  shrinker works on any input — generated, mutated by the coverage search or replayed from the corpus — which a
+  shrink tree of the engine's own generators could not do. The engine contributes the run loop, seeds, the
+  descent, flaky replays and the corpus.
+- Examples (boundary values, literals of the body) are returned by the first draws of the arbitrary, so a failing
+  example is shrunk like any other input (the engine's own `examples` are never shrunk).
+- `budgetMs` ends a run with `TimeBudgetExceeded`; for opmin that is "held for what was checked", not a failure.
 
 ## Opcode counting tests
 

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "4fac8dbf3e6abe0ffeb51f296230daa5",
+    "content-hash": "dc539f8871c16f1059a47273af19b7ff",
     "packages": [
         {
             "name": "internal/container",
@@ -380,6 +380,83 @@
                 "source": "https://github.com/php-fig/container/tree/2.0.2"
             },
             "time": "2021-11-05T16:47:00+00:00"
+        },
+        {
+            "name": "rasuvaeff/property-testing-core",
+            "version": "v1.2.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/rasuvaeff/property-testing-core.git",
+                "reference": "2b5fda1576830b4690f0be561e20963d293dc85a"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/rasuvaeff/property-testing-core/zipball/2b5fda1576830b4690f0be561e20963d293dc85a",
+                "reference": "2b5fda1576830b4690f0be561e20963d293dc85a",
+                "shasum": ""
+            },
+            "require": {
+                "ext-mbstring": "*",
+                "ext-random": "*",
+                "ext-tokenizer": "*",
+                "php": "8.3 - 8.5"
+            },
+            "conflict": {
+                "rasuvaeff/property-testing": "*"
+            },
+            "require-dev": {
+                "ergebnis/composer-normalize": "^2.51",
+                "friendsofphp/php-cs-fixer": "^3.95",
+                "infection/infection": "^0.35",
+                "maglnet/composer-require-checker": "^4.17",
+                "predis/predis": "^2.2 || ^3.0",
+                "rasuvaeff/rector-named-literals": "^1.0",
+                "rector/rector": "^2.4",
+                "roave/backward-compatibility-check": "^8.0",
+                "testo/bridge-infection": "^0.1.6",
+                "testo/testo": "^0.10.39 || ^1.0",
+                "vimeo/psalm": "^6.16"
+            },
+            "suggest": {
+                "ext-redis": "Required by RedisCorpus with PhpRedisCorpusClient — a regression corpus shared between CI and developers",
+                "predis/predis": "Required by RedisCorpus with PredisCorpusClient, when ext-redis is unavailable"
+            },
+            "type": "library",
+            "extra": {
+                "skills": {
+                    "source": "resources/skills"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Rasuvaeff\\PropertyTesting\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "BSD-3-Clause"
+            ],
+            "authors": [
+                {
+                    "name": "Victor Razuvaev",
+                    "email": "rasuvaeff@gmail.com"
+                }
+            ],
+            "description": "Framework-agnostic property-based testing engine: generators, shrinking, runner, regression corpus, events",
+            "homepage": "https://github.com/rasuvaeff/property-testing-core",
+            "keywords": [
+                "QuickCheck",
+                "fuzzing",
+                "generators",
+                "property-testing",
+                "shrinking",
+                "testing"
+            ],
+            "support": {
+                "issues": "https://github.com/rasuvaeff/property-testing-core/issues",
+                "source": "https://github.com/rasuvaeff/property-testing-core"
+            },
+            "time": "2026-10-02T19:47:41+00:00"
         },
         {
             "name": "rector/rector",
@@ -3458,83 +3535,6 @@
                 "source": "https://github.com/php-fig/log/tree/3.0.2"
             },
             "time": "2024-09-11T13:17:53+00:00"
-        },
-        {
-            "name": "rasuvaeff/property-testing-core",
-            "version": "v1.2.0",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/rasuvaeff/property-testing-core.git",
-                "reference": "2b5fda1576830b4690f0be561e20963d293dc85a"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/rasuvaeff/property-testing-core/zipball/2b5fda1576830b4690f0be561e20963d293dc85a",
-                "reference": "2b5fda1576830b4690f0be561e20963d293dc85a",
-                "shasum": ""
-            },
-            "require": {
-                "ext-mbstring": "*",
-                "ext-random": "*",
-                "ext-tokenizer": "*",
-                "php": "8.3 - 8.5"
-            },
-            "conflict": {
-                "rasuvaeff/property-testing": "*"
-            },
-            "require-dev": {
-                "ergebnis/composer-normalize": "^2.51",
-                "friendsofphp/php-cs-fixer": "^3.95",
-                "infection/infection": "^0.35",
-                "maglnet/composer-require-checker": "^4.17",
-                "predis/predis": "^2.2 || ^3.0",
-                "rasuvaeff/rector-named-literals": "^1.0",
-                "rector/rector": "^2.4",
-                "roave/backward-compatibility-check": "^8.0",
-                "testo/bridge-infection": "^0.1.6",
-                "testo/testo": "^0.10.39 || ^1.0",
-                "vimeo/psalm": "^6.16"
-            },
-            "suggest": {
-                "ext-redis": "Required by RedisCorpus with PhpRedisCorpusClient — a regression corpus shared between CI and developers",
-                "predis/predis": "Required by RedisCorpus with PredisCorpusClient, when ext-redis is unavailable"
-            },
-            "type": "library",
-            "extra": {
-                "skills": {
-                    "source": "resources/skills"
-                }
-            },
-            "autoload": {
-                "psr-4": {
-                    "Rasuvaeff\\PropertyTesting\\": "src/"
-                }
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "BSD-3-Clause"
-            ],
-            "authors": [
-                {
-                    "name": "Victor Razuvaev",
-                    "email": "rasuvaeff@gmail.com"
-                }
-            ],
-            "description": "Framework-agnostic property-based testing engine: generators, shrinking, runner, regression corpus, events",
-            "homepage": "https://github.com/rasuvaeff/property-testing-core",
-            "keywords": [
-                "QuickCheck",
-                "fuzzing",
-                "generators",
-                "property-testing",
-                "shrinking",
-                "testing"
-            ],
-            "support": {
-                "issues": "https://github.com/rasuvaeff/property-testing-core/issues",
-                "source": "https://github.com/rasuvaeff/property-testing-core"
-            },
-            "time": "2026-10-02T19:47:41+00:00"
         },
         {
             "name": "rasuvaeff/property-testing-testo",

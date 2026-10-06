@@ -22,13 +22,13 @@
         "internal/path": "^1.4",
         "nikic/php-parser": "^5.4",
         "psr/container": "1 - 2",
+        "rasuvaeff/property-testing-core": "1.2.0",
         "rector/rector": "~2.7.0",
         "symfony/console": "^7.3 || ^8",
         "symfony/process": "^7.3 || ^8",
         "symfony/yaml": "^7.3 || ^8"
     },
     "require-dev": {
-        "rasuvaeff/property-testing-core": "1.2.0",
         "rasuvaeff/property-testing-testo": "1.1.0",
         "spiral/code-style": "^2.3.1",
         "testo/bridge-rector": "0.3.3",

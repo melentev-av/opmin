@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Opmin\Module\Opcode\Locate;
 
 use Opmin\Module\Analysis\Flag;
+use PhpParser\Node;
 
 /**
  * A function-like unit of code that OPcache compiles into its own op_array.
@@ -23,6 +24,8 @@ final readonly class CodeUnit
      * @param bool $abstract Abstract or interface method/hook: no useful opcodes, never reported
      *        (PHP 8.1 still dumps them, 8.2+ does not).
      * @param list<Flag> $flags Flags of the dynamic scope detector found in the unit's own body.
+     * @param Node\FunctionLike|null $node The AST of the unit (null for main code).
+     * @param Node\Stmt\ClassLike|null $class The class of a method or hook, or the class a closure is defined in.
      */
     public function __construct(
         public string $key,
@@ -32,6 +35,8 @@ final readonly class CodeUnit
         public int $endLine,
         public bool $abstract = false,
         public array $flags = [],
+        public ?Node\FunctionLike $node = null,
+        public ?Node\Stmt\ClassLike $class = null,
     ) {}
 
     public function isAnonymousClassMethod(): bool

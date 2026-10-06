@@ -11,7 +11,11 @@ namespace Opmin\Module\Config\Schema;
  */
 enum CoverageDriver: string
 {
+    /**
+     * Branch probes (no extension needed); see `docs/harness-protocol.md`.
+     */
     case Auto = 'auto';
+    case Probes = 'probes';
     case Xdebug = 'xdebug';
     case Pcov = 'pcov';
 }

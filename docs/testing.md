@@ -196,6 +196,18 @@ Opcode counts depend on the PHP that compiles the code (`php.binary`), not on th
   PHP (nested closures, anonymous classes, several closures on a line, enums, traits) and checks that every
   function gets a count. Raise `runs` locally after touching the parser, the locator or the matcher.
 
+## Verifier tests
+
+- **Harness** — `tests/Integration/Module/Harness/` (worker protocol, sessions) under the php.binary of the run.
+- **Comparator** — `tests/Unit/Module/Verification/Compare/`: a table of differences and equivalences plus
+  property tests (reflexivity, symmetry, `-0.0`, `NAN`).
+- **Inputs** — `tests/Unit/Module/Verification/Input/`: phpdoc types, the plan of boundary values and literals,
+  reproducible random inputs, termination of shrinking (property test), `Coverage/InstrumenterTest` for probes.
+- **Differential tester** — `tests/Integration/Module/Verification/DiffTesterTest.php`: mechanics (shrinking to
+  the magic literal, `exit()`/hang of the changed version as a result, nondeterminism, static chains, closures,
+  mocks); `VerifierTrapsTest` is the table of traps and equivalent pairs of the brief.
+- With php.binary in Docker every worker start is a container start: a run takes seconds, not milliseconds.
+
 ## A test that cannot fail is worse than no test
 
 For every new suite, rule or fixture table: break the code or the expectation once and see the test go red.

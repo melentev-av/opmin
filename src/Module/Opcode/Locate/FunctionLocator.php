@@ -151,7 +151,7 @@ final class FunctionLocator
         $key = $this->unique("{$parentKey}::{closure:{$n}}");
 
         return [
-            new CodeUnit($key, UnitKind::Closure, null, $node->getStartLine(), $node->getEndLine(), flags: $this->detector->detect($node, $this->class)),
+            new CodeUnit($key, UnitKind::Closure, null, $node->getStartLine(), $node->getEndLine(), flags: $this->detector->detect($node, $this->class), node: $node, class: $this->class),
             ...$this->scan($node instanceof Closure ? [$node->params, $node->stmts] : [$node->params, $node->expr], $key),
         ];
     }
@@ -166,7 +166,7 @@ final class FunctionLocator
         $key = $this->unique($name);
 
         return [
-            new CodeUnit($key, UnitKind::Function, $name, $node->getStartLine(), $node->getEndLine(), flags: $this->detector->detect($node)),
+            new CodeUnit($key, UnitKind::Function, $name, $node->getStartLine(), $node->getEndLine(), flags: $this->detector->detect($node), node: $node),
             ...$this->scan([$node->params, $node->stmts], $key),
         ];
     }
@@ -205,6 +205,8 @@ final class FunctionLocator
                     $stmt->getEndLine(),
                     abstract: $interface || $stmt->stmts === null,
                     flags: $this->detector->detect($stmt, $node),
+                    node: $stmt,
+                    class: $node,
                 );
                 \array_push($methods, ...$this->scan([$stmt->params, $stmt->stmts], $key));
                 foreach ($stmt->params as $param) {
@@ -230,6 +232,8 @@ final class FunctionLocator
                     $hook->getEndLine(),
                     abstract: $hook->body === null,
                     flags: $this->detector->detect($hook, $node),
+                    node: $hook,
+                    class: $node,
                 );
                 \array_push($hooks, ...$this->scan([$hook->params, $hook->body], $key));
             }

@@ -39,20 +39,14 @@ final class Value
 
     public static function floatFromString(string $text): float
     {
-        switch ($text) {
-            case 'NAN':
-                return \NAN;
-            case 'INF':
-                return \INF;
-            case '-INF':
-                return -\INF;
-            case '-0.0':
-                return -0.0;
-        }
-
-        \is_numeric($text) or throw new \InvalidArgumentException("Not a float: {$text}");
-
-        return (float) $text;
+        # `match`, not `switch`: '0.0' == '-0.0' for a loose comparison of numeric strings.
+        return match ($text) {
+            'NAN' => \NAN,
+            'INF' => \INF,
+            '-INF' => -\INF,
+            '-0.0' => -0.0,
+            default => \is_numeric($text) ? (float) $text : throw new \InvalidArgumentException("Not a float: {$text}"),
+        };
     }
 
     /**

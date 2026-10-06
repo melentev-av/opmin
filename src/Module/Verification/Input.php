@@ -19,7 +19,7 @@ final readonly class Input
     /**
      * @param list<RecipeArray> $args Positional arguments.
      * @param RecipeArray|null $receiver `$this` of an instance method or of a bound closure.
-     * @param array<non-empty-string, RecipeArray> $uses Values of the `use` variables of a closure.
+     * @param array<string, RecipeArray> $uses Values of the `use` variables of a closure.
      * @param bool $strict Call from a `strict_types=1` file (the caller decides the typing mode).
      */
     public function __construct(
@@ -34,7 +34,7 @@ final readonly class Input
      */
     public static function fromArray(array $data): self
     {
-        /** @var array{args?: list<RecipeArray>, this?: RecipeArray|null, uses?: array<non-empty-string, RecipeArray>, strict?: bool} $data */
+        /** @var array{args?: list<RecipeArray>, this?: RecipeArray|null, uses?: array<string, RecipeArray>, strict?: bool} $data */
         return new self(
             args: $data['args'] ?? [],
             receiver: $data['this'] ?? null,
@@ -44,7 +44,7 @@ final readonly class Input
     }
 
     /**
-     * @return array{args: list<RecipeArray>, this: RecipeArray|null, uses: array<non-empty-string, RecipeArray>, strict: bool}
+     * @return array{args: list<RecipeArray>, this: RecipeArray|null, uses: array<string, RecipeArray>, strict: bool}
      */
     public function toArray(): array
     {
@@ -68,7 +68,7 @@ final readonly class Input
     }
 
     /**
-     * @param array<non-empty-string, RecipeArray> $uses
+     * @param array<string, RecipeArray> $uses
      */
     public function withUses(array $uses): self
     {

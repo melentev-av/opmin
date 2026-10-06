@@ -207,9 +207,10 @@
                     "default": 90
                 },
                 "coverage_driver": {
-                    "description": "Coverage driver: auto | xdebug | pcov",
+                    "description": "Coverage of differential tests: auto | probes (branch probes, no extension) | xdebug | pcov (line coverage); auto — probes",
                     "enum": [
                         "auto",
+                        "probes",
                         "xdebug",
                         "pcov"
                     ],

@@ -12,14 +12,18 @@
         <RedundantCastGivenDocblockType errorLevel="suppress"/>
         <MissingOverrideAttribute errorLevel="suppress"/>
         <!-- Config parsing handles untyped YAML/env/CLI values by design; types are enforced by ValueCaster. -->
+        <!-- Recipes and results of the harness protocol are JSON-like arrays by design (docs/harness-protocol.md). -->
         <MixedAssignment>
             <errorLevel type="suppress">
+                <directory name="src/Module/Verification"/>
+                <directory name="src/Module/Harness"/>
                 <directory name="src/Module/Config"/>
                 <file name="src/Module/Common/Internal/Injection/ConfigInflector.php"/>
             </errorLevel>
         </MixedAssignment>
         <MixedArgument>
             <errorLevel type="suppress">
+                <directory name="src/Module/Verification"/>
                 <directory name="src/Module/Config"/>
             </errorLevel>
         </MixedArgument>

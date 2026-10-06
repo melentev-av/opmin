@@ -21,6 +21,7 @@
         "internal/container": "^1.1",
         "internal/path": "^1.4",
         "nikic/php-parser": "^5.4",
+        "phpstan/phpdoc-parser": "^2.3",
         "psr/container": "1 - 2",
         "rasuvaeff/property-testing-core": "1.2.0",
         "rector/rector": "~2.7.0",

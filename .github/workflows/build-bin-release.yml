@@ -79,18 +79,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # `binary` is what `file` must report for the result: a build that silently ran on the
+          # wrong architecture (e.g. under Rosetta) fails instead of being published.
           - target: linux-x86_64
             runner: ubuntu-24.04
             spc: spc-linux-x86_64
+            binary: x86-64
           - target: linux-aarch64
             runner: ubuntu-24.04-arm
             spc: spc-linux-aarch64
+            binary: aarch64
           - target: macos-x86_64
-            runner: macos-26-intel
+            runner: macos-15-intel
             spc: spc-macos-x86_64
+            binary: x86_64
           - target: macos-arm64
             runner: macos-26
             spc: spc-macos-aarch64
+            binary: arm64
     env:
       SPC_SKIP_BREW_INSTALL: '1'
       # Binaries built on the newest macOS must still start on older ones.
@@ -98,6 +104,15 @@ jobs:
     steps:
       - name: 📦 Check out the codebase
         uses: actions/checkout@v5
+
+      - name: 🖥️ Runner architecture
+        run: |
+          uname -a
+          echo "machine: $(uname -m)"
+          if [ "$(uname -s)" = Darwin ]; then
+            sysctl -n machdep.cpu.brand_string
+            echo "translated by Rosetta: $(sysctl -in sysctl.proc_translated || echo 0)"
+          fi
 
       - name: 📥 Download PHAR
         uses: actions/download-artifact@v4
@@ -144,6 +159,11 @@ jobs:
           mkdir -p dist
           .build/bin/spc micro:combine .build/phar/opmin.phar --output=dist/opmin
           chmod +x dist/opmin
+
+      - name: 🔍 Check binary architecture
+        run: |
+          file dist/opmin
+          file dist/opmin | grep -q '${{ matrix.binary }}' || { echo "::error::expected ${{ matrix.binary }}"; exit 1; }
 
       - name: 🤔 Smoke test
         run: |

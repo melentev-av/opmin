@@ -88,7 +88,7 @@ final readonly class Project
 
         # The lowest version the constraint mentions: `>=8.1`, `^8.2 || ^8.3`, `8.3.16`.
         $versions = \array_map(static fn(array $v): string => $v[1] . '.' . $v[2], $m);
-        \usort($versions, 'version_compare');
+        \usort($versions, static fn(string $a, string $b): int => \version_compare($a, $b));
 
         return $versions[0];
     }

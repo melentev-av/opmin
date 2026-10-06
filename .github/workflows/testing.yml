@@ -1,0 +1,125 @@
+---
+
+# Tests run on every push to develop and on every pull request into master.
+# Nothing runs on a push to master: master only receives release merges.
+
+name: 🧪 Testing
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  cancel-in-progress: true
+  group: testing-${{ github.event.pull_request.number || github.ref }}
+
+jobs:
+  testing:
+    name: 🧪 PHP ${{ matrix.php-version }} (${{ matrix.dependencies }})
+    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version:
+          - '8.3'
+          - '8.4'
+          - '8.5'
+        dependencies:
+          - locked
+          - highest
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: 🛠️ Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          ini-values: error_reporting=E_ALL
+          coverage: none
+
+      - name: 🛠️ Setup problem matchers
+        run: echo "::add-matcher::${{ runner.tool_cache }}/php.json"
+
+      - name: 🤖 Validate composer.json and composer.lock
+        run: composer validate --ansi --strict
+
+      - name: 📥 Install dependencies with composer
+        uses: ramsey/composer-install@v3
+        with:
+          dependency-versions: ${{ matrix.dependencies }}
+
+      - name: 🧪 Run tests
+        run: composer test
+
+  coverage:
+    name: 📊 Coverage
+    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: 🛠️ Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          ini-values: error_reporting=E_ALL
+          coverage: pcov
+
+      - name: 📥 Install dependencies with composer
+        uses: ramsey/composer-install@v3
+
+      - name: 📊 Collect code coverage with Testo
+        run: vendor/bin/testo --ansi --coverage --coverage-clover=runtime/coverage/clover.xml
+
+      - name: 📤 Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-clover
+          path: runtime/coverage/clover.xml
+          retention-days: 7
+
+  compile-phar:
+    # A cheap check that the scoped PHAR still builds and starts; release assets are built
+    # only when a version is released (see build-phar-release.yml).
+    name: 📦 PHAR builds and runs
+    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: 🛠️ Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          ini-values: 'error_reporting=E_ALL, memory_limit=-1, phar.readonly=0'
+          tools: composer, box
+          coverage: none
+
+      - name: 📥 Install dependencies with composer
+        uses: ramsey/composer-install@v3
+        with:
+          composer-options: "--no-dev"
+
+      - name: 🔍 Validate configuration for box-project/box
+        run: box validate box.json.dist --ansi
+
+      - name: 📦 Build PHAR
+        run: box compile --no-parallel
+
+      - name: 🤔 Run opmin.phar
+        run: |
+          .build/phar/opmin.phar --version
+          .build/phar/opmin.phar list
+          mkdir -p /tmp/phar-smoke && cd /tmp/phar-smoke && "$GITHUB_WORKSPACE/.build/phar/opmin.phar" init --no-interaction
+          test -s /tmp/phar-smoke/opmin.yaml
+
+...

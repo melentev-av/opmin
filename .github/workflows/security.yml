@@ -1,0 +1,38 @@
+---
+
+name: 🔐 Security analysis
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  security-analysis:
+    name: 🐛 composer audit
+    timeout-minutes: 5
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: 🛠️ Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: 🤖 Validate composer.json and composer.lock
+        run: composer validate --ansi --strict
+
+      - name: 📥 Install dependencies with composer
+        uses: ramsey/composer-install@v3
+
+      - name: 🐛 Check installed packages for security vulnerability advisories
+        run: composer audit --ansi
+
+...

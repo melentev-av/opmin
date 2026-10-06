@@ -1,0 +1,80 @@
+---
+
+# Builds the scoped PHAR and attaches it to a release.
+# Runs only when a version is released (called by create-release.yml) or by hand.
+
+name: 📦 Build PHAR release
+
+on:  # yamllint disable-line rule:truthy
+  release:
+    types:
+      - published
+  workflow_call:
+    inputs:
+      tag:
+        description: Tag of the release the PHAR is attached to.
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to attach the PHAR to (empty — build only, upload as a workflow artifact).
+        required: false
+        type: string
+
+jobs:
+  build:
+    name: 📦 PHAR
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+      OPMIN_PHAR: .build/phar/opmin.phar
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: 🛠️ Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          ini-values: 'memory_limit=-1, phar.readonly=0'
+          tools: composer, box
+          coverage: none
+
+      - name: 🏷️ Write version
+        if: env.RELEASE_TAG != ''
+        run: |
+          printf '{".": "%s"}\n' "${RELEASE_TAG#v}" > resources/version.json
+
+      - name: 📥 Install dependencies with composer
+        uses: ramsey/composer-install@v3
+        with:
+          composer-options: "--no-dev"
+
+      - name: 📦 Build PHAR
+        run: |
+          box validate box.json.dist --ansi
+          box compile --no-parallel
+          box info "$OPMIN_PHAR" --ansi
+          "$OPMIN_PHAR" --version
+
+      - name: 🔢 Checksum
+        run: cd .build/phar && sha256sum opmin.phar > opmin.phar.sha256
+
+      - name: 📤 Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opmin-phar
+          path: .build/phar/opmin.phar*
+          retention-days: 7
+
+      - name: 📤 Upload release assets
+        if: env.RELEASE_TAG != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$RELEASE_TAG" .build/phar/opmin.phar .build/phar/opmin.phar.sha256 --clobber --repo "$GITHUB_REPOSITORY"
+
+...

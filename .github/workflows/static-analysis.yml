@@ -1,0 +1,65 @@
+---
+
+name: 🔍 Static analysis
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  cancel-in-progress: true
+  group: static-analysis-${{ github.event.pull_request.number || github.ref }}
+
+jobs:
+  psalm:
+    name: 🔍 Psalm
+    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: 🛠️ Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          ini-values: error_reporting=E_ALL
+          coverage: none
+
+      - name: 🛠️ Setup problem matchers
+        run: echo "::add-matcher::${{ runner.tool_cache }}/php.json"
+
+      - name: 📥 Install dependencies with composer
+        uses: ramsey/composer-install@v3
+
+      - name: 🔍 Run static analysis using vimeo/psalm
+        run: composer psalm:ci
+
+  json-schema:
+    name: 🧾 opmin.yaml JSON Schema is up to date
+    timeout-minutes: 5
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: 🛠️ Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: 📥 Install dependencies with composer
+        uses: ramsey/composer-install@v3
+
+      - name: 🧾 Regenerate and compare
+        run: |
+          composer schema:dump
+          git diff --exit-code resources/opmin.schema.json
+
+...

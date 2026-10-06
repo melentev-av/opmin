@@ -1,0 +1,61 @@
+---
+
+# Release flow:
+#   develop → pull request into master → merge.
+#   On a push to master release-please only opens/updates a release PR (no builds, no tests).
+#   Merging that release PR creates the tag and the GitHub release, and only then
+#   the PHAR and the binaries are built and attached.
+#
+# The asset builds are called directly instead of listening for `release: published`:
+# a release created with GITHUB_TOKEN emits no such event.
+
+name: 📦 Create release
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: 🎉 release-please
+    runs-on: ubuntu-24.04
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: 🎉 Create release
+        uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: .github/.release-please-config.json
+          manifest-file: resources/version.json
+          target-branch: master
+
+  phar:
+    name: 📦 PHAR
+    needs: release
+    if: ${{ needs.release.outputs.release_created == 'true' }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build-phar-release.yml
+    with:
+      tag: ${{ needs.release.outputs.tag_name }}
+    secrets: inherit
+
+  binaries:
+    name: 📦 Binaries
+    needs: release
+    if: ${{ needs.release.outputs.release_created == 'true' }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build-bin-release.yml
+    with:
+      tag: ${{ needs.release.outputs.tag_name }}
+    secrets: inherit
+
+...

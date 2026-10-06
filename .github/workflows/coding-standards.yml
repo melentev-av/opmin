@@ -1,0 +1,74 @@
+---
+
+name: 🧹 Coding standards
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  cancel-in-progress: true
+  group: coding-standards-${{ github.event.pull_request.number || github.ref }}
+
+jobs:
+  commit-linting:
+    name: 🧐 Conventional commits
+    timeout-minutes: 5
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: 🧐 Lint commits using "commitlint"
+        uses: wagoid/commitlint-github-action@v6
+        with:
+          configFile: ${{ github.workspace }}/.github/.commitlint.config.mjs
+          failOnWarnings: false
+          helpURL: 'https://www.conventionalcommits.org/'
+
+  yaml-linting:
+    name: 🧐 YAML
+    timeout-minutes: 5
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: 🧐 Lint YAML files
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          config_file: .github/.yamllint.yaml
+          file_or_dir: '.'
+          strict: true
+
+  php-cs-fixer:
+    name: 🧹 PHP CS Fixer
+    timeout-minutes: 5
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: 🛠️ Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: 📥 Install dependencies with composer
+        uses: ramsey/composer-install@v3
+
+      - name: 🧹 Check coding standards (no auto-commit)
+        run: composer cs:diff
+
+...

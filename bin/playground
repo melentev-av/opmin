@@ -1,0 +1,567 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Playground: manual end-to-end sandbox for opmin.
+ *
+ * Builds scenarios in playground/ (git-ignored) from playground-seeds/ (committed). Needs only PHP,
+ * composer and git (and Docker for `php <ver>`).
+ *
+ *   bin/playground init [scenario...]   create scenarios (default: all required ones)
+ *   bin/playground reset [scenario...]  delete and re-create scenarios from scratch
+ *   bin/playground run <scenario>       doctor → count → optimize → check, then the scenario's tests
+ *   bin/playground run --all            the same for every existing scenario, with a summary table
+ *   bin/playground test [scenario...]   run only the scenario's own tests
+ *   bin/playground php <ver> <cmd...>   run a command in the php:<ver>-cli Docker image
+ *   bin/playground list                 list scenarios
+ */
+
+const ROOT = __DIR__ . '/..';
+const PLAYGROUND = ROOT . '/playground';
+const SEEDS = ROOT . '/playground-seeds';
+const CACHE = PLAYGROUND . '/.cache';
+
+# Commits inside scenarios never use the developer's git identity.
+const GIT = 'git -c user.name=playground -c user.email=playground@localhost -c init.defaultBranch=main -c commit.gpgsign=false';
+
+/** Exact Testo version, the same as the tool's own dev dependency. */
+const TESTO_VERSION = '0.10.55';
+
+/** Fixed real package for the optional `git-package-real` scenario. */
+const REAL_PACKAGE = ['url' => 'https://github.com/symfony/string.git', 'ref' => 'v7.3.0'];
+
+/** @var array<non-empty-string, array{required: bool, about: non-empty-string}> */
+const SCENARIOS = [
+    'vanilla' => ['required' => true, 'about' => 'bare .php files, no composer, no tests, no git'],
+    'vanilla-composer' => ['required' => true, 'about' => 'composer project (PSR-4), PHPUnit, no framework'],
+    'laravel' => ['required' => true, 'about' => 'fresh Laravel with seeds in app/Services, PHPUnit, Pint'],
+    'testo' => ['required' => true, 'about' => 'composer project with tests on Testo'],
+    'traps' => ['required' => true, 'about' => 'trap code + weak tests that do not catch breaking rewrites'],
+    'git-package' => ['required' => true, 'about' => 'bare repository git-package.git with tags v1.0.0 and v1.1.0'],
+    'symfony' => ['required' => false, 'about' => 'symfony/skeleton with seeds in src/Service, PHP-CS-Fixer'],
+    'git-package-real' => ['required' => false, 'about' => 'clone of a small real package at a fixed tag'],
+];
+
+exit(main(\array_slice($argv, 1)));
+
+/**
+ * @param list<string> $args
+ */
+function main(array $args): int
+{
+    $command = \array_shift($args) ?? 'help';
+
+    try {
+        return match ($command) {
+            'init' => init(scenarios($args), reset: false),
+            'reset' => init(scenarios($args), reset: true),
+            'run' => run($args),
+            'test' => testAll(scenarios($args, existingOnly: true)),
+            'php' => dockerPhp($args),
+            'list' => listScenarios(),
+            default => help(),
+        };
+    } catch (\RuntimeException $e) {
+        \fwrite(\STDERR, "\n\033[31m✗ {$e->getMessage()}\033[0m\n");
+
+        return 1;
+    }
+}
+
+function help(): int
+{
+    $doc = (string) \file_get_contents(__FILE__);
+    \preg_match('~/\*\*\n(.*?)\*/~s', $doc, $m);
+    echo \preg_replace('~^ \* ?~m', '', $m[1] ?? ''), "\n";
+
+    return 0;
+}
+
+function listScenarios(): int
+{
+    foreach (SCENARIOS as $name => $info) {
+        $state = scenarioExists($name) ? 'created' : '-';
+        \printf("  %-18s %-9s %-8s %s\n", $name, $info['required'] ? 'required' : 'optional', $state, $info['about']);
+    }
+
+    return 0;
+}
+
+/**
+ * @param list<string> $args
+ * @return list<non-empty-string>
+ */
+function scenarios(array $args, bool $existingOnly = false): array
+{
+    if ($args === []) {
+        $names = \array_keys(\array_filter(SCENARIOS, static fn(array $s): bool => $s['required']));
+
+        return $existingOnly ? \array_values(\array_filter($names, scenarioExists(...))) : $names;
+    }
+
+    foreach ($args as $name) {
+        isset(SCENARIOS[$name]) or throw new \RuntimeException("Unknown scenario `{$name}`. See `bin/playground list`.");
+    }
+
+    return $args;
+}
+
+function scenarioExists(string $name): bool
+{
+    return \is_dir(scenarioDir($name)) || ($name === 'git-package' && \is_dir(PLAYGROUND . '/git-package.git'));
+}
+
+function scenarioDir(string $name): string
+{
+    return PLAYGROUND . '/' . $name;
+}
+
+// ---------------------------------------------------------------------------------------------
+// init / reset
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * @param list<non-empty-string> $names
+ */
+function init(array $names, bool $reset): int
+{
+    @\mkdir(CACHE, 0777, true);
+
+    foreach ($names as $name) {
+        if (scenarioExists($name)) {
+            if (!$reset) {
+                step("{$name}: already exists, skipped (use `reset` to re-create)");
+                continue;
+            }
+
+            remove(scenarioDir($name));
+            $name === 'git-package' and remove(PLAYGROUND . '/git-package.git');
+        }
+
+        step("{$name}: creating");
+        match ($name) {
+            'vanilla' => buildVanilla(),
+            'vanilla-composer' => buildComposerProject('vanilla-composer', 'Acme', withTests: 'phpunit'),
+            'testo' => buildComposerProject('testo', 'Acme', withTests: 'testo'),
+            'traps' => buildTraps(),
+            'laravel' => buildLaravel(),
+            'symfony' => buildSymfony(),
+            'git-package' => buildGitPackage(),
+            'git-package-real' => buildRealPackage(),
+        };
+
+        $name === 'vanilla' or $name === 'git-package' or gitInit(scenarioDir($name));
+        if ($name !== 'git-package' && !testScenario($name)) {
+            throw new \RuntimeException("{$name}: tests are red on the original code");
+        }
+
+        ok("{$name}: ready");
+    }
+
+    return 0;
+}
+
+function buildVanilla(): void
+{
+    $dir = scenarioDir('vanilla');
+    copySeeds(SEEDS . '/code', $dir . '/lib', 'Vanilla\\Lib');
+    copySeeds(SEEDS . '/vanilla', $dir, 'Vanilla');
+}
+
+/**
+ * Plain composer project: code in src/, tests in tests/.
+ *
+ * @param 'phpunit'|'testo' $withTests
+ * @param list<non-empty-string>|null $only Seed files to take from code/ (null — all).
+ */
+function buildComposerProject(string $name, string $namespace, string $withTests, ?array $only = null, ?string $testsFrom = null): void
+{
+    $dir = scenarioDir($name);
+    copySeeds(SEEDS . '/code', $dir . '/src', $namespace, only: $only);
+    copySeeds($testsFrom ?? SEEDS . '/tests-' . $withTests, $dir . '/tests', $namespace);
+
+    $composer = [
+        'name' => 'playground/' . $name,
+        'type' => 'project',
+        'require' => ['php' => '>=8.3'],
+        'require-dev' => $withTests === 'phpunit'
+            ? ['phpunit/phpunit' => '^11.5 || ^12', 'symfony/phpunit-bridge' => '^7.3 || ^8']
+            : ['testo/testo' => TESTO_VERSION],
+        'autoload' => ['psr-4' => [$namespace . '\\' => 'src/']],
+        'autoload-dev' => ['psr-4' => [$namespace . '\\Tests\\' => 'tests/']],
+        'config' => ['sort-packages' => true],
+        'minimum-stability' => 'dev',
+        'prefer-stable' => true,
+    ];
+    \is_file($dir . '/src/functions.php') and $composer['autoload']['files'] = ['src/functions.php'];
+    writeJson($dir . '/composer.json', $composer);
+
+    if ($withTests === 'phpunit') {
+        \file_put_contents($dir . '/phpunit.xml.dist', phpunitXml('tests', 'src'));
+    } else {
+        \file_put_contents($dir . '/testo.php', <<<'PHP'
+            <?php
+
+            declare(strict_types=1);
+
+            use Testo\Application\Config\ApplicationConfig;
+            use Testo\Application\Config\SuiteConfig;
+
+            return new ApplicationConfig(
+                src: ['src'],
+                suites: [new SuiteConfig(name: 'Unit', location: ['tests'])],
+            );
+
+            PHP);
+    }
+
+    \file_put_contents($dir . '/.gitignore', "/vendor/\n/.phpunit.cache/\n/.opmin-cache/\n/runs/\n");
+    sh('composer install --no-interaction --no-progress --quiet', $dir);
+}
+
+function buildTraps(): void
+{
+    buildComposerProject(
+        'traps',
+        'Acme',
+        withTests: 'phpunit',
+        only: ['Traps.php', 'MagicBag.php'],
+        testsFrom: SEEDS . '/traps/tests-phpunit',
+    );
+    \copy(SEEDS . '/traps/README.md', scenarioDir('traps') . '/README.md');
+}
+
+function buildLaravel(): void
+{
+    $dir = scenarioDir('laravel');
+    $skeleton = CACHE . '/laravel-skeleton';
+    if (!\is_dir($skeleton)) {
+        step('laravel: downloading the skeleton once (cached in playground/.cache)');
+        sh('composer create-project laravel/laravel ' . \escapeshellarg($skeleton) . ' --no-interaction --prefer-dist --no-progress --quiet', ROOT);
+    }
+
+    sh('cp -R ' . \escapeshellarg($skeleton) . ' ' . \escapeshellarg($dir), ROOT);
+    copySeeds(SEEDS . '/code', $dir . '/app/Services', 'App\\Services');
+    copySeeds(SEEDS . '/tests-phpunit', $dir . '/tests/Unit/Services', 'App\\Services', 'Tests\\Unit\\Services');
+
+    $composer = readJson($dir . '/composer.json');
+    $composer['autoload']['files'] = \array_values(\array_unique([...($composer['autoload']['files'] ?? []), 'app/Services/functions.php']));
+    writeJson($dir . '/composer.json', $composer);
+
+    sh('composer require --dev symfony/phpunit-bridge --no-interaction --no-progress --quiet', $dir);
+}
+
+function buildSymfony(): void
+{
+    $dir = scenarioDir('symfony');
+    $skeleton = CACHE . '/symfony-skeleton';
+    if (!\is_dir($skeleton)) {
+        step('symfony: downloading the skeleton once (cached in playground/.cache)');
+        sh('composer create-project symfony/skeleton ' . \escapeshellarg($skeleton) . ' --no-interaction --prefer-dist --no-progress --quiet', ROOT);
+    }
+
+    sh('cp -R ' . \escapeshellarg($skeleton) . ' ' . \escapeshellarg($dir), ROOT);
+    copySeeds(SEEDS . '/code', $dir . '/src/Service', 'App\\Service');
+    copySeeds(SEEDS . '/tests-phpunit', $dir . '/tests/Service', 'App\\Service', 'App\\Tests\\Service');
+
+    $composer = readJson($dir . '/composer.json');
+    $composer['autoload']['files'] = ['src/Service/functions.php'];
+    $composer['autoload-dev']['psr-4']['App\\Tests\\'] = 'tests/';
+    writeJson($dir . '/composer.json', $composer);
+
+    \file_put_contents($dir . '/phpunit.xml.dist', phpunitXml('tests', 'src'));
+    \file_put_contents($dir . '/.php-cs-fixer.dist.php', <<<'PHP'
+        <?php
+
+        return (new PhpCsFixer\Config())
+            ->setRules(['@Symfony' => true])
+            ->setFinder(PhpCsFixer\Finder::create()->in(__DIR__ . '/src'));
+
+        PHP);
+
+    sh('composer require --dev phpunit/phpunit symfony/phpunit-bridge friendsofphp/php-cs-fixer --no-interaction --no-progress --quiet', $dir);
+}
+
+/**
+ * Builds a package with two tagged versions and publishes it as a bare repository:
+ * `opmin optimize file://$(pwd)/playground/git-package.git --ref=v1.1.0`.
+ */
+function buildGitPackage(): void
+{
+    $work = CACHE . '/git-package-work';
+    remove($work);
+
+    # v1.0.0: a part of the code
+    $v1 = ['Obvious.php', 'functions.php'];
+    buildComposerProject('git-package', 'Acme\\Pkg', withTests: 'phpunit', only: $v1);
+    $dir = scenarioDir('git-package');
+    foreach (\glob($dir . '/tests/*Test.php') ?: [] as $test) {
+        \in_array(\basename($test), ['ObviousTest.php', 'FunctionsTest.php'], true) or \unlink($test);
+    }
+    $composer = readJson($dir . '/composer.json');
+    $composer['name'] = 'playground/git-package';
+    $composer['type'] = 'library';
+    writeJson($dir . '/composer.json', $composer);
+    testScenario('git-package') or throw new \RuntimeException('git-package v1.0.0: tests are red');
+    gitInit($dir, 'Release v1.0.0');
+    sh(GIT . ' tag v1.0.0', $dir);
+
+    # v1.1.0: everything
+    copySeeds(SEEDS . '/code', $dir . '/src', 'Acme\\Pkg');
+    copySeeds(SEEDS . '/tests-phpunit', $dir . '/tests', 'Acme\\Pkg');
+    sh('composer dump-autoload --quiet', $dir);
+    testScenario('git-package') or throw new \RuntimeException('git-package v1.1.0: tests are red');
+    sh(GIT . ' add -A && ' . GIT . " commit -q -m 'Release v1.1.0' && " . GIT . ' tag v1.1.0', $dir);
+
+    sh(GIT . ' clone -q --bare ' . \escapeshellarg($dir) . ' ' . \escapeshellarg(PLAYGROUND . '/git-package.git'), ROOT);
+    remove($dir);
+    \mkdir($dir);
+    \file_put_contents($dir . '/README.md', "Bare repository: ../git-package.git (tags v1.0.0, v1.1.0)\n\n"
+        . "    opmin optimize file://\$(pwd)/playground/git-package.git --ref=v1.1.0\n");
+}
+
+function buildRealPackage(): void
+{
+    $dir = scenarioDir('git-package-real');
+    sh(\sprintf(
+        '%s clone -q --depth=1 --branch %s %s %s',
+        GIT,
+        \escapeshellarg(REAL_PACKAGE['ref']),
+        \escapeshellarg(REAL_PACKAGE['url']),
+        \escapeshellarg($dir),
+    ), ROOT);
+    sh('composer install --no-interaction --no-progress --quiet --no-scripts --no-plugins', $dir);
+}
+
+// ---------------------------------------------------------------------------------------------
+// run / test
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * @param list<string> $args
+ */
+function run(array $args): int
+{
+    $all = \in_array('--all', $args, true);
+    $names = $all
+        ? \array_values(\array_filter(\array_keys(SCENARIOS), scenarioExists(...)))
+        : scenarios(\array_values(\array_diff($args, ['--all'])));
+    $names === [] and throw new \RuntimeException('Nothing to run: create scenarios with `bin/playground init`.');
+
+    $rows = [];
+    foreach ($names as $name) {
+        scenarioExists($name) or throw new \RuntimeException("{$name}: not created, run `bin/playground init {$name}`.");
+        step("{$name}: running the full cycle");
+
+        $dir = $name === 'git-package' ? ROOT : scenarioDir($name);
+        $target = $name === 'git-package'
+            ? ['file://' . \realpath(PLAYGROUND . '/git-package.git'), '--ref=v1.1.0']
+            : [];
+
+        $row = ['scenario' => $name];
+        foreach (['doctor' => [], 'count' => [], 'optimize' => $target, 'check' => []] as $command => $extra) {
+            if ($name === 'git-package' && $command !== 'optimize') {
+                $row[$command] = 'n/a';
+                continue;
+            }
+
+            $code = opmin($dir, $command, $extra);
+            $row[$command] = match ($code) {
+                0 => 'ok',
+                1 => 'fail/todo',
+                2 => 'invalid',
+                default => "exit {$code}",
+            };
+        }
+
+        $row['tests'] = $name === 'git-package' ? 'n/a' : (testScenario($name) ? 'green' : 'RED');
+        $rows[] = $row;
+    }
+
+    summary($rows);
+
+    return \in_array('RED', \array_column($rows, 'tests'), true) ? 1 : 0;
+}
+
+/**
+ * @param list<string> $extra
+ */
+function opmin(string $dir, string $command, array $extra): int
+{
+    $cmd = \escapeshellarg(\PHP_BINARY) . ' ' . \escapeshellarg(\realpath(ROOT) . '/bin/opmin') . ' --no-interaction '
+        . $command . ' ' . \implode(' ', \array_map('escapeshellarg', $extra));
+    echo "  $ opmin {$command}\n";
+
+    return shCode($cmd . ' 2>&1 | sed "s/^/    /"; exit ${PIPESTATUS[0]}', $dir);
+}
+
+/**
+ * @param list<non-empty-string> $names
+ */
+function testAll(array $names): int
+{
+    $failed = false;
+    foreach ($names as $name) {
+        if (testScenario($name)) {
+            ok("{$name}: tests green");
+        } else {
+            $failed = true;
+            \fwrite(\STDERR, "\033[31m✗ {$name}: tests RED\033[0m\n");
+        }
+    }
+
+    return $failed ? 1 : 0;
+}
+
+function testScenario(string $name): bool
+{
+    $dir = scenarioDir($name);
+
+    return match (true) {
+        $name === 'git-package' && !\is_file($dir . '/composer.json') => true,
+        $name === 'vanilla' => shCode('for f in $(find . -name "*.php"); do php -l "$f" > /dev/null || exit 1; done', $dir) === 0,
+        \is_file($dir . '/testo.php') && \is_file($dir . '/vendor/bin/testo') => shCode('vendor/bin/testo --no-ansi > /dev/null', $dir) === 0,
+        \is_file($dir . '/vendor/bin/phpunit') => shCode('vendor/bin/phpunit --no-progress > /dev/null', $dir) === 0,
+        default => throw new \RuntimeException("{$name}: no test runner found"),
+    };
+}
+
+/**
+ * @param list<array<string, string>> $rows
+ */
+function summary(array $rows): void
+{
+    $columns = ['scenario', 'doctor', 'count', 'optimize', 'check', 'tests'];
+    echo "\n";
+    \printf("  %-18s %-10s %-10s %-10s %-10s %-6s\n", ...$columns);
+    echo '  ' . \str_repeat('-', 68) . "\n";
+    foreach ($rows as $row) {
+        \printf("  %-18s %-10s %-10s %-10s %-10s %-6s\n", ...\array_map(static fn(string $c): string => $row[$c] ?? '', $columns));
+    }
+    echo "\n  Opcode totals and trap results appear here once `count` (M1) and `optimize` (M3) exist.\n\n";
+}
+
+// ---------------------------------------------------------------------------------------------
+// php <ver>
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Runs a command in the official php:<ver>-cli image with the repository mounted at /opmin and
+ * the current directory as the working directory: `bin/playground php 8.1 php -v`.
+ *
+ * @param list<string> $args
+ */
+function dockerPhp(array $args): int
+{
+    $version = \array_shift($args);
+    ($version !== null && \preg_match('/^8\.[1-5]$/', $version) === 1 && $args !== [])
+        or throw new \RuntimeException('Usage: bin/playground php <8.1..8.5> <command...>');
+
+    $root = (string) \realpath(ROOT);
+    $cwd = (string) \getcwd();
+    $workdir = \str_starts_with($cwd, $root) ? '/opmin' . \substr($cwd, \strlen($root)) : '/opmin';
+
+    return shCode(\sprintf(
+        'docker run --rm -i -v %s:/opmin -w %s php:%s-cli sh -c %s',
+        \escapeshellarg($root),
+        \escapeshellarg($workdir),
+        $version,
+        \escapeshellarg(\implode(' ', $args)),
+    ), $cwd);
+}
+
+// ---------------------------------------------------------------------------------------------
+// helpers
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Copies seed files, replacing the seed namespaces with the scenario ones:
+ * `PlaygroundSeeds\Tests` → $testsNs, `PlaygroundSeeds` → $codeNs.
+ *
+ * @param list<non-empty-string>|null $only
+ */
+function copySeeds(string $from, string $to, string $codeNs, ?string $testsNs = null, ?array $only = null): void
+{
+    @\mkdir($to, 0777, true);
+    foreach (\glob($from . '/*.php') ?: [] as $file) {
+        if ($only !== null && !\in_array(\basename($file), $only, true)) {
+            continue;
+        }
+
+        $code = \strtr((string) \file_get_contents($file), [
+            'PlaygroundSeeds\\Tests' => $testsNs ?? $codeNs . '\\Tests',
+            'PlaygroundSeeds' => $codeNs,
+        ]);
+        \file_put_contents($to . '/' . \basename($file), $code);
+    }
+}
+
+function phpunitXml(string $tests, string $source): string
+{
+    return <<<XML
+        <?xml version="1.0" encoding="UTF-8"?>
+        <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+                 bootstrap="vendor/autoload.php"
+                 cacheDirectory=".phpunit.cache"
+                 colors="true">
+            <testsuites>
+                <testsuite name="default">
+                    <directory>{$tests}</directory>
+                </testsuite>
+            </testsuites>
+            <source>
+                <include>
+                    <directory>{$source}</directory>
+                </include>
+            </source>
+        </phpunit>
+
+        XML;
+}
+
+function gitInit(string $dir, string $message = 'Initial commit'): void
+{
+    sh(GIT . ' init -q && ' . GIT . ' add -A && ' . GIT . ' commit -q -m ' . \escapeshellarg($message), $dir);
+}
+
+function readJson(string $file): array
+{
+    return \json_decode((string) \file_get_contents($file), true, flags: \JSON_THROW_ON_ERROR);
+}
+
+function writeJson(string $file, array $data): void
+{
+    \file_put_contents($file, \json_encode($data, \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_THROW_ON_ERROR) . "\n");
+}
+
+function remove(string $path): void
+{
+    \file_exists($path) and sh('rm -rf ' . \escapeshellarg($path), ROOT);
+}
+
+function sh(string $command, string $cwd): void
+{
+    $code = shCode($command, $cwd);
+    $code === 0 or throw new \RuntimeException("Command failed ({$code}) in {$cwd}: {$command}");
+}
+
+function shCode(string $command, string $cwd): int
+{
+    $process = \proc_open(['bash', '-c', $command], [0 => \STDIN, 1 => \STDOUT, 2 => \STDERR], $pipes, $cwd);
+    \is_resource($process) or throw new \RuntimeException("Unable to run: {$command}");
+
+    return \proc_close($process);
+}
+
+function step(string $message): void
+{
+    echo "\033[36m→ {$message}\033[0m\n";
+}
+
+function ok(string $message): void
+{
+    echo "\033[32m✓ {$message}\033[0m\n";
+}

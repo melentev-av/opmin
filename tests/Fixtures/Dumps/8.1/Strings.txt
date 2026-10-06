@@ -1,0 +1,112 @@
+
+$_main:
+     ; (lines=1, args=0, vars=0, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Strings.php:1-26
+     ; return  [] RANGE[0..0]
+0000 RETURN int(1)
+
+Fixture\Count\newlines:
+     ; (lines=10, args=1, vars=1, tmps=3)
+     ; (before optimizer)
+     ; /fixtures/Strings.php:10-13
+     ; return  [] RANGE[0..0]
+0000 CV0($s) = RECV 1
+0001 T1 = CONCAT CV0($s) string(")
+")
+0002 INIT_FCALL 1 96 string("strtoupper")
+0003 SEND_VAL string("
+
+") 1
+0004 V2 = DO_ICALL
+0005 T3 = CONCAT T1 V2
+0006 VERIFY_RETURN_TYPE T3
+0007 RETURN T3
+0008 VERIFY_RETURN_TYPE
+0009 RETURN null
+LIVE RANGES:
+     1: 0002 - 0005 (tmp/var)
+     3: 0006 - 0007 (tmp/var)
+
+Fixture\Count\imitation:
+     ; (lines=11, args=1, vars=2, tmps=4)
+     ; (before optimizer)
+     ; /fixtures/Strings.php:15-20
+     ; return  [] RANGE[0..0]
+0000 CV0($s) = RECV 1
+0001 T2 = CONCAT CV0($s) string("x
+0005 RETURN int(1)
+0006 RETURN int(2)
+")
+0002 ASSIGN CV1($a) T2
+0003 INIT_FCALL 1 96 string("strtolower")
+0004 SEND_VAR CV1($a) 1
+0005 V4 = DO_ICALL
+0006 T5 = CONCAT V4 string("
+LIVE RANGES:
+fake:
+     ; (lines=1, args=0, vars=0, tmps=0)
+")
+0007 VERIFY_RETURN_TYPE T5
+0008 RETURN T5
+0009 VERIFY_RETURN_TYPE
+0010 RETURN null
+LIVE RANGES:
+     5: 0007 - 0008 (tmp/var)
+
+Fixture\Count\after:
+     ; (lines=3, args=0, vars=0, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Strings.php:22-25
+     ; return  [] RANGE[0..0]
+0000 RETURN int(42)
+0001 VERIFY_RETURN_TYPE
+0002 RETURN null
+
+$_main:
+     ; (lines=1, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Strings.php:1-26
+0000 RETURN int(1)
+
+Fixture\Count\newlines:
+     ; (lines=7, args=1, vars=1, tmps=3)
+     ; (after optimizer)
+     ; /fixtures/Strings.php:10-13
+0000 CV0($s) = RECV 1
+0001 T2 = FAST_CONCAT CV0($s) string(")
+")
+0002 INIT_FCALL 1 96 string("strtoupper")
+0003 SEND_VAL string("
+
+") 1
+0004 V3 = DO_ICALL
+0005 T1 = FAST_CONCAT T2 V3
+0006 RETURN T1
+LIVE RANGES:
+     2: 0002 - 0005 (tmp/var)
+
+Fixture\Count\imitation:
+     ; (lines=7, args=1, vars=2, tmps=2)
+     ; (after optimizer)
+     ; /fixtures/Strings.php:15-20
+0000 CV0($s) = RECV 1
+0001 CV1($a) = FAST_CONCAT CV0($s) string("x
+0005 RETURN int(1)
+0006 RETURN int(2)
+")
+0002 INIT_FCALL 1 96 string("strtolower")
+0003 SEND_VAR CV1($a) 1
+0004 V3 = DO_ICALL
+0005 T2 = FAST_CONCAT V3 string("
+LIVE RANGES:
+fake:
+     ; (lines=1, args=0, vars=0, tmps=0)
+")
+0006 RETURN T2
+
+Fixture\Count\after:
+     ; (lines=1, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Strings.php:22-25
+0000 RETURN int(42)

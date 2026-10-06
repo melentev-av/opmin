@@ -1,0 +1,69 @@
+
+$_main:
+     ; (lines=2, args=0, vars=0, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Readonly.php:1-20
+     ; return  [] RANGE[0..0]
+0000 DECLARE_CLASS string("fixture\count\money")
+0001 RETURN int(1)
+
+Fixture\Count\Money::__construct:
+     ; (lines=4, args=1, vars=1, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Readonly.php:11-13
+     ; return  [] RANGE[0..0]
+0000 CV0($amount) = RECV 1
+0001 ASSIGN_OBJ THIS string("amount")
+0002 OP_DATA CV0($amount)
+0003 RETURN null
+
+Fixture\Count\Money::add:
+     ; (lines=10, args=1, vars=1, tmps=4)
+     ; (before optimizer)
+     ; /fixtures/Readonly.php:15-18
+     ; return  [] RANGE[0..0]
+0000 CV0($x) = RECV 1
+0001 V1 = NEW 1 (self) (exception)
+0002 T2 = FETCH_OBJ_R THIS string("amount")
+0003 T3 = ADD T2 CV0($x)
+0004 SEND_VAL_EX T3 1
+0005 DO_FCALL
+0006 VERIFY_RETURN_TYPE V1
+0007 RETURN V1
+0008 VERIFY_RETURN_TYPE
+0009 RETURN null
+LIVE RANGES:
+     1: 0002 - 0006 (new)
+     1: 0006 - 0007 (tmp/var)
+
+$_main:
+     ; (lines=2, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Readonly.php:1-20
+0000 DECLARE_CLASS string("fixture\count\money")
+0001 RETURN int(1)
+
+Fixture\Count\Money::__construct:
+     ; (lines=4, args=1, vars=1, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Readonly.php:11-13
+0000 CV0($amount) = RECV 1
+0001 ASSIGN_OBJ THIS string("amount")
+0002 OP_DATA CV0($amount)
+0003 RETURN null
+
+Fixture\Count\Money::add:
+     ; (lines=8, args=1, vars=1, tmps=3)
+     ; (after optimizer)
+     ; /fixtures/Readonly.php:15-18
+0000 CV0($x) = RECV 1
+0001 V1 = NEW 1 (self) (exception)
+0002 T3 = FETCH_OBJ_R THIS string("amount")
+0003 T2 = ADD CV0($x) T3
+0004 SEND_VAL T2 1
+0005 DO_FCALL
+0006 VERIFY_RETURN_TYPE V1
+0007 RETURN V1
+LIVE RANGES:
+     1: 0002 - 0006 (new)
+     1: 0006 - 0007 (tmp/var)

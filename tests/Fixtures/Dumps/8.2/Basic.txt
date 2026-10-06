@@ -1,0 +1,614 @@
+
+$_main:
+     ; (lines=14, args=0, vars=1, tmps=4)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:1-138
+     ; return  [] RANGE[0..0]
+0000 DECLARE_CLASS string("fixture\count\shape")
+0001 DECLARE_CLASS string("fixture\count\base")
+0002 DECLARE_CLASS string("fixture\count\greets")
+0003 DECLARE_CLASS string("fixture\count\suit")
+0004 DECLARE_CLASS string("fixture\count\service") string("fixture\count\base")
+0005 INIT_FCALL 1 96 string("function_exists")
+0006 SEND_VAL string("Fixture\Count\polyfill") 1
+0007 V1 = DO_ICALL
+0008 T2 = BOOL_NOT V1
+0009 JMPZ T2 0011
+0010 DECLARE_FUNCTION string("fixture\count\polyfill") 0
+0011 T3 = DECLARE_LAMBDA_FUNCTION 1
+0012 ASSIGN CV0($main) T3
+0013 RETURN int(1)
+
+Fixture\Count\polyfill:
+     ; (lines=3, args=0, vars=0, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:129-132
+     ; return  [] RANGE[0..0]
+0000 RETURN string("poly")
+0001 VERIFY_RETURN_TYPE
+0002 RETURN null
+
+Fixture\Count\{closure}:
+     ; (lines=3, args=0, vars=0, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:135-137
+     ; return  [] RANGE[0..0]
+0000 RETURN int(2)
+0001 VERIFY_RETURN_TYPE
+0002 RETURN null
+
+Fixture\Count\top:
+     ; (lines=8, args=1, vars=1, tmps=1)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:109-116
+     ; return  [] RANGE[0..0]
+0000 CV0($a) = RECV 1
+0001 T1 = IS_SMALLER int(1) CV0($a)
+0002 JMPZ T1 0005
+0003 VERIFY_RETURN_TYPE CV0($a)
+0004 RETURN CV0($a)
+0005 RETURN int(0)
+0006 VERIFY_RETURN_TYPE
+0007 RETURN null
+
+Fixture\Count\generate:
+     ; (lines=3, args=0, vars=0, tmps=1)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:118-121
+     ; return  [] RANGE[0..0]
+0000 GENERATOR_CREATE
+0001 YIELD int(1)
+0002 GENERATOR_RETURN null
+
+Fixture\Count\byRef:
+     ; (lines=5, args=1, vars=1, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:123-126
+     ; return  [] RANGE[0..0]
+0000 CV0($a) = RECV 1
+0001 VERIFY_RETURN_TYPE CV0($a)
+0002 RETURN_BY_REF CV0($a)
+0003 VERIFY_RETURN_TYPE
+0004 RETURN_BY_REF (function) null
+
+Fixture\Count\Base::describe:
+     ; (lines=3, args=0, vars=0, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:19-22
+     ; return  [] RANGE[0..0]
+0000 RETURN string("base")
+0001 VERIFY_RETURN_TYPE
+0002 RETURN null
+
+Fixture\Count\Greets::greet:
+     ; (lines=9, args=1, vars=1, tmps=2)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:27-30
+     ; return  [] RANGE[0..0]
+0000 CV0($who) = RECV 1
+0001 INIT_FCALL 1 96 string("strtoupper")
+0002 SEND_VAR CV0($who) 1
+0003 V1 = DO_ICALL
+0004 T2 = CONCAT V1 string("!")
+0005 VERIFY_RETURN_TYPE T2
+0006 RETURN T2
+0007 VERIFY_RETURN_TYPE
+0008 RETURN null
+LIVE RANGES:
+     2: 0005 - 0006 (tmp/var)
+
+Fixture\Count\Suit::label:
+     ; (lines=8, args=0, vars=0, tmps=2)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:38-41
+     ; return  [] RANGE[0..0]
+0000 INIT_FCALL 1 96 string("ucfirst")
+0001 T0 = FETCH_OBJ_R THIS string("value")
+0002 SEND_VAL T0 1
+0003 V1 = DO_ICALL
+0004 VERIFY_RETURN_TYPE V1
+0005 RETURN V1
+0006 VERIFY_RETURN_TYPE
+0007 RETURN null
+LIVE RANGES:
+     1: 0004 - 0005 (tmp/var)
+
+Fixture\Count\Base@anonymous::name:
+     ; (lines=7, args=0, vars=0, tmps=2)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:88-91
+     ; return  [] RANGE[0..0]
+0000 T0 = DECLARE_LAMBDA_FUNCTION 0
+0001 INIT_DYNAMIC_CALL 0 T0
+0002 V1 = DO_FCALL
+0003 VERIFY_RETURN_TYPE V1
+0004 RETURN V1
+0005 VERIFY_RETURN_TYPE
+0006 RETURN null
+LIVE RANGES:
+     1: 0003 - 0004 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=2, args=0, vars=0, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:90-90
+     ; return  [] RANGE[0..0]
+0000 RETURN string("anon")
+0001 RETURN null
+
+Fixture\Count\Shape@anonymous::area:
+     ; (lines=3, args=0, vars=0, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:97-97
+     ; return  [] RANGE[0..0]
+0000 RETURN float(1)
+0001 VERIFY_RETURN_TYPE
+0002 RETURN null
+
+Fixture\Count\Service::total:
+     ; (lines=7, args=1, vars=1, tmps=2)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:50-53
+     ; return  [] RANGE[0..0]
+0000 CV0($items) = RECV 1
+0001 T1 = COUNT CV0($items)
+0002 T2 = ADD T1 int(3)
+0003 VERIFY_RETURN_TYPE T2
+0004 RETURN T2
+0005 VERIFY_RETURN_TYPE
+0006 RETURN null
+LIVE RANGES:
+     2: 0003 - 0004 (tmp/var)
+
+Fixture\Count\Service::name:
+     ; (lines=3, args=0, vars=0, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:55-58
+     ; return  [] RANGE[0..0]
+0000 RETURN string("service")
+0001 VERIFY_RETURN_TYPE
+0002 RETURN null
+
+Fixture\Count\Service::map:
+     ; (lines=20, args=1, vars=4, tmps=8)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:62-72
+     ; return  [] RANGE[0..0]
+0000 CV0($xs) = RECV 1
+0001 T4 = DECLARE_LAMBDA_FUNCTION 0
+0002 ASSIGN CV1($double) T4
+0003 T6 = DECLARE_LAMBDA_FUNCTION 1
+0004 ASSIGN CV2($inc) T6
+0005 INIT_FCALL 0 80 string("strlen")
+0006 T8 = CALLABLE_CONVERT
+0007 ASSIGN CV3($len) T8
+0008 INIT_FCALL 2 112 string("array_map")
+0009 SEND_VAR CV1($double) 1
+0010 INIT_FCALL 2 112 string("array_map")
+0011 SEND_VAR CV2($inc) 1
+0012 SEND_VAR CV0($xs) 2
+0013 V10 = DO_ICALL
+0014 SEND_VAR V10 2
+0015 V11 = DO_ICALL
+0016 VERIFY_RETURN_TYPE V11
+0017 RETURN V11
+0018 VERIFY_RETURN_TYPE
+0019 RETURN null
+LIVE RANGES:
+     11: 0016 - 0017 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=6, args=1, vars=1, tmps=1)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:65-67
+     ; return  [] RANGE[0..0]
+0000 CV0($x) = RECV 1
+0001 T1 = MUL CV0($x) int(2)
+0002 VERIFY_RETURN_TYPE T1
+0003 RETURN T1
+0004 VERIFY_RETURN_TYPE
+0005 RETURN null
+LIVE RANGES:
+     1: 0002 - 0003 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=6, args=1, vars=1, tmps=1)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:68-68
+     ; return  [] RANGE[0..0]
+0000 CV0($y) = RECV 1
+0001 T1 = ADD CV0($y) int(1)
+0002 VERIFY_RETURN_TYPE T1
+0003 RETURN T1
+0004 VERIFY_RETURN_TYPE
+0005 RETURN null
+LIVE RANGES:
+     1: 0002 - 0003 (tmp/var)
+
+Fixture\Count\Service::nested:
+     ; (lines=5, args=0, vars=0, tmps=1)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:74-79
+     ; return  [] RANGE[0..0]
+0000 T0 = DECLARE_LAMBDA_FUNCTION 0
+0001 VERIFY_RETURN_TYPE T0
+0002 RETURN T0
+0003 VERIFY_RETURN_TYPE
+0004 RETURN null
+LIVE RANGES:
+     0: 0001 - 0002 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=3, args=0, vars=0, tmps=1)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:76-78
+     ; return  [] RANGE[0..0]
+0000 T0 = DECLARE_LAMBDA_FUNCTION 0
+0001 RETURN T0
+0002 RETURN null
+
+Fixture\Count\{closure}:
+     ; (lines=3, args=0, vars=0, tmps=1)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:76-78
+     ; return  [] RANGE[0..0]
+0000 T0 = DECLARE_LAMBDA_FUNCTION 0
+0001 RETURN T0
+0002 RETURN null
+
+Fixture\Count\{closure}:
+     ; (lines=2, args=0, vars=0, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:76-78
+     ; return  [] RANGE[0..0]
+0000 RETURN int(1)
+0001 RETURN null
+
+Fixture\Count\Service::twoOnOneLine:
+     ; (lines=8, args=0, vars=0, tmps=3)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:81-81
+     ; return  [] RANGE[0..0]
+0000 T0 = DECLARE_LAMBDA_FUNCTION 0
+0001 T1 = INIT_ARRAY 2 (packed) T0 NEXT
+0002 T2 = DECLARE_LAMBDA_FUNCTION 1
+0003 T1 = ADD_ARRAY_ELEMENT T2 NEXT
+0004 VERIFY_RETURN_TYPE T1
+0005 RETURN T1
+0006 VERIFY_RETURN_TYPE
+0007 RETURN null
+LIVE RANGES:
+     1: 0002 - 0005 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=2, args=0, vars=0, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:81-81
+     ; return  [] RANGE[0..0]
+0000 RETURN int(1)
+0001 RETURN null
+
+Fixture\Count\{closure}:
+     ; (lines=2, args=0, vars=0, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:81-81
+     ; return  [] RANGE[0..0]
+0000 RETURN int(2)
+0001 RETURN null
+
+Fixture\Count\Service::anonymous:
+     ; (lines=9, args=0, vars=1, tmps=5)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:83-93
+     ; return  [] RANGE[0..0]
+0000 T1 = DECLARE_LAMBDA_FUNCTION 0
+0001 ASSIGN CV0($first) T1
+0002 V3 = DECLARE_ANON_CLASS string("fixture\count\base@anonymous") string("fixture\count\base")
+0003 V4 = NEW 0 V3
+0004 DO_FCALL
+0005 VERIFY_RETURN_TYPE V4
+0006 RETURN V4
+0007 VERIFY_RETURN_TYPE
+0008 RETURN null
+LIVE RANGES:
+     4: 0004 - 0005 (new)
+     4: 0005 - 0006 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=2, args=0, vars=0, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:85-85
+     ; return  [] RANGE[0..0]
+0000 RETURN string("before")
+0001 RETURN null
+
+Fixture\Count\Service::anonymousTwo:
+     ; (lines=7, args=0, vars=0, tmps=3)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:95-98
+     ; return  [] RANGE[0..0]
+0000 V0 = DECLARE_ANON_CLASS string("fixture\count\shape@anonymous")
+0001 V1 = NEW 0 V0
+0002 DO_FCALL
+0003 VERIFY_RETURN_TYPE V1
+0004 RETURN V1
+0005 VERIFY_RETURN_TYPE
+0006 RETURN null
+LIVE RANGES:
+     1: 0002 - 0003 (new)
+     1: 0003 - 0004 (tmp/var)
+
+Fixture\Count\Service::declaresFunction:
+     ; (lines=2, args=0, vars=0, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:100-106
+     ; return  [] RANGE[0..0]
+0000 DECLARE_FUNCTION string("fixture\count\declaredinside") 0
+0001 RETURN null
+
+Fixture\Count\declaredInside:
+     ; (lines=3, args=0, vars=0, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Basic.php:102-105
+     ; return  [] RANGE[0..0]
+0000 RETURN int(7)
+0001 VERIFY_RETURN_TYPE
+0002 RETURN null
+
+$_main:
+     ; (lines=13, args=0, vars=1, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:1-138
+0000 DECLARE_CLASS string("fixture\count\shape")
+0001 DECLARE_CLASS string("fixture\count\base")
+0002 DECLARE_CLASS string("fixture\count\greets")
+0003 DECLARE_CLASS string("fixture\count\suit")
+0004 DECLARE_CLASS string("fixture\count\service") string("fixture\count\base")
+0005 INIT_FCALL 1 96 string("function_exists")
+0006 SEND_VAL string("Fixture\Count\polyfill") 1
+0007 V1 = DO_ICALL
+0008 JMPNZ V1 0010
+0009 DECLARE_FUNCTION string("fixture\count\polyfill") 0
+0010 T1 = DECLARE_LAMBDA_FUNCTION 1
+0011 ASSIGN CV0($main) T1
+0012 RETURN int(1)
+
+Fixture\Count\polyfill:
+     ; (lines=1, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:129-132
+0000 RETURN string("poly")
+
+Fixture\Count\{closure}:
+     ; (lines=1, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:135-137
+0000 RETURN int(2)
+
+Fixture\Count\top:
+     ; (lines=5, args=1, vars=1, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:109-116
+0000 CV0($a) = RECV 1
+0001 T1 = IS_SMALLER int(1) CV0($a)
+0002 JMPZ T1 0004
+0003 RETURN CV0($a)
+0004 RETURN int(0)
+
+Fixture\Count\generate:
+     ; (lines=3, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:118-121
+0000 GENERATOR_CREATE
+0001 YIELD int(1)
+0002 GENERATOR_RETURN null
+
+Fixture\Count\byRef:
+     ; (lines=3, args=1, vars=1, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:123-126
+0000 CV0($a) = RECV 1
+0001 VERIFY_RETURN_TYPE CV0($a)
+0002 RETURN_BY_REF CV0($a)
+
+Fixture\Count\Base::describe:
+     ; (lines=1, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:19-22
+0000 RETURN string("base")
+
+Fixture\Count\Greets::greet:
+     ; (lines=6, args=1, vars=1, tmps=2)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:27-30
+0000 CV0($who) = RECV 1
+0001 INIT_FCALL 1 96 string("strtoupper")
+0002 SEND_VAR CV0($who) 1
+0003 V2 = DO_ICALL
+0004 T1 = FAST_CONCAT V2 string("!")
+0005 RETURN T1
+
+Fixture\Count\Suit::label:
+     ; (lines=5, args=0, vars=0, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:38-41
+0000 INIT_FCALL 1 96 string("ucfirst")
+0001 T0 = FETCH_OBJ_R THIS string("value")
+0002 SEND_VAL T0 1
+0003 V0 = DO_ICALL
+0004 RETURN V0
+
+Fixture\Count\Base@anonymous::name:
+     ; (lines=5, args=0, vars=0, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:88-91
+0000 T0 = DECLARE_LAMBDA_FUNCTION 0
+0001 INIT_DYNAMIC_CALL 0 T0
+0002 V0 = DO_FCALL
+0003 VERIFY_RETURN_TYPE V0
+0004 RETURN V0
+LIVE RANGES:
+     0: 0003 - 0004 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=1, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:90-90
+0000 RETURN string("anon")
+
+Fixture\Count\Shape@anonymous::area:
+     ; (lines=1, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:97-97
+0000 RETURN float(1)
+
+Fixture\Count\Service::total:
+     ; (lines=5, args=1, vars=1, tmps=2)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:50-53
+0000 CV0($items) = RECV 1
+0001 T2 = COUNT CV0($items)
+0002 T1 = ADD T2 int(3)
+0003 VERIFY_RETURN_TYPE T1
+0004 RETURN T1
+
+Fixture\Count\Service::name:
+     ; (lines=1, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:55-58
+0000 RETURN string("service")
+
+Fixture\Count\Service::map:
+     ; (lines=14, args=1, vars=4, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:62-72
+0000 CV0($xs) = RECV 1
+0001 CV1($double) = DECLARE_LAMBDA_FUNCTION 0
+0002 CV2($inc) = DECLARE_LAMBDA_FUNCTION 1
+0003 INIT_FCALL 0 80 string("strlen")
+0004 CV3($len) = CALLABLE_CONVERT
+0005 INIT_FCALL 2 112 string("array_map")
+0006 SEND_VAR CV1($double) 1
+0007 INIT_FCALL 2 112 string("array_map")
+0008 SEND_VAR CV2($inc) 1
+0009 SEND_VAR CV0($xs) 2
+0010 V4 = DO_ICALL
+0011 SEND_VAR V4 2
+0012 V4 = DO_ICALL
+0013 RETURN V4
+
+Fixture\Count\{closure}:
+     ; (lines=4, args=1, vars=1, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:65-67
+0000 CV0($x) = RECV 1
+0001 T1 = ADD CV0($x) CV0($x)
+0002 VERIFY_RETURN_TYPE T1
+0003 RETURN T1
+
+Fixture\Count\{closure}:
+     ; (lines=4, args=1, vars=1, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:68-68
+0000 CV0($y) = RECV 1
+0001 T1 = ADD CV0($y) int(1)
+0002 VERIFY_RETURN_TYPE T1
+0003 RETURN T1
+
+Fixture\Count\Service::nested:
+     ; (lines=3, args=0, vars=0, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:74-79
+0000 T0 = DECLARE_LAMBDA_FUNCTION 0
+0001 VERIFY_RETURN_TYPE T0
+0002 RETURN T0
+LIVE RANGES:
+     0: 0001 - 0002 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=2, args=0, vars=0, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:76-78
+0000 T0 = DECLARE_LAMBDA_FUNCTION 0
+0001 RETURN T0
+
+Fixture\Count\{closure}:
+     ; (lines=2, args=0, vars=0, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:76-78
+0000 T0 = DECLARE_LAMBDA_FUNCTION 0
+0001 RETURN T0
+
+Fixture\Count\{closure}:
+     ; (lines=1, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:76-78
+0000 RETURN int(1)
+
+Fixture\Count\Service::twoOnOneLine:
+     ; (lines=5, args=0, vars=0, tmps=2)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:81-81
+0000 T1 = DECLARE_LAMBDA_FUNCTION 0
+0001 T0 = INIT_ARRAY 2 (packed) T1 NEXT
+0002 T1 = DECLARE_LAMBDA_FUNCTION 1
+0003 T0 = ADD_ARRAY_ELEMENT T1 NEXT
+0004 RETURN T0
+LIVE RANGES:
+     0: 0002 - 0004 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=1, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:81-81
+0000 RETURN int(1)
+
+Fixture\Count\{closure}:
+     ; (lines=1, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:81-81
+0000 RETURN int(2)
+
+Fixture\Count\Service::anonymous:
+     ; (lines=5, args=0, vars=1, tmps=2)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:83-93
+0000 CV0($first) = DECLARE_LAMBDA_FUNCTION 0
+0001 V2 = DECLARE_ANON_CLASS string("fixture\count\base@anonymous") string("fixture\count\base")
+0002 V1 = NEW 0 V2
+0003 DO_FCALL
+0004 RETURN V1
+LIVE RANGES:
+     1: 0003 - 0004 (new)
+
+Fixture\Count\{closure}:
+     ; (lines=1, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:85-85
+0000 RETURN string("before")
+
+Fixture\Count\Service::anonymousTwo:
+     ; (lines=5, args=0, vars=0, tmps=2)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:95-98
+0000 V1 = DECLARE_ANON_CLASS string("fixture\count\shape@anonymous")
+0001 V0 = NEW 0 V1
+0002 DO_FCALL
+0003 VERIFY_RETURN_TYPE V0
+0004 RETURN V0
+LIVE RANGES:
+     0: 0002 - 0003 (new)
+     0: 0003 - 0004 (tmp/var)
+
+Fixture\Count\Service::declaresFunction:
+     ; (lines=2, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:100-106
+0000 DECLARE_FUNCTION string("fixture\count\declaredinside") 0
+0001 RETURN null
+
+Fixture\Count\declaredInside:
+     ; (lines=1, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Basic.php:102-105
+0000 RETURN int(7)

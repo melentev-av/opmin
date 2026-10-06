@@ -6,6 +6,7 @@ namespace Opmin\Module\Config\Schema;
 
 use Opmin\Module\Common\Internal\Attribute\ConfigKey;
 use Opmin\Module\Common\Internal\Attribute\InflectableConfig;
+use Opmin\Module\Common\Internal\Attribute\InputOption;
 
 /**
  * Which files of the project are analyzed.
@@ -21,5 +22,6 @@ final class Project
 
     /** @var list<non-empty-string> */
     #[ConfigKey('exclude', 'Directories and files to skip', list: true)]
+    #[InputOption('exclude')]
     public array $exclude = ['vendor', 'tests'];
 }

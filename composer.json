@@ -20,9 +20,11 @@
         "php": ">=8.3",
         "internal/container": "^1.1",
         "internal/path": "^1.4",
+        "nikic/php-parser": "^5.4",
         "psr/container": "1 - 2",
         "rector/rector": "~2.7.0",
         "symfony/console": "^7.3 || ^8",
+        "symfony/process": "^7.3 || ^8",
         "symfony/yaml": "^7.3 || ^8"
     },
     "require-dev": {

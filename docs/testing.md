@@ -131,6 +131,32 @@ public static function intRoundTripsThroughStringGenerators(): array   // <metho
 - The verifier (M2) uses `property-testing-core` directly, behind opmin's own `InputGenerator`/`PropertyRunner`
   interfaces; how to drive the core runner programmatically is to be documented here in M2.
 
+## Opcode counting tests
+
+Opcode counts depend on the PHP that compiles the code (`php.binary`), not on the PHP running opmin.
+
+- **Captured dumps** — `tests/Fixtures/Dumps/<minor>/<Fixture>.txt`: the OPcache dump (both phases) of
+  `tests/Fixtures/Count/*.php` taken on every minor version of the matrix by `tests/Fixtures/Dumps/capture.sh`
+  (Docker, official `php:<ver>-cli` images; the patch version is in `VERSION`). Unit tests of the parser and of
+  the matcher run on all of them, so a format change of any version shows up without that PHP installed.
+- **Hand-checked counts** — `tests/Fixtures/Count/expected.php`: `ops_opt` per function and per minor version,
+  read from the dumps with awk, not with opmin. The unit tests (captured dumps) and the integration test
+  (`opmin count` under the current `php.binary`) both compare with it.
+- **Fixtures are not formatted**: `tests/Fixtures` is excluded from the code style, because a reformatted fixture
+  changes lines and opcodes and no longer matches its dumps. After changing a fixture, run `capture.sh`, update
+  `expected.php` by reading the new dumps, and check the result with awk.
+- **`OPMIN_TEST_PHP_BINARY`** selects `php.binary` for the integration tests (default: the PHP running the tests,
+  see `tests/Integration/TestPhp.php`). CI runs the integration suite with 8.1–8.5 (job `🔢 Opcodes`). Locally,
+  a Docker wrapper works if it mounts the repository at the same path and the temp directory is inside it:
+  ```bash
+  printf '#!/bin/sh\nexec docker run --rm -i -v "%s:%s" -w "$PWD" php:8.1-cli php "$@"\n' "$PWD" "$PWD" > playground/.bin/php8.1
+  chmod +x playground/.bin/php8.1
+  TMPDIR=$PWD/playground/.tmp OPMIN_TEST_PHP_BINARY=$PWD/playground/.bin/php8.1 composer test:integration
+  ```
+- **Property test of the whole chain** — `tests/Integration/Module/Opcode/CountPropertyTest.php` generates valid
+  PHP (nested closures, anonymous classes, several closures on a line, enums, traits) and checks that every
+  function gets a count. Raise `runs` locally after touching the parser, the locator or the matcher.
+
 ## A test that cannot fail is worse than no test
 
 For every new suite, rule or fixture table: break the code or the expectation once and see the test go red.

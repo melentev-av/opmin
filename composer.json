@@ -65,6 +65,7 @@
         "psalm": "psalm",
         "psalm:baseline": "psalm --set-baseline=psalm-baseline.xml",
         "psalm:ci": "psalm --output-format=github --show-info=false --stats --threads=4",
+        "psalm:harness": "psalm --config=psalm-harness.xml --no-cache",
         "schema:dump": "@php bin/opmin schema:dump",
         "test": "testo --ansi --no-coverage",
         "test:cc": [

@@ -184,10 +184,14 @@ Opcode counts depend on the PHP that compiles the code (`php.binary`), not on th
   see `tests/Integration/TestPhp.php`). CI runs the integration suite with 8.1–8.5 (job `🔢 Opcodes`). Locally,
   a Docker wrapper works if it mounts the repository at the same path and the temp directory is inside it:
   ```bash
-  printf '#!/bin/sh\nexec docker run --rm -i -v "%s:%s" -w "$PWD" php:8.1-cli php "$@"\n' "$PWD" "$PWD" > playground/.bin/php8.1
+  printf '#!/bin/sh\nexec docker run --rm -i --init -v "%s:%s" -w "$PWD" php:8.1-cli php "$@"\n' "$PWD" "$PWD" > playground/.bin/php8.1
   chmod +x playground/.bin/php8.1
   TMPDIR=$PWD/playground/.tmp OPMIN_TEST_PHP_BINARY=$PWD/playground/.bin/php8.1 composer test:integration
   ```
+  `--init` matters: opmin stops a hung harness worker with SIGTERM, which `docker run` forwards to the container;
+  without an init process PHP as PID 1 ignores it and the container keeps running after the client is gone.
+- **Harness tests** — `tests/Integration/Module/Harness/WorkerTest.php` drives `harness/worker.php` under the same
+  php.binary through the orchestrator's client: protocol, recipes, descriptions, `exit()`, fatal errors, timeouts.
 - **Property test of the whole chain** — `tests/Integration/Module/Opcode/CountPropertyTest.php` generates valid
   PHP (nested closures, anonymous classes, several closures on a line, enums, traits) and checks that every
   function gets a count. Raise `runs` locally after touching the parser, the locator or the matcher.

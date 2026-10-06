@@ -10,6 +10,9 @@
     "directories": [
         "src"
     ],
+    "directories-bin": [
+        "harness"
+    ],
     "files": [
         "resources/version.json",
         "resources/opmin.schema.json",

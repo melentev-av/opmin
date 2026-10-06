@@ -2,7 +2,7 @@
 
 # Builds the static opmin binary (scoped PHAR + static-php-cli micro) on native runners:
 # every platform is compiled on a machine of its own OS and architecture, no Docker, no emulation.
-# Runs only when a version is released (called by create-release.yml) or by hand.
+# Runs only when a version is released (`release: published`, see create-release.yml) or by hand.
 
 name: 📦 Build binaries
 
@@ -10,12 +10,6 @@ on:  # yamllint disable-line rule:truthy
   release:
     types:
       - published
-  workflow_call:
-    inputs:
-      tag:
-        description: Tag of the release the binaries are attached to.
-        required: true
-        type: string
   workflow_dispatch:
     inputs:
       tag:
@@ -147,9 +141,11 @@ jobs:
           # 60 requests/hour and fail with 403; the job token lifts that limit.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          .build/bin/spc doctor --auto-fix
+          # Mirrors of static-php-cli sometimes answer 500: retry downloads before failing the release.
+          retry() { for i in 1 2 3; do "$@" && return 0; echo "::warning::attempt $i failed: $*"; sleep $((i * 30)); done; return 1; }
+          retry .build/bin/spc doctor --auto-fix
           [ -f buildroot/bin/micro.sfx ] || {
-            .build/bin/spc download --with-php="$SPC_PHP_VERSION" --for-extensions="$SPC_EXTENSIONS" --prefer-pre-built
+            retry .build/bin/spc download --with-php="$SPC_PHP_VERSION" --for-extensions="$SPC_EXTENSIONS" --prefer-pre-built
             .build/bin/spc build "$SPC_EXTENSIONS" --build-micro
           }
 

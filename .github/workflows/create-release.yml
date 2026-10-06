@@ -1,13 +1,18 @@
 ---
 
 # Release flow:
-#   develop → pull request into master → merge.
-#   On a push to master release-please only opens/updates a release PR (no builds, no tests).
-#   Merging that release PR creates the tag and the GitHub release, and only then
-#   the PHAR and the binaries are built and attached.
+#   develop → pull request into master (all checks run) → merge.
+#   On a push to master release-please opens/updates a release PR (CHANGELOG.md + version);
+#   no builds and no tests run here.
+#   Merging the release PR creates the tag and the GitHub release; the `release: published`
+#   event then starts build-phar-release.yml and build-bin-release.yml.
 #
-# The asset builds are called directly instead of listening for `release: published`:
-# a release created with GITHUB_TOKEN emits no such event.
+# release-please acts as the GitHub App `opmin-release`, not as GITHUB_TOKEN: events created with
+# GITHUB_TOKEN start no workflows, so the checks would never run on the release PR and the builds
+# would never start for the release.
+#
+# Setup: repository variable RELEASE_APP_ID and secret RELEASE_APP_PRIVATE_KEY of the App
+# (permissions: Contents, Pull requests, Issues — read and write; installed on this repository).
 
 name: 📦 Create release
 
@@ -17,45 +22,27 @@ on:  # yamllint disable-line rule:truthy
       - master
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   release:
     name: 🎉 release-please
     runs-on: ubuntu-24.04
-    outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
+    timeout-minutes: 10
     steps:
-      - name: 🎉 Create release
-        uses: googleapis/release-please-action@v4
-        id: release
+      - name: 🔑 Get the release App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
         with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: 🎉 Create release PR or release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
           config-file: .github/.release-please-config.json
           manifest-file: resources/version.json
           target-branch: master
-
-  phar:
-    name: 📦 PHAR
-    needs: release
-    if: ${{ needs.release.outputs.release_created == 'true' }}
-    permissions:
-      contents: write
-    uses: ./.github/workflows/build-phar-release.yml
-    with:
-      tag: ${{ needs.release.outputs.tag_name }}
-    secrets: inherit
-
-  binaries:
-    name: 📦 Binaries
-    needs: release
-    if: ${{ needs.release.outputs.release_created == 'true' }}
-    permissions:
-      contents: write
-    uses: ./.github/workflows/build-bin-release.yml
-    with:
-      tag: ${{ needs.release.outputs.tag_name }}
-    secrets: inherit
 
 ...

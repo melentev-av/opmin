@@ -58,6 +58,52 @@ jobs:
       - name: 🧪 Run tests
         run: composer test
 
+  opcodes:
+    # Opcode counts depend on the PHP that compiles the code (php.binary), not on the PHP running opmin:
+    # the integration tests count with every supported php.binary while opmin itself runs on 8.4.
+    name: 🔢 Opcodes with php.binary ${{ matrix.php-binary }}
+    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        php-binary:
+          - '8.1'
+          - '8.2'
+          - '8.3'
+          - '8.4'
+          - '8.5'
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: 🛠️ Setup php.binary ${{ matrix.php-binary }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-binary }}
+          extensions: opcache
+          coverage: none
+
+      - name: 📌 Remember php.binary
+        run: |
+          echo "OPMIN_TEST_PHP_BINARY=$(readlink -f "$(command -v php)")" >> "$GITHUB_ENV"
+          php -v
+
+      - name: 🛠️ Setup PHP 8.4 for opmin
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          ini-values: error_reporting=E_ALL
+          coverage: none
+
+      - name: 📥 Install dependencies with composer
+        uses: ramsey/composer-install@v3
+
+      - name: 🔢 Count opcodes with php.binary ${{ matrix.php-binary }}
+        run: |
+          "$OPMIN_TEST_PHP_BINARY" -v
+          vendor/bin/testo --ansi --no-coverage --suite=integration
+
   coverage:
     name: 📊 Coverage
     timeout-minutes: 10

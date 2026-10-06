@@ -49,6 +49,15 @@ final class Worker
     }
 
     /**
+     * Whether a call can run in a forked child: state it changes (`static` variables) dies with it.
+     */
+    public static function canFork(): bool
+    {
+        return \function_exists('pcntl_fork') && \function_exists('pcntl_waitpid') && \function_exists('posix_kill')
+            && \function_exists('stream_socket_pair');
+    }
+
+    /**
      * @internal Called by PHP at the end of the process.
      */
     public function shutdown(): void
@@ -76,6 +85,83 @@ final class Worker
         $calls = $pending['calls'];
         $calls[] = $current;
         $this->send(['ok' => true, 'status' => $status, 'calls' => $calls]);
+    }
+
+    /**
+     * Runs the call in a child process and relays its response; the worker itself never runs the
+     * function, so the next call starts from the same state. The child's `exit()` and fatal errors
+     * are answered by its own shutdown handler; a hang is killed after `timeout_ms`.
+     *
+     * @param array<array-key, mixed> $request
+     * @return array<string, mixed>
+     */
+    private function forked(array $request): array
+    {
+        $pair = \stream_socket_pair(\STREAM_PF_UNIX, \STREAM_SOCK_STREAM, \STREAM_IPPROTO_IP);
+        $pid = $pair === false ? -1 : \pcntl_fork();
+        if ($pair === false || $pid === -1) {
+            /** @var array<string, mixed> */
+            return Calls::call($request);
+        }
+
+        if ($pid === 0) {
+            \fclose($pair[0]);
+            $this->out = $pair[1];
+            $this->send(Calls::call($request));
+            $this->busy = false;
+            exit(0);
+        }
+
+        \fclose($pair[1]);
+        $timeout = \max(1, (int) ($request['timeout_ms'] ?? 1000));
+        $line = $this->readChild($pair[0], $timeout);
+        \fclose($pair[0]);
+        if ($line === null) {
+            \posix_kill($pid, 9);
+        }
+
+        \pcntl_waitpid($pid, $status);
+        if ($line === null || !\str_starts_with($line, $this->token . ' ')) {
+            return ['ok' => true, 'status' => $line === null ? 'timeout' : 'crashed', 'calls' => []];
+        }
+
+        /** @var array<string, mixed>|null $response */
+        $response = \json_decode(\substr((string) $line, \strlen($this->token) + 1), true);
+
+        return \is_array($response) ? $response : ['ok' => true, 'status' => 'crashed', 'calls' => []];
+    }
+
+    /**
+     * The response line of the child, '' when it died without one, null on timeout.
+     *
+     * @param resource $pipe
+     */
+    private function readChild($pipe, int $timeoutMs): ?string
+    {
+        $deadline = \hrtime(true) + $timeoutMs * 1_000_000;
+        $buffer = '';
+        \stream_set_blocking($pipe, false);
+        while (!\str_contains($buffer, "\n")) {
+            $left = $deadline - \hrtime(true);
+            if ($left <= 0) {
+                return null;
+            }
+
+            $read = [$pipe];
+            $write = $except = null;
+            if (@\stream_select($read, $write, $except, \intdiv($left, 1_000_000_000), \intdiv($left % 1_000_000_000, 1000)) === false) {
+                continue;
+            }
+
+            $chunk = (string) \fread($pipe, 65536);
+            if ($chunk === '' && \feof($pipe)) {
+                return $buffer;
+            }
+
+            $buffer .= $chunk;
+        }
+
+        return \substr($buffer, 0, (int) \strpos($buffer, "\n"));
     }
 
     private function run(): void
@@ -122,11 +208,11 @@ final class Worker
     {
         try {
             return match ($this->command) {
-                'ping' => ['ok' => true, 'php' => \PHP_VERSION, 'pid' => \getmypid()],
+                'ping' => ['ok' => true, 'php' => \PHP_VERSION, 'pid' => \getmypid(), 'fork' => self::canFork()],
                 'load' => Loader::load($request),
                 'describe' => ['ok' => true, 'function' => Reflector::target((array) ($request['target'] ?? []))],
                 'class' => ['ok' => true, 'class' => Reflector::class((string) ($request['name'] ?? ''))],
-                'call' => Calls::call($request),
+                'call' => ($request['isolate'] ?? null) === 'fork' && self::canFork() ? $this->forked($request) : Calls::call($request),
                 'shutdown' => ['ok' => true],
                 default => ['ok' => false, 'error' => "Unknown command `{$this->command}`"],
             };

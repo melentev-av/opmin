@@ -85,6 +85,25 @@ final class SessionTest
         Assert::same($isolated['calls'][0]['value'], ['type' => 'int', 'value' => 1]);
     }
 
+    public function freshCallsSurviveExitAndHangsWithoutRestartWhenForking(): void
+    {
+        $session = $this->session(new WorkerOptions(timeoutMs: 500), fresh: true);
+        $session->call(self::call('ok'));
+        if (!$session->forks()) {
+            # php.binary without pcntl: fresh calls are fresh processes, covered above.
+            Assert::same($session->starts(), 1);
+            return;
+        }
+
+        $exit = $session->call(self::call('leave'));
+        $hang = $session->call(self::call('spin'));
+        $next = $session->call(self::call('counter'));
+
+        Assert::same([$exit['status'], $hang['status']], ['exited', 'timeout']);
+        Assert::same($next['calls'][0]['value'], ['type' => 'int', 'value' => 1]);
+        Assert::same($session->starts(), 1);
+    }
+
     public function workerIsReplacedAfterMaxRequests(): void
     {
         $session = $this->session(maxRequests: 2);

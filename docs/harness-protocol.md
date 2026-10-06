@@ -65,7 +65,8 @@ php -d opcache.enable_cli=0 -d memory_limit=256M -d display_errors=0 harness/wor
    `MockClock` when they are loaded. Fully qualified `\time()` is not faked: the determinism check sees it.
 5. `coverage`: `probes` (default), `xdebug` or `pcov` — the driver for `lines` in call results.
 
-Response: `{"ok": true, "php": "8.1.34", "output": <string>, "drivers": ["probes", "pcov"]}`.
+Response: `{"ok": true, "php": "8.1.34", "output": <string>, "drivers": ["probes", "pcov"], "fork": true}` —
+`fork`: the worker can run calls in forked children (pcntl, posix).
 
 ### `describe`
 
@@ -104,6 +105,10 @@ recipes of objects and mocks.
   errors are recorded with `suppressed: true` and never thrown.
 - `repeat`: call several times in a row (functions with `static` variables); arguments are rebuilt for every call,
   `this` is kept.
+- `isolate: "fork"` with `timeout_ms`: the call runs in a forked child and the worker relays its response, so
+  `static` variables and any other state the call leaves behind die with the child. A child that hangs is killed
+  after `timeout_ms` (`status: "timeout"`), one that dies without an answer is `status: "crashed"`; the worker
+  itself goes on. Without pcntl the orchestrator starts a new worker for every such call instead.
 
 Before the call: fakes are reset, globals, superglobals and static properties of user classes are snapshotted,
 `error_reporting(E_ALL)`. After the call they are compared (changes are part of the result) and restored.

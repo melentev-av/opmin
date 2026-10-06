@@ -42,6 +42,6 @@ final class Loader
         Fakes::install($fakes['namespaces'] ?? [], (float) ($fakes['time'] ?? 1700000000), (int) ($fakes['seed'] ?? 42));
         Coverage::configure(isset($request['coverage']) ? (string) $request['coverage'] : null, \array_keys($overrides) ?: $files);
 
-        return ['ok' => true, 'php' => \PHP_VERSION, 'output' => Value::string($output), 'drivers' => Coverage::available()];
+        return ['ok' => true, 'php' => \PHP_VERSION, 'output' => Value::string($output), 'drivers' => Coverage::available(), 'fork' => Worker::canFork()];
     }
 }

@@ -9,7 +9,8 @@ use Opmin\Module\Php\PhpBinary;
 /**
  * A worker with one version of the code loaded, restarted when needed: after `exit()`, a fatal
  * error, a crash or a timeout (the process is gone), after {@see self::$maxRequests} calls (leaked
- * state, memory), and before every call in fresh mode (functions with `static` variables).
+ * state, memory). In fresh mode (functions with `static` variables) every call starts from the
+ * loaded state: in a forked child when the PHP has pcntl, otherwise in a new process.
  *
  * A worker that died during a call is a result of that call, not an error: `status` is `timeout` or
  * `crashed` (from the orchestrator) next to the harness's own `fatal` and `exited`.
@@ -29,6 +30,9 @@ final class Session
 
     /** A failure of sending, reported by {@see self::end()}. */
     private ?WorkerException $pending = null;
+
+    /** The loaded worker can fork for fresh calls. */
+    private bool $fork = false;
 
     /**
      * @param array<string, mixed> $load The `load` request of this version.
@@ -80,9 +84,10 @@ final class Session
      */
     public function begin(array $request): void
     {
-        ($this->fresh || $this->calls >= $this->maxRequests) and $this->restart();
+        ($this->fresh && !$this->fork || $this->calls >= $this->maxRequests) and $this->restart();
         $worker = $this->ready();
         ++$this->calls;
+        $this->fresh && $this->fork and $request += ['isolate' => 'fork', 'timeout_ms' => $this->options->timeoutMs];
         try {
             $worker->send(['cmd' => 'call'] + $request);
         } catch (WorkerException $e) {
@@ -104,7 +109,8 @@ final class Session
         $worker = $this->worker ?? throw new HarnessException('No call in progress.');
         try {
             $this->pending === null or throw $this->pending;
-            $response = $worker->receive();
+            # A forked call is timed by the worker itself; the margin covers the fork.
+            $response = $worker->receive($this->fresh && $this->fork ? $this->options->timeoutMs + 2000 : null);
         } catch (WorkerException $e) {
             $this->restart();
 
@@ -119,7 +125,8 @@ final class Session
         }
 
         ($response['ok'] ?? false) === true or throw new HarnessException('The harness refused the call: ' . self::error($response));
-        \in_array($response['status'] ?? null, ['fatal', 'exited'], true) and $this->restart();
+        # A forked child died, the worker did not.
+        \in_array($response['status'] ?? null, ['fatal', 'exited'], true) && !($this->fresh && $this->fork) and $this->restart();
 
         return $response;
     }
@@ -153,6 +160,14 @@ final class Session
     public function starts(): int
     {
         return $this->starts;
+    }
+
+    /**
+     * Whether fresh calls run in forked children (pcntl in php.binary).
+     */
+    public function forks(): bool
+    {
+        return $this->fork;
     }
 
     public function close(): void
@@ -210,6 +225,7 @@ final class Session
         $this->worker = $worker;
         $this->loaded = true;
         $this->calls = 0;
+        $this->fork = ($response['fork'] ?? false) === true;
 
         return $worker;
     }

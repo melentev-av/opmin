@@ -31,8 +31,48 @@ env:
   SPC_EXTENSIONS: 'ctype,filter,iconv,mbstring,pcntl,phar,posix,tokenizer,zlib'
 
 jobs:
+  # The PHAR is the same for every platform: build it once, on Linux.
+  phar:
+    name: 📦 PHAR
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: 🛠️ Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          ini-values: 'memory_limit=-1, phar.readonly=0'
+          tools: composer, box
+          coverage: none
+
+      - name: 🏷️ Write version
+        run: |
+          [ -z "$RELEASE_TAG" ] || printf '{".": "%s"}\n' "${RELEASE_TAG#v}" > resources/version.json
+
+      - name: 📥 Install dependencies with composer
+        uses: ramsey/composer-install@v3
+        with:
+          composer-options: "--no-dev"
+
+      - name: 📦 Build PHAR
+        run: box compile --no-parallel
+
+      - name: 📤 Upload PHAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: phar-for-binaries
+          path: .build/phar/opmin.phar
+          retention-days: 1
+          if-no-files-found: error
+
+  # Each platform is built on a native runner of its own OS and architecture. No PHP is installed
+  # here: static-php-cli builds the embedded PHP itself and the smoke test runs the binary alone.
   build:
     name: 📦 ${{ matrix.target }}
+    needs: phar
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -59,28 +99,17 @@ jobs:
       - name: 📦 Check out the codebase
         uses: actions/checkout@v5
 
-      - name: 🛠️ Setup PHP (to build the PHAR)
-        uses: shivammathur/setup-php@v2
+      - name: 📥 Download PHAR
+        uses: actions/download-artifact@v4
         with:
-          php-version: '8.4'
-          ini-values: 'memory_limit=-1, phar.readonly=0'
-          tools: composer, box
-          coverage: none
+          name: phar-for-binaries
+          path: .build/phar
 
-      - name: 🏷️ Write version
+      - name: 🏷️ Version
         shell: bash
         run: |
           VERSION="${RELEASE_TAG#v}"
           echo "VERSION=${VERSION:-dev}" >> "$GITHUB_ENV"
-          [ -z "$RELEASE_TAG" ] || printf '{".": "%s"}\n' "$VERSION" > resources/version.json
-
-      - name: 📥 Install dependencies with composer
-        uses: ramsey/composer-install@v3
-        with:
-          composer-options: "--no-dev"
-
-      - name: 📦 Build PHAR
-        run: box compile --no-parallel
 
       - name: 📥 Download static-php-cli
         run: |
@@ -111,6 +140,7 @@ jobs:
 
       - name: 🔗 Combine micro with the PHAR
         run: |
+          chmod +x .build/phar/opmin.phar
           mkdir -p dist
           .build/bin/spc micro:combine .build/phar/opmin.phar --output=dist/opmin
           chmod +x dist/opmin
@@ -140,7 +170,7 @@ jobs:
   publish:
     name: 📤 Publish binaries to the release
     needs: build
-    if: ${{ always() && (inputs.tag || github.event.release.tag_name) }}
+    if: ${{ !cancelled() && (inputs.tag || github.event.release.tag_name) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

@@ -1,0 +1,37 @@
+{
+    "$schema": "https://raw.githubusercontent.com/box-project/box/main/res/schema.json",
+    "compactors": [
+        "KevinGH\\Box\\Compactor\\Json",
+        "KevinGH\\Box\\Compactor\\Php",
+        "KevinGH\\Box\\Compactor\\PhpScoper"
+    ],
+    "check-requirements": false,
+    "compression": "GZ",
+    "directories": [
+        "src"
+    ],
+    "files": [
+        "resources/version.json",
+        "resources/opmin.schema.json",
+        "bin/opmin",
+        "LICENSE.md",
+        "NOTICE.md",
+        "composer.json",
+        "composer.lock"
+    ],
+    "output": ".build/phar/opmin.phar",
+    "finder": [
+        {
+            "in": "vendor",
+            "notPath": [
+                "phpstan/phpstan/turbo-ext"
+            ],
+            "exclude": [
+                "tests",
+                "Tests",
+                "test",
+                "docs"
+            ]
+        }
+    ]
+}

@@ -1,7 +1,7 @@
 ---
 
 # Builds the scoped PHAR and attaches it to a release.
-# Runs only when a version is released (called by create-release.yml) or by hand.
+# Runs only when a version is released (`release: published`, see create-release.yml) or by hand.
 
 name: 📦 Build PHAR release
 
@@ -9,12 +9,6 @@ on:  # yamllint disable-line rule:truthy
   release:
     types:
       - published
-  workflow_call:
-    inputs:
-      tag:
-        description: Tag of the release the PHAR is attached to.
-        required: true
-        type: string
   workflow_dispatch:
     inputs:
       tag:

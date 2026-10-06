@@ -2,7 +2,7 @@
 
 # Builds the static opmin binary (scoped PHAR + static-php-cli micro) on native runners:
 # every platform is compiled on a machine of its own OS and architecture, no Docker, no emulation.
-# Runs only when a version is released (called by create-release.yml) or by hand.
+# Runs only when a version is released (`release: published`, see create-release.yml) or by hand.
 
 name: 📦 Build binaries
 
@@ -10,12 +10,6 @@ on:  # yamllint disable-line rule:truthy
   release:
     types:
       - published
-  workflow_call:
-    inputs:
-      tag:
-        description: Tag of the release the binaries are attached to.
-        required: true
-        type: string
   workflow_dispatch:
     inputs:
       tag:

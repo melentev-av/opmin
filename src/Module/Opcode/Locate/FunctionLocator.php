@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Opmin\Module\Opcode\Locate;
 
+use Opmin\Module\Analysis\DynamicScopeDetector;
 use PhpParser\Error;
 use PhpParser\Node;
 use PhpParser\Node\Expr\ArrowFunction;
@@ -49,8 +50,12 @@ final class FunctionLocator
     /** @var list<CodeUnit> Methods and hooks of completed classes, in dump order. */
     private array $classUnits = [];
 
-    public function __construct()
-    {
+    /** Class whose members are being scanned (for closures inside methods). */
+    private ?Stmt\ClassLike $class = null;
+
+    public function __construct(
+        private readonly DynamicScopeDetector $detector = new DynamicScopeDetector(),
+    ) {
         $this->parser = (new ParserFactory())->createForNewestSupportedVersion();
     }
 
@@ -70,6 +75,7 @@ final class FunctionLocator
         /** @var list<Node> $stmts */
         $stmts = (new NodeTraverser(new NameResolver()))->traverse($stmts);
         $this->closures = $this->anonymousClasses = $this->keys = $this->classUnits = [];
+        $this->class = null;
         $this->keys[$mainKey] = true;
 
         $main = [new CodeUnit($mainKey, UnitKind::Main, '$_main', 1, 1)];
@@ -145,7 +151,7 @@ final class FunctionLocator
         $key = $this->unique("{$parentKey}::{closure:{$n}}");
 
         return [
-            new CodeUnit($key, UnitKind::Closure, null, $node->getStartLine(), $node->getEndLine()),
+            new CodeUnit($key, UnitKind::Closure, null, $node->getStartLine(), $node->getEndLine(), flags: $this->detector->detect($node, $this->class)),
             ...$this->scan($node instanceof Closure ? [$node->params, $node->stmts] : [$node->params, $node->expr], $key),
         ];
     }
@@ -160,7 +166,7 @@ final class FunctionLocator
         $key = $this->unique($name);
 
         return [
-            new CodeUnit($key, UnitKind::Function, $name, $node->getStartLine(), $node->getEndLine()),
+            new CodeUnit($key, UnitKind::Function, $name, $node->getStartLine(), $node->getEndLine(), flags: $this->detector->detect($node)),
             ...$this->scan([$node->params, $node->stmts], $key),
         ];
     }
@@ -182,6 +188,8 @@ final class FunctionLocator
         }
 
         $interface = $node instanceof Stmt\Interface_;
+        $outer = $this->class;
+        $this->class = $node;
         $methods = [];
         /** @var list<array{non-empty-string, list<Node\PropertyHook>}> $hooked Properties with hooks. */
         $hooked = [];
@@ -196,6 +204,7 @@ final class FunctionLocator
                     $stmt->getStartLine(),
                     $stmt->getEndLine(),
                     abstract: $interface || $stmt->stmts === null,
+                    flags: $this->detector->detect($stmt, $node),
                 );
                 \array_push($methods, ...$this->scan([$stmt->params, $stmt->stmts], $key));
                 foreach ($stmt->params as $param) {
@@ -220,12 +229,14 @@ final class FunctionLocator
                     $hook->getStartLine(),
                     $hook->getEndLine(),
                     abstract: $hook->body === null,
+                    flags: $this->detector->detect($hook, $node),
                 );
                 \array_push($hooks, ...$this->scan([$hook->params, $hook->body], $key));
             }
         }
 
         \array_push($this->classUnits, ...$methods, ...$hooks);
+        $this->class = $outer;
 
         return [];
     }

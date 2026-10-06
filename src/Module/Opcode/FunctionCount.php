@@ -20,7 +20,7 @@ final readonly class FunctionCount
      * @param int<0, max> $opsOpt Opcodes after the optimizer — the main metric.
      * @param array<non-empty-string, positive-int> $opcodes Histogram of the optimized opcodes.
      * @param bool $optimizable False for main code: it is counted, but not optimized by default.
-     * @param list<non-empty-string> $flags Flags of the dynamic scope detector (filled since M2).
+     * @param list<non-empty-string> $flags Values of {@see \Opmin\Module\Analysis\Flag}.
      */
     public function __construct(
         public string $key,
@@ -57,6 +57,27 @@ final readonly class FunctionCount
             opcodes: $data['opcodes'],
             optimizable: $data['optimizable'],
             flags: $data['flags'],
+        );
+    }
+
+    /**
+     * @param list<non-empty-string> $flags
+     */
+    public function withFlags(array $flags): self
+    {
+        return new self(
+            $this->key,
+            $this->kind,
+            $this->file,
+            $this->line,
+            $this->opsRaw,
+            $this->opsOpt,
+            $this->args,
+            $this->vars,
+            $this->tmps,
+            $this->opcodes,
+            $this->optimizable,
+            $flags,
         );
     }
 

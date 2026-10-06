@@ -6,6 +6,7 @@ namespace Opmin\Command;
 
 use Internal\Path;
 use Opmin\Info;
+use Opmin\Module\Analysis\ReferenceIndex;
 use Opmin\Module\Common\Cpu;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Opcode\CountCache;
@@ -99,12 +100,14 @@ final class Count extends Base
         $progress?->finish();
         $progress?->clear();
 
+        # Flags a function gets from the rest of the project: called by name, inspected by reflection.
+        $functions = ReferenceIndex::build($project, $cacheDir)->apply($this->filter($result->functions, $input->getOption('filter')));
         $report = CountReport::create(
             opmin: Info::version(),
             php: $php->version,
             phpTarget: $phpConfig->target ?? $project->phpTarget,
             optimizerHash: OptimizerSettings::hash($php),
-            functions: $this->filter($result->functions, $input->getOption('filter')),
+            functions: $functions,
             errors: $result->errors,
         );
 

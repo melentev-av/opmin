@@ -121,6 +121,29 @@ final class CountTest
         Assert::string($out)->contains('in 3 functions of 1 files');
     }
 
+    public function reportsFlagsOfDynamicConstructs(): void
+    {
+        \file_put_contents("{$this->dir}/src/F.php", <<<'PHP'
+            <?php
+            namespace App;
+            function vars($a) { return compact('a'); }
+            function counter() { static $n = 0; return ++$n; }
+            function plain($a) { return $a + 1; }
+            function callback($a) { return $a; }
+            PHP);
+        \file_put_contents("{$this->dir}/routes.php", "<?php\n\$f = 'App\\\\callback';\n");
+
+        [$code, $json] = $this->opmin('count', '--format=json');
+
+        Assert::same($code, 0);
+        /** @var array{functions: array<string, array{flags: list<string>}>} $report */
+        $report = \json_decode($json, true);
+        Assert::same($report['functions']['App\\vars']['flags'], ['compact']);
+        Assert::same($report['functions']['App\\counter']['flags'], ['static_var']);
+        Assert::same($report['functions']['App\\plain']['flags'], []);
+        Assert::same($report['functions']['App\\callback']['flags'], ['called_dynamically']);
+    }
+
     public function failsOnMissingPhpBinary(): void
     {
         [$code, , $err] = $this->opminWithEnv(['OPMIN_PHP_BINARY' => '/nonexistent/php'], 'count');

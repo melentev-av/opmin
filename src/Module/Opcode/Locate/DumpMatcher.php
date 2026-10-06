@@ -6,6 +6,7 @@ namespace Opmin\Module\Opcode\Locate;
 
 use Opmin\Module\Opcode\Dump\DumpBlock;
 use Opmin\Module\Opcode\Dump\Phase;
+use Opmin\Module\Analysis\Flag;
 use Opmin\Module\Opcode\FunctionCount;
 
 /**
@@ -46,6 +47,7 @@ final class DumpMatcher
                 tmps: $block->tmps,
                 opcodes: $block->opcodes,
                 optimizable: $unit->kind !== UnitKind::Main,
+                flags: Flag::values($unit->flags),
             );
         }
 

@@ -11,6 +11,8 @@ speed every time.
 - Tests are on **Testo**, not PHPUnit: read [docs/testing.md](docs/testing.md) before writing one.
 - Checks before a commit: `composer test`, `composer psalm`, `composer cs:diff`, `composer schema:dump` (no diff).
 - Commits: Conventional Commits (`feat(config): ...`, `fix(harness): ...`), no AI attribution lines.
+  commitlint in CI (`.github/.commitlint.config.mjs`): header ≤ 100 chars, lower-case type and scope, no trailing
+  period; body and footer lines ≤ 120 chars — wrap the body by hand (keep lines ≤ 100), blank line after the header.
 - Branches: work in `develop`; `master` receives only release merges.
 - Manual end-to-end runs: `bin/playground init`, `bin/playground run --all` (see the brief, section «Playground»).
 - Code that depends on the production PHP (opcode counting, the harness, project tests, PHPStan) always runs in a

@@ -166,7 +166,9 @@ final class VerifierTest
         $tests->runner = Schema\TestRunner::Command;
         $tests->command = 'true';
         $commands = new Schema\Commands();
-        $commands->phpstan = \escapeshellarg((string) \realpath(__DIR__ . '/../../../../vendor/bin/phpstan')) . ' analyse --no-progress --error-format=json --level=9';
+        # The PHAR alone: vendor/bin/phpstan would load opmin's own autoloader, which needs PHP 8.3+.
+        \copy(__DIR__ . '/../../../../vendor/phpstan/phpstan/phpstan.phar', $this->dir . '/phpstan.phar');
+        $commands->phpstan = 'phpstan.phar analyse --no-progress --error-format=json --level=9';
         $without = new Schema\Commands();
         $without->phpstan = null;
 

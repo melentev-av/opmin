@@ -195,6 +195,14 @@ jobs:
           "$GITHUB_WORKSPACE/dist/opmin" verify a.php same.php
           if "$GITHUB_WORKSPACE/dist/opmin" verify a.php other.php; then echo "::error::a changed behavior was accepted"; exit 1; fi
 
+      # Rector and PHPStan run inside the binary (micro runs no other script): a rule must still apply.
+      - name: 🤔 Rector inside the binary
+        run: |
+          mkdir -p "$RUNNER_TEMP/rector/src" && cd "$RUNNER_TEMP/rector"
+          printf '<?php\nnamespace Acme;\nfinal class Text\n{\n    public function size(string $s): int\n    {\n        return strlen($s) + strlen(trim($s));\n    }\n}\n' > src/Text.php
+          "$GITHUB_WORKSPACE/dist/opmin" optimize --dry-run --no-interaction --set=commands.phpstan=null src | tee optimize.log
+          grep -q 'opcodes (-' optimize.log || { echo "::error::optimize did not apply a rule"; exit 1; }
+
       - name: 🗜️ Archive
         run: |
           ARCHIVE="opmin-${VERSION}-${{ matrix.target }}.tar.gz"

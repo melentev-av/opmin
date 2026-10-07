@@ -11,7 +11,7 @@ declare(strict_types=1);
  *
  *   bin/playground init [scenario...]   create scenarios (default: all required ones)
  *   bin/playground reset [scenario...]  delete and re-create scenarios from scratch
- *   bin/playground run <scenario>       doctor → count → verify → optimize → check, then the scenario's tests
+ *   bin/playground run <scenario>       doctor → count → verify → baseline → check (red) → optimize → check, then tests
  *   bin/playground run --all            the same for every existing scenario, with a summary table
  *   bin/playground run --all --php=8.4  … with php.binary in the opmin-dev:8.4 image (pcov, pcntl)
  *   bin/playground test [scenario...]   run only the scenario's own tests
@@ -391,9 +391,20 @@ function run(array $args): int
         $row = ['scenario' => $name];
         # Prepared rewrites match the seeds: verified before optimize changes the code.
         $verify = verifyScenario($name, $dir);
-        foreach (['doctor' => [], 'count' => [], 'optimize' => $target, 'check' => []] as $command => $extra) {
+        $guard = null;
+        foreach (['doctor' => [], 'count' => [], 'guard' => [], 'optimize' => $target, 'check' => []] as $command => $extra) {
             if ($name === 'git-package' && $command !== 'optimize') {
                 $row[$command] = 'n/a';
+                continue;
+            }
+
+            if ($command === 'guard') {
+                $guard = guardBefore($name, $dir);
+                continue;
+            }
+
+            if ($command === 'check') {
+                $row['check'] = guardAfter($dir, $guard);
                 continue;
             }
 
@@ -419,6 +430,62 @@ function run(array $args): int
         || \str_contains($r['verify'], 'MISSED') || \str_contains($r['verify'], 'CHANGED'));
 
     return $bad === [] ? 0 : 1;
+}
+
+/**
+ * The CI guard before optimize: `opmin baseline` (committed in a git scenario), then a change that
+ * keeps the behavior but grows `Obvious::describe` (committed too: optimize needs a clean tree), and
+ * `opmin check` must fail on it.
+ *
+ * @return array{args: list<string>, red: string} What the check after optimize runs with, and the
+ *         result of the check before it: `red` (as expected), `n/a` without the seed, or what went wrong.
+ */
+function guardBefore(string $name, string $dir): array
+{
+    $git = \is_dir($dir . '/.git');
+    $code = opmin($dir, 'baseline', []);
+    if ($code !== 0) {
+        return ['args' => ['--all'], 'red' => "baseline exit {$code}"];
+    }
+
+    if (!$git) {
+        return ['args' => ['--all'], 'red' => 'n/a'];
+    }
+
+    sh(GIT . ' add opmin.baseline.json && ' . GIT . " commit -q -m 'opmin baseline'", $dir);
+    $base = \trim((string) \shell_exec('cd ' . \escapeshellarg($dir) . ' && git rev-parse HEAD'));
+    $args = ['--base=' . $base];
+    $files = \glob($dir . '/{src,app/Services,src/Service}/Obvious.php', \GLOB_BRACE) ?: [];
+    $code = $files === [] ? '' : (string) \file_get_contents($files[0]);
+    if (!\str_contains($code, 'if (is_string($value)) {')) {
+        # No seed (traps) or already optimized by an earlier run (`bin/playground reset` re-creates it).
+        return ['args' => $args, 'red' => 'n/a'];
+    }
+
+    step("{$name}: a change that grows Obvious::describe, then `opmin check` must fail");
+    \file_put_contents($files[0], \str_replace('if (is_string($value)) {', 'if (is_string($value) && is_string($value)) {', $code));
+    sh(GIT . " commit -q -am 'grow Obvious::describe'", $dir);
+    $code = opmin($dir, 'check', $args);
+
+    return ['args' => $args, 'red' => $code === 1 ? 'red' : "exit {$code}"];
+}
+
+/**
+ * The check after optimize: green again (the optimized functions decreased, so it asks to update the
+ * baseline). `red→green` is the expected result of a git scenario.
+ *
+ * @param array{args: list<string>, red: string}|null $guard
+ */
+function guardAfter(string $dir, ?array $guard): string
+{
+    if ($guard === null || \str_starts_with($guard['red'], 'baseline')) {
+        return $guard['red'] ?? 'n/a';
+    }
+
+    $code = opmin($dir, 'check', $guard['args']);
+    $after = $code === 0 ? 'green' : "exit {$code}";
+
+    return $guard['red'] === 'n/a' ? $after : "{$guard['red']}→{$after}";
 }
 
 /**
@@ -643,7 +710,9 @@ function summary(array $rows): void
     foreach ($rows as $row) {
         \printf("  %-18s %-10s %-10s %-12s %-10s %-18s %-10s %-6s %s\n", ...\array_map(static fn(string $c): string => $row[$c] ?? '', $columns));
     }
-    echo "\n  ops: opcodes after the optimizer / functions (from `count`, after optimize). optimized: opcodes\n"
+    echo "\n  check: `red→green` — the check failed on a change that grows Obvious::describe and passed after\n"
+        . "  optimize (git scenarios); `green` — the check after optimize where there is nothing to grow.\n"
+        . "  ops: opcodes after the optimizer / functions (from `count`, after optimize). optimized: opcodes\n"
         . "  before→after of the last optimize run (kept/rolled-back functions). verify: traps/ — wrong rewrites\n"
         . "  rejected although weak tests pass, the traps of opmin's rules untouched by optimize; elsewhere —\n"
         . "  correct rewrites accepted (FileJournal writes a file: proven by the project's tests only with a\n"

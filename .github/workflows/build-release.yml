@@ -1,10 +1,12 @@
 ---
 
-# Builds the static opmin binary (scoped PHAR + static-php-cli micro) on native runners:
-# every platform is compiled on a machine of its own OS and architecture, no Docker, no emulation.
+# Builds a release: the scoped PHAR and the static opmin binary (PHAR + static-php-cli micro) on native
+# runners — every platform is compiled on a machine of its own OS and architecture, no Docker, no emulation.
+# Publishes the archives, the PHAR, sha256sum.txt and its signature (sha256sum.txt.sig, checked by
+# `opmin self-update` and install.sh), plus GitHub build provenance attestations (`gh attestation verify`).
 # Runs only when a version is released (`release: published`, see create-release.yml) or by hand.
 
-name: 📦 Build binaries
+name: 📦 Build release
 
 on:  # yamllint disable-line rule:truthy
   release:
@@ -21,8 +23,9 @@ env:
   RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
   # Embedded PHP runs only the orchestrator; the analyzed code always runs under php.binary.
   SPC_PHP_VERSION: '8.4'
-  # zlib: the PHAR is GZ-compressed; pcntl/posix: process pool; the rest: Symfony and opmin itself.
-  SPC_EXTENSIONS: 'ctype,filter,iconv,mbstring,pcntl,phar,posix,tokenizer,zlib'
+  # zlib: the PHAR is GZ-compressed and self-update unpacks .tar.gz; openssl: HTTPS downloads and the
+  # release signature of self-update; pcntl/posix: process pool; the rest: Symfony and opmin itself.
+  SPC_EXTENSIONS: 'ctype,filter,iconv,mbstring,openssl,pcntl,phar,posix,tokenizer,zlib'
 
 jobs:
   # The PHAR is the same for every platform: build it once, on Linux.
@@ -52,14 +55,18 @@ jobs:
           composer-options: "--no-dev"
 
       - name: 📦 Build PHAR
-        run: box compile --no-parallel
+        run: |
+          box validate box.json.dist --ansi
+          box compile --no-parallel
+          box info .build/phar/opmin.phar --ansi
+          .build/phar/opmin.phar --version
 
       - name: 📤 Upload PHAR
         uses: actions/upload-artifact@v4
         with:
           name: phar-for-binaries
           path: .build/phar/opmin.phar
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: error
 
   # Each platform is built on a native runner of its own OS and architecture. No PHP is installed
@@ -133,7 +140,7 @@ jobs:
             downloads
             buildroot
             pkgroot
-          key: spc-${{ matrix.target }}-php${{ env.SPC_PHP_VERSION }}-${{ hashFiles('.github/workflows/build-bin-release.yml') }}
+          key: spc-${{ matrix.target }}-php${{ env.SPC_PHP_VERSION }}-${{ env.SPC_EXTENSIONS }}
 
       - name: 🔨 Build micro SAPI
         env:
@@ -168,6 +175,25 @@ jobs:
           mkdir -p "$RUNNER_TEMP/smoke" && cd "$RUNNER_TEMP/smoke" && "$GITHUB_WORKSPACE/dist/opmin" init --no-interaction
           test -s "$RUNNER_TEMP/smoke/opmin.yaml"
 
+      # The oldest PHP opmin supports as php.binary: the harness is extracted from the binary and runs under
+      # it, while the orchestrator runs on the embedded PHP.
+      - name: 🛠️ Setup PHP 8.1 as php.binary
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          extensions: opcache
+          coverage: none
+
+      - name: 🤔 Harness under an external php.binary
+        run: |
+          cd "$RUNNER_TEMP/smoke"
+          printf '<?php\nfunction twice(int $x): int { return $x * 2; }\n' > a.php
+          printf '<?php\nfunction twice(int $x): int { return $x + $x; }\n' > same.php
+          printf '<?php\nfunction twice(int $x): int { return $x * 3; }\n' > other.php
+          "$GITHUB_WORKSPACE/dist/opmin" count a.php
+          "$GITHUB_WORKSPACE/dist/opmin" verify a.php same.php
+          if "$GITHUB_WORKSPACE/dist/opmin" verify a.php other.php; then echo "::error::a changed behavior was accepted"; exit 1; fi
+
       - name: 🗜️ Archive
         run: |
           ARCHIVE="opmin-${VERSION}-${{ matrix.target }}.tar.gz"
@@ -182,16 +208,25 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-  # One job attaches every binary: parallel uploads to the same release race and drop assets.
+  # One job attaches every asset: parallel uploads to the same release race and drop assets.
+  # It publishes only when every platform is built: a release without one binary would break install.sh there.
   publish:
-    name: 📤 Publish binaries to the release
-    needs: build
-    if: ${{ !cancelled() && (inputs.tag || github.event.release.tag_name) }}
+    name: 📤 Publish to the release
+    needs: [phar, build]
+    if: ${{ inputs.tag || github.event.release.tag_name }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
+      # Build provenance attestations: a keyless signature by GitHub of what this workflow built.
+      id-token: write
+      attestations: write
     steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: resources/release-keys
+
       - name: 📥 Download all build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -199,12 +234,48 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: 📥 Download PHAR
+        uses: actions/download-artifact@v4
+        with:
+          name: phar-for-binaries
+          path: dist
+
       - name: 🔢 Checksums
-        run: cd dist && sha256sum opmin-*.tar.gz > sha256sum.txt
+        run: |
+          cd dist
+          test "$(ls opmin-*.tar.gz | wc -l)" -eq 4
+          sha256sum opmin-*.tar.gz opmin.phar > sha256sum.txt
+          cat sha256sum.txt
+
+      # The private key lives only in this step. The signature must verify with a public key opmin ships:
+      # otherwise every installed opmin would refuse this release.
+      - name: 🔏 Sign checksums
+        env:
+          OPMIN_SIGNING_KEY: ${{ secrets.OPMIN_SIGNING_KEY }}
+        run: |
+          [ -n "$OPMIN_SIGNING_KEY" ] || { echo "::error::secret OPMIN_SIGNING_KEY is not set"; exit 1; }
+          umask 077
+          KEY="$(mktemp)"
+          trap 'rm -f "$KEY"' EXIT
+          printf '%s\n' "$OPMIN_SIGNING_KEY" > "$KEY"
+          openssl dgst -sha256 -sign "$KEY" -out dist/sha256sum.txt.sig dist/sha256sum.txt
+          for pub in resources/release-keys/*.pub.pem; do
+            openssl dgst -sha256 -verify "$pub" -signature dist/sha256sum.txt.sig dist/sha256sum.txt && exit 0
+          done
+          echo "::error::the signature matches none of resources/release-keys"; exit 1
+
+      - name: 🪪 Attest build provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            dist/opmin-*.tar.gz
+            dist/opmin.phar
 
       - name: 📤 Upload release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$RELEASE_TAG" dist/*.tar.gz dist/sha256sum.txt --clobber --repo "$GITHUB_REPOSITORY"
+        run: |
+          gh release upload "$RELEASE_TAG" dist/*.tar.gz dist/opmin.phar dist/sha256sum.txt dist/sha256sum.txt.sig \
+            --clobber --repo "$GITHUB_REPOSITORY"
 
 ...

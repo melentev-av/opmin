@@ -135,7 +135,7 @@ jobs:
 
   compile-phar:
     # A cheap check that the scoped PHAR still builds and starts; release assets are built
-    # only when a version is released (see build-phar-release.yml).
+    # only when a version is released (see build-release.yml).
     name: 📦 PHAR builds and runs
     timeout-minutes: 10
     runs-on: ubuntu-24.04

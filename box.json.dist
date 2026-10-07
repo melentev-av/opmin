@@ -16,6 +16,8 @@
     "files": [
         "resources/version.json",
         "resources/opmin.schema.json",
+        "resources/release-keys/primary.pub.pem",
+        "resources/release-keys/reserve.pub.pem",
         "resources/skills/opcode-minimize/SKILL.md",
         "bin/opmin",
         "LICENSE.md",

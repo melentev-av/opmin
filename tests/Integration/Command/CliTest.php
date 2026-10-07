@@ -85,6 +85,14 @@ final class CliTest
         Assert::string((string) \file_get_contents($this->dir . '/opmin.yaml'))->contains('paths: [src]');
     }
 
+    public function selfUpdateRefusesToReplaceSourcesWithoutGoingToTheNetwork(): void
+    {
+        [$code, $out] = $this->opminWithEnv(['HTTPS_PROXY' => 'http://127.0.0.1:9'], 'self-update');
+
+        Assert::same($code, 1);
+        Assert::string($out)->ignoringWhitespace(lineBreaks: true)->contains('This opmin runs from sources');
+    }
+
     public function initWorksWhenExistingConfigIsBroken(): void
     {
         \file_put_contents($this->dir . '/opmin.yaml', "unknown: 1\n");

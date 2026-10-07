@@ -1,0 +1,173 @@
+#!/usr/bin/env php
+<?php
+
+/**
+ * Measures the opcode effect of opmin's own Rector rules on the PHP of `php.binary`: for each
+ * experiment it compiles the code before and after the rewrite and prints `ops_opt` of both. The
+ * defaults of the rules (`min_reads`) come from here; rerun it when a new PHP version appears.
+ *
+ *   bin/bench                         # php.binary = php
+ *   bin/bench --php=/usr/bin/php8.1   # another PHP (a Docker wrapper from `bin/playground wrapper 8.1` works too)
+ *   bin/bench --only=fqn              # one experiment group: reads | dims | count | fqn | const
+ */
+
+declare(strict_types=1);
+
+use Internal\Path;
+use Opmin\Module\Opcode\CountCache;
+use Opmin\Module\Opcode\Dump\OpcacheDumper;
+use Opmin\Module\Opcode\OpcodeCounter;
+use Opmin\Module\Php\PhpBinaryProbe;
+use Opmin\Module\Project\Project;
+
+require __DIR__ . '/../vendor/autoload.php';
+
+$options = \getopt('', ['php:', 'only:']);
+$php = (new PhpBinaryProbe())->probe(\is_string($options['php'] ?? null) && $options['php'] !== '' ? $options['php'] : 'php');
+$only = \is_string($options['only'] ?? null) ? $options['only'] : null;
+
+$root = __DIR__ . '/../runtime/bench';
+\is_dir($root) or \mkdir($root, 0777, true);
+$root = (string) \realpath($root);
+$project = new Project(Path::create($root), false, null);
+$counter = new OpcodeCounter(new OpcacheDumper($php, 1), new CountCache(Path::create($root . '/.cache'), $php));
+
+# Every body is measured as the method `Bench\Foo::f()`: `$this`, a typed object `$x`, an array `$a`
+# and an untyped `$v` are available.
+$class = <<<'PHP'
+    final class Foo
+    {
+        public function __construct(public readonly Foo $foo, public int $n = 0) {}
+        public function m(mixed ...$args): void { ++$this->n; }
+        public function f(Foo $x, array $a, $v) {
+            %s
+        }
+    }
+    PHP;
+
+/**
+ * @param array<string, array{string, string}> $pairs Label => [body before, body after].
+ * @return array<string, array{int, int}>
+ */
+$measure = static function (array $pairs) use ($counter, $project, $root, $class): array {
+    $files = [];
+    foreach ($pairs as $label => $bodies) {
+        foreach ($bodies as $side => $body) {
+            $file = $root . '/' . \md5($label . $side . $body) . '.php';
+            \file_put_contents($file, "<?php\nnamespace Bench;\n" . \sprintf($class, $body) . "\n");
+            $files[$label][$side] = Path::create($file);
+        }
+    }
+
+    $result = $counter->count($project, \array_merge(...\array_values(\array_map('array_values', $files))));
+    $result->errors === [] or throw new \RuntimeException(\print_r($result->errors, true));
+    $ops = [];
+    foreach ($result->functions as $function) {
+        $function->key === 'Bench\Foo::f' and $ops[$function->file] = $function->opsOpt;
+    }
+
+    $rows = [];
+    foreach ($files as $label => $sides) {
+        $rows[$label] = [$ops[$project->relative($sides[0])], $ops[$project->relative($sides[1])]];
+    }
+
+    return $rows;
+};
+
+$print = static function (string $title, array $rows): void {
+    echo "\n{$title}\n";
+    foreach ($rows as $label => [$before, $after]) {
+        \printf("  %-44s %4d → %-4d %+d\n", $label, $before, $after, $after - $before);
+    }
+};
+
+echo "PHP {$php->version}\n";
+
+if ($only === null || $only === 'reads') {
+    # ExtractRepeatedPropertyFetchRector: N reads of `$x->foo` against `$foo = $x->foo` + N reads of `$foo`.
+    foreach (['$this', '$x'] as $var) {
+        foreach (['method call' => '%s->m();', 'value' => '$v[] = %s;', 'nested fetch' => '$v[] = %s->n;'] as $kind => $use) {
+            $pairs = [];
+            for ($n = 1; $n <= 4; ++$n) {
+                $pairs["{$n} read(s)"] = [
+                    \str_repeat(\sprintf($use, "{$var}->foo") . "\n", $n),
+                    "\$foo = {$var}->foo;\n" . \str_repeat(\sprintf($use, '$foo') . "\n", $n),
+                ];
+            }
+
+            $print("Property fetch {$var}->foo, {$kind}", $measure($pairs));
+        }
+    }
+}
+
+if ($only === null || $only === 'dims') {
+    # ExtractRepeatedArrayDimFetchRector: N reads of `$a['k']`.
+    foreach (['value' => '$v[] = %s;', 'nested dim' => '$v[] = %s[0];', 'call argument' => '$this->m(%s);'] as $kind => $use) {
+        $pairs = [];
+        for ($n = 1; $n <= 4; ++$n) {
+            $pairs["{$n} read(s)"] = [
+                \str_repeat(\sprintf($use, "\$a['k']") . "\n", $n),
+                "\$k = \$a['k'];\n" . \str_repeat(\sprintf($use, '$k') . "\n", $n),
+            ];
+        }
+
+        $print("Array dim fetch \$a['k'], {$kind}", $measure($pairs));
+    }
+
+    $pairs = [];
+    for ($n = 2; $n <= 4; ++$n) {
+        $pairs["{$n} read(s)"] = [
+            'return ' . \implode(' + ', \array_fill(0, $n, "\$a['k']")) . ';',
+            "\$k = \$a['k'];\nreturn " . \implode(' + ', \array_fill(0, $n, '$k')) . ';',
+        ];
+    }
+
+    $print("Array dim fetch \$a['k'], one expression", $measure($pairs));
+}
+
+if ($only === null || $only === 'count') {
+    # HoistLoopInvariantCountRector.
+    $print('Loop-invariant count()', $measure([
+        'for, \count' => [
+            'for ($i = 0; $i < \count($a); $i++) { $v[] = $a[$i]; } return $v;',
+            'for ($i = 0, $n = \count($a); $i < $n; $i++) { $v[] = $a[$i]; } return $v;',
+        ],
+        'for, count' => [
+            'for ($i = 0; $i < count($a); $i++) { $v[] = $a[$i]; } return $v;',
+            'for ($i = 0, $n = count($a); $i < $n; $i++) { $v[] = $a[$i]; } return $v;',
+        ],
+        'for, \count, $n before the loop' => [
+            'for ($i = 0; $i < \count($a); $i++) { $v[] = $a[$i]; } return $v;',
+            '$n = \count($a); for ($i = 0; $i < $n; $i++) { $v[] = $a[$i]; } return $v;',
+        ],
+    ]));
+}
+
+if ($only === null || $only === 'fqn') {
+    # FullyQualifyGlobalCallsRector: functions.
+    $calls = [
+        'strlen($v)', 'count($a)', 'is_array($v)', 'is_null($v)', 'is_int($v)', 'is_string($v)', 'is_object($v)',
+        'intval($v)', 'boolval($v)', 'strval($v)', 'floatval($v)', 'gettype($v)', 'get_class($v)',
+        'in_array($v, $a)', "in_array(\$v, ['a', 'b'], true)", 'array_key_exists($v, $a)', 'chr($v)', 'ord($v)',
+        "function_exists('foo')", "defined('FOO')", 'sprintf($v, 1)', 'array_map($v, $a)', 'str_contains($v, $v)',
+        'array_slice($a, 1)', "implode(',', \$a)", 'call_user_func($v)', 'call_user_func_array($v, $a)',
+        'func_get_args()', 'func_num_args()', 'array_keys($a)', 'max($a)', 'abs($v)', 'json_encode($a)', 'strtolower($v)',
+        "constant('X')", 'get_called_class()', 'array_values($a)', 'iterator_to_array($v)', 'is_callable($v)',
+    ];
+    $pairs = [];
+    foreach ($calls as $call) {
+        $pairs[$call] = ["return {$call};", "return \\{$call};"];
+    }
+
+    $print('Global functions: name → \\name', $measure($pairs));
+}
+
+if ($only === null || $only === 'const') {
+    $constants = ['PHP_EOL', 'PHP_INT_MAX', 'M_PI', 'E_ALL', 'DIRECTORY_SEPARATOR', 'PHP_VERSION_ID', 'JSON_THROW_ON_ERROR', 'SORT_STRING', 'PHP_OS_FAMILY', 'PHP_VERSION'];
+    $pairs = [];
+    foreach ($constants as $constant) {
+        $pairs[$constant] = ["return {$constant};", "return \\{$constant};"];
+    }
+
+    $print('Global constants: NAME → \\NAME', $measure($pairs));
+}

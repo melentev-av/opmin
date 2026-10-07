@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="Unit" tests="3" failures="1" errors="1" time="0.010">
+    <testcase name="testAdds" class="Tests\MathTest" classname="Tests.MathTest" file="/p/tests/MathTest.php" line="10" assertions="1" time="0.001"/>
+    <testcase name="testSubtracts" class="Tests\MathTest" classname="Tests.MathTest" assertions="1" time="0.002">
+      <failure type="PHPUnit\Framework\ExpectationFailedException">Failed asserting that 1 is identical to 2.</failure>
+    </testcase>
+    <testcase name="testDivides with data set #0" classname="Tests.MathTest" assertions="0" time="0.003">
+      <error type="DivisionByZeroError">Division by zero</error>
+    </testcase>
+  </testsuite>
+</testsuites>

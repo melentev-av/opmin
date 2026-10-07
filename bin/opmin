@@ -49,6 +49,7 @@ use Symfony\Component\Console\CommandLoader\FactoryCommandLoader;
             Command\Init::getCommandName() => static fn() => new Command\Init(),
             Command\Count::getCommandName() => static fn() => new Command\Count(),
             Command\Diff::getCommandName() => static fn() => new Command\Diff(),
+            Command\Verify::getCommandName() => static fn() => new Command\Verify(),
             Command\Optimize::getCommandName() => static fn() => new Command\Optimize(),
             Command\ApplyCandidate::getCommandName() => static fn() => new Command\ApplyCandidate(),
             Command\Baseline::getCommandName() => static fn() => new Command\Baseline(),

@@ -106,13 +106,23 @@ final class TestoAdapter implements TestRunnerAdapter
     }
 
     /**
-     * The JSON report is the last line of stdout (anything printed before it is not the report).
+     * The JSON report: the last JSON object of stdout (it may be pretty-printed; anything printed
+     * before it is not the report).
      */
     private static function lastJson(string $output): string
     {
-        $lines = \array_values(\array_filter(\explode("\n", \trim($output)), static fn(string $l): bool => \str_starts_with(\ltrim($l), '{')));
+        $output = \trim($output);
+        $offset = \strlen($output);
+        while ($offset > 0 && ($start = \strrpos($output, '{', $offset - \strlen($output) - 1)) !== false) {
+            $candidate = \substr($output, $start);
+            if (($start === 0 || $output[$start - 1] === "\n") && \is_array(\json_decode($candidate, true))) {
+                return $candidate;
+            }
 
-        return $lines === [] ? '' : $lines[\count($lines) - 1];
+            $offset = $start;
+        }
+
+        return '';
     }
 
     /**

@@ -43,6 +43,25 @@ opmin diff before.json after.json                   # per function: fewer / more
 - Counts are cached in `.opmin-cache/` by file content, PHP version, optimizer settings and opmin version:
   re-counting an unchanged project does not start PHP for compilation at all.
 
+## Verifying behavior
+
+```bash
+opmin verify src/Cart.php /tmp/Cart.php                 # differential tests of every changed function
+opmin verify src/Cart.php /tmp/Cart.php --with-tests    # + php -l, PHPStan "no new errors", the project's tests
+```
+
+- Every changed function is called in two harness workers under `php.binary` — one with the original file, one
+  with the candidate — on the same inputs: boundary values of its parameter types, values a non-strict caller
+  may pass, literals of both versions, random inputs and coverage-guided mutations. Return values, exceptions,
+  output, warnings (also thrown as `ErrorException`), by-ref arguments, `$this`, mock calls, globals and statics
+  are compared. Time and randomness in the function's namespace are faked; a function that disagrees with
+  itself is nondeterministic and stays unverified.
+- A difference is shrunk to a minimal input and saved to `runs/<timestamp>/counterexamples/` as JSON and as a
+  test for the project's runner (PHPUnit, Pest, Testo; a plain script otherwise).
+- Accepted: proven by differential tests with `verification.min_branch_coverage` of the original's branches,
+  or unverified but executed by passing project tests, or with `verification.allow_unverified`.
+- Flags of `opmin count` (`compact`, `static_var`, `eval`, `io`…) say which constructs restrict a function.
+
 ## Installation
 
 Planned: a static binary for Linux and macOS (no PHP needed to *run* opmin — but analyzing code always uses

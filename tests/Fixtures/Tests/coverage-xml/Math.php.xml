@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<phpunit xmlns="https://schema.phpunit.de/coverage/1.0">
+  <file name="Math.php" path="/">
+    <coverage>
+      <line nr="5">
+        <covered by="Tests\MathTest::testAdds"/>
+        <covered by="Tests\MathTest::testSubtracts"/>
+      </line>
+      <line nr="9">
+        <covered by="Tests\MathTest::testDivides with data set #0"/>
+      </line>
+    </coverage>
+  </file>
+</phpunit>

@@ -16,11 +16,14 @@ final readonly class WorkerOptions
      * @param positive-int $timeoutMs Limit of one request (`call`); `load` gets {@see self::$loadTimeoutMs}.
      * @param positive-int $loadTimeoutMs Limit of starting the worker and of `load` (a framework boots).
      * @param non-empty-string|null $coverage Coverage driver to load (`xdebug` enables `xdebug.mode=coverage`).
+     * @param non-empty-string|null $cwd Working directory of the worker: relative paths the called code touches
+     *        resolve there, not in the project.
      */
     public function __construct(
         public string $memoryLimit = '256M',
         public int $timeoutMs = 1000,
         public int $loadTimeoutMs = 30000,
         public ?string $coverage = null,
+        public ?string $cwd = null,
     ) {}
 }

@@ -118,6 +118,31 @@ final class DiffTesterTest
         Assert::same($verdict->status, VerdictStatus::Skipped);
     }
 
+    public function ioIsNeverCalledWithGeneratedInputs(): void
+    {
+        $verdict = $this->verify(
+            '<?php function f(string $p) { return file_put_contents(__DIR__ . "/touched", $p); }',
+            '<?php function f(string $p) { return \file_put_contents(__DIR__ . "/touched", $p); }',
+        );
+
+        Assert::same($verdict->status, VerdictStatus::Unverified);
+        Assert::same($verdict->reason, 'side effects (io): only the project\'s tests can prove the change');
+        Assert::same($verdict->inputs, 0);
+        Assert::false(\file_exists($this->dir . '/touched'));
+    }
+
+    public function globalsAreComparedButLeftToTheTests(): void
+    {
+        $verdict = $this->verify(
+            '<?php function f(int $a) { global $seen; $seen = $a; return $a; }',
+            '<?php function f(int $a) { global $seen; $seen = $a; return $a; }',
+        );
+
+        Assert::same($verdict->status, VerdictStatus::Unverified);
+        Assert::same($verdict->reason, 'side effects (global): only the project\'s tests can prove the change');
+        Assert::true($verdict->inputs > 0);
+    }
+
     public function lowCoverageIsUnverified(): void
     {
         $verdict = $this->verify(

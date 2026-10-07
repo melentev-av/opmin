@@ -58,6 +58,7 @@ final class WorkerTest
         function probe($x) { if ($x) { \Opmin\Harness\Probe::hit(1); return 'yes'; } \Opmin\Harness\Probe::hit(2); return 'no'; }
         function fail() { throw new \DomainException('bad', 7, new \RuntimeException('cause')); }
         function closures(int $k) { return function (int $x) use ($k) { return $x * $k; }; }
+        function cwd() { return getcwd(); }
         PHP;
 
     private string $dir;
@@ -77,6 +78,7 @@ final class WorkerTest
     public function removeProject(): void
     {
         $this->worker?->stop();
+        $this->worker = null;
         \exec('rm -rf ' . \escapeshellarg($this->dir));
     }
 
@@ -244,6 +246,17 @@ final class WorkerTest
         $result = $this->call(['kind' => 'closure', 'wrapper' => 'App\__opmin_closure_1'], [self::int(4)], uses: ['k' => self::int(3)]);
 
         Assert::same($result['calls'][0]['value'], self::int(12));
+    }
+
+    public function runsInTheGivenWorkingDirectory(): void
+    {
+        \mkdir("{$this->dir}/work");
+        $this->worker = new Worker(TestPhp::binary(), new WorkerOptions(timeoutMs: 10000, cwd: "{$this->dir}/work"));
+        $this->load();
+
+        $result = $this->call(['kind' => 'function', 'name' => 'App\cwd']);
+
+        Assert::same($result['calls'][0]['value'], self::string("{$this->dir}/work"));
     }
 
     public function strayStdoutIsNotAResponse(): void

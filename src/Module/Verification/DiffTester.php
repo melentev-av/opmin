@@ -170,6 +170,11 @@ final class DiffTester
             return new Verdict($task->key, VerdictStatus::Skipped, 'eval/include: code loaded at run time sees the local scope', flags: $flags);
         }
 
+        # Generated inputs would write, delete or send whatever they name: only the project's tests may run it.
+        if (\in_array(Flag::Io, $flags, true)) {
+            return new Verdict($task->key, VerdictStatus::Unverified, 'side effects (io): only the project\'s tests can prove the change', flags: $flags);
+        }
+
         $lines = \in_array($this->config->coverageDriver, [CoverageDriver::Xdebug, CoverageDriver::Pcov], true);
         $probes = 0;
         $probed = $original;
@@ -186,11 +191,13 @@ final class DiffTester
             memoryLimit: $this->config->memoryLimit,
             timeoutMs: $this->config->callTimeoutMs,
             coverage: $lines ? $this->config->coverageDriver->value : null,
+            cwd: (string) $dir,
         );
         $originalSession = new Session($this->php, $this->load($task, $probed, $originalCode, $dir, 'original', $lines), $options, fresh: $static);
         $changedSession = new Session($this->php, $this->load($task, $changed, $task->changed, $dir, 'changed', false), new WorkerOptions(
             memoryLimit: $this->config->memoryLimit,
             timeoutMs: $this->config->callTimeoutMs,
+            cwd: (string) $dir,
         ), fresh: $static);
 
         try {
@@ -340,9 +347,8 @@ final class DiffTester
             return $base(VerdictStatus::Unverified, 'too many inputs were discarded');
         }
 
-        $effects = \array_values(\array_filter($flags, static fn(Flag $f): bool => $f === Flag::Io || $f === Flag::Global));
-        if ($effects !== []) {
-            return $base(VerdictStatus::Unverified, 'side effects (' . \implode(', ', Flag::values($effects)) . '): only the project\'s tests can prove the change');
+        if (\in_array(Flag::Global, $flags, true)) {
+            return $base(VerdictStatus::Unverified, 'side effects (global): only the project\'s tests can prove the change');
         }
 
         if ($lines && $feedback->probes() === 0) {

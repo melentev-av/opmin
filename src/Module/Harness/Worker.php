@@ -63,7 +63,7 @@ final class Worker
             (string) HarnessFiles::worker(),
             $this->token,
         ];
-        $process = @\proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        $process = @\proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $this->options->cwd);
         \is_resource($process) or throw new WorkerException(WorkerException::START, "Cannot start the harness with php.binary `{$this->php->path}`.");
         $this->process = $process;
         /** @var array<int, resource> $pipes */

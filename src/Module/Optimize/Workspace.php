@@ -51,7 +51,8 @@ final class Workspace
             \trim($tracked->getOutput()) === '' and $gitRoot = null;
         }
         $workspace = new self($project, $runDir, $gitRoot, $dryRun);
-        $gitRoot === null or $workspace->ensureClean($ignored);
+        # A dry run commits nothing and restores every file: the tree may be dirty.
+        $gitRoot === null || $dryRun or $workspace->ensureClean($ignored);
         FS::mkdir((string) $runDir);
 
         return $workspace;

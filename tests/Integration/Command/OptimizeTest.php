@@ -129,6 +129,10 @@ final class OptimizeTest
         Assert::same($code, 2);
         Assert::string($err)->ignoringWhitespace(lineBreaks: true)->contains('The git working tree is not clean')->contains('src/Text.php');
         Assert::same(\file_get_contents($this->dir . '/src/Text.php'), self::CODE . "\n");
+        # A dry run commits nothing: a dirty tree is fine.
+        [$dryCode] = $this->opmin('optimize', '--dry-run', '--format=none');
+        Assert::same($dryCode, 0);
+        Assert::same(\file_get_contents($this->dir . '/src/Text.php'), self::CODE . "\n");
     }
 
     public function outsideGitTheOriginalsAreCopied(): void

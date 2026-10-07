@@ -39,6 +39,15 @@ final class InstrumenterTest
         yield 'nested closure is not instrumented' => ['$f = function () { if (true) { return 1; } }; return $f;', 1, 'function () { if (true) { return 1; } }'];
         yield 'static initializer is not instrumented' => ['static $s = 1 ? 2 : 3; return $s;', 1, 'static $s = 1 ? 2 : 3;'];
         yield 'empty function' => ['', 0, 'function f($a = null, $b = null, $c = null) {  }'];
+        yield 'if in an if without braces' => ['if ($a) if ($b) return 1; return 2;', 5, 'if ($a) { \Opmin\Harness\Probe::hit(1); if ($b) { \Opmin\Harness\Probe::hit(3); return 1; } else { \Opmin\Harness\Probe::hit(4); } } else { \Opmin\Harness\Probe::hit(2); } return 2;'];
+        yield 'if in a loop without braces' => ['foreach ($a as $x) if ($x) return $x; return 0;', 4, 'foreach ($a as $x) { \Opmin\Harness\Probe::hit(1); if ($x) { \Opmin\Harness\Probe::hit(2); return $x; } else { \Opmin\Harness\Probe::hit(3); } } return 0;'];
+        yield 'elseif without braces in a loop' => ['while ($a) if ($b) { $a--; } elseif ($c) $a++; return $a;', 5, 'elseif ($c) { \Opmin\Harness\Probe::hit(3); $a++; } else { \Opmin\Harness\Probe::hit(4); } } return $a;'];
+        yield 'do-while without braces' => ['do $a++; while ($a < 3); return $a;', 2, 'do { \Opmin\Harness\Probe::hit(1); $a++; } while ($a < 3);'];
+        yield 'nested ternary in a match arm' => ['return match ($a) { 1 => $b ? 2 : 3, default => $c ?? 4 };', 6, '1 => (\Opmin\Harness\Probe::hit(1) ?? ($b ? (\Opmin\Harness\Probe::hit(3) ?? (2)) : (\Opmin\Harness\Probe::hit(4) ?? (3))))'];
+        yield 'arguments of an anonymous class' => ['return new class($a ? 1 : 2) { public function f() { return $this ? 1 : 2; } };', 3, 'new class($a ? (\Opmin\Harness\Probe::hit(1) ?? (1)) : (\Opmin\Harness\Probe::hit(2) ?? (2))) { public function f() { return $this ? 1 : 2; } }'];
+        yield 'interpolated string is left alone' => ['return "{$a}" . ($b && $c);', 2, 'return "{$a}" . ($b && (\Opmin\Harness\Probe::hit(1) ?? ($c)));'];
+        yield 'logical keywords' => ['$x = $a and $b; $y = $a or $c; return $x;', 3, '$x = $a and (\Opmin\Harness\Probe::hit(1) ?? ($b)); $y = $a or (\Opmin\Harness\Probe::hit(2) ?? ($c));'];
+        yield 'empty branch and empty catch' => ['if ($a) {} else { return 1; } try { $b++; } catch (\Exception $e) {} return 2;', 2, 'if ($a) {} else { \Opmin\Harness\Probe::hit(1); return 1; }'];
     }
 
     #[DataProvider('bodies')]

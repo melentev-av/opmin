@@ -96,16 +96,16 @@ final class Instrumenter
 
         match (true) {
             $node instanceof Stmt\If_ => $this->if($node, $depth),
-            $node instanceof Stmt\For_, $node instanceof Stmt\Foreach_, $node instanceof Stmt\While_, $node instanceof Stmt\Do_ => $this->block($node->stmts, $depth + 1),
-            $node instanceof Stmt\Case_ => $this->block($node->stmts, $depth + 1, inline: true),
-            $node instanceof Stmt\Catch_, $node instanceof Stmt\Finally_ => $this->block($node->stmts, $depth + 1),
+            $node instanceof Stmt\For_, $node instanceof Stmt\Foreach_, $node instanceof Stmt\While_, $node instanceof Stmt\Do_ => $this->block($node->stmts, $depth),
+            $node instanceof Stmt\Case_ => $this->block($node->stmts, $depth, inline: true),
+            $node instanceof Stmt\Catch_, $node instanceof Stmt\Finally_ => $this->block($node->stmts, $depth),
             $node instanceof Expr\Ternary => $this->ternary($node, $depth),
             $node instanceof Expr\BinaryOp\Coalesce,
             $node instanceof Expr\BinaryOp\BooleanAnd,
             $node instanceof Expr\BinaryOp\BooleanOr,
             $node instanceof Expr\BinaryOp\LogicalAnd,
-            $node instanceof Expr\BinaryOp\LogicalOr => $this->wrap($node->right, $depth + 1),
-            $node instanceof Expr\Match_ => \array_map(fn(Node\MatchArm $arm) => $this->wrap($arm->body, $depth + 1), $node->arms),
+            $node instanceof Expr\BinaryOp\LogicalOr => $this->wrap($node->right, $depth),
+            $node instanceof Expr\Match_ => \array_map(fn(Node\MatchArm $arm) => $this->wrap($arm->body, $depth), $node->arms),
             default => null,
         };
 
@@ -116,26 +116,27 @@ final class Instrumenter
 
     private function if(Stmt\If_ $node, int $depth): void
     {
-        $braced = $this->block($node->stmts, $depth + 1);
+        $braced = $this->block($node->stmts, $depth);
         foreach ($node->elseifs as $elseif) {
-            $braced = $this->block($elseif->stmts, $depth + 1) && $braced;
+            $braced = $this->block($elseif->stmts, $depth) && $braced;
         }
 
         if ($node->else !== null) {
-            $this->block($node->else->stmts, $depth + 1);
+            $this->block($node->else->stmts, $depth);
             return;
         }
 
         # The path where no branch runs: an `else` with a probe. Not for the `if: … endif;` syntax.
         if ($braced && !$this->alternative($node)) {
-            $this->closer($node->getEndFilePos() + 1, $depth, ' else { ' . $this->probe() . '; }');
+            # Outside the branches' braces (level 2d + 1), inside anything around the `if` (2d - 1).
+            $this->closer($node->getEndFilePos() + 1, 2 * $depth, ' else { ' . $this->probe() . '; }');
         }
     }
 
     private function ternary(Expr\Ternary $node, int $depth): void
     {
-        $node->if === null or $this->wrap($node->if, $depth + 1);
-        $this->wrap($node->else, $depth + 1);
+        $node->if === null or $this->wrap($node->if, $depth);
+        $this->wrap($node->else, $depth);
     }
 
     /**
@@ -154,15 +155,16 @@ final class Instrumenter
         $first = $stmts[\array_key_first($stmts)];
         $start = $first->getStartFilePos();
         $before = $this->significantBefore($start);
+        $level = 2 * $depth + 1;
         if ($inline || $before === null || \in_array($before->text, ['{', ':', ';'], true)) {
-            $this->opener($start, $depth, $this->probe() . '; ');
+            $this->opener($start, $level, $this->probe() . '; ');
             return true;
         }
 
         # `if ($x) return 1;` — wrap the one statement.
         $last = $stmts[\array_key_last($stmts)];
-        $this->opener($start, $depth, '{ ' . $this->probe() . '; ');
-        $this->closer($last->getEndFilePos() + 1, $depth, ' }');
+        $this->opener($start, $level, '{ ' . $this->probe() . '; ');
+        $this->closer($last->getEndFilePos() + 1, $level, ' }');
 
         return true;
     }
@@ -172,8 +174,8 @@ final class Instrumenter
      */
     private function wrap(Expr $expr, int $depth): void
     {
-        $this->opener($expr->getStartFilePos(), $depth, '(' . $this->probe() . ' ?? (');
-        $this->closer($expr->getEndFilePos() + 1, $depth, '))');
+        $this->opener($expr->getStartFilePos(), 2 * $depth + 1, '(' . $this->probe() . ' ?? (');
+        $this->closer($expr->getEndFilePos() + 1, 2 * $depth + 1, '))');
     }
 
     /**
@@ -224,19 +226,21 @@ final class Instrumenter
     }
 
     /**
-     * Text that opens something at a position: outer ones first.
+     * Text that opens something at a position: outer ones first. The level of a node at depth d is
+     * 2d; what it puts around its own parts (braces of a branch, a wrapped operand) is 2d + 1 —
+     * inside the node, outside the nodes within.
      */
-    private function opener(int $pos, int $depth, string $text): void
+    private function opener(int $pos, int $level, string $text): void
     {
-        $this->edits[$pos][] = [[1, $depth], $text];
+        $this->edits[$pos][] = [[1, $level], $text];
     }
 
     /**
      * Text that closes something at a position: inner ones first, before any opener.
      */
-    private function closer(int $pos, int $depth, string $text): void
+    private function closer(int $pos, int $level, string $text): void
     {
-        $this->edits[$pos][] = [[0, -$depth], $text];
+        $this->edits[$pos][] = [[0, -$level], $text];
     }
 
     private function apply(string $code): string

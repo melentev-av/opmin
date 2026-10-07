@@ -86,7 +86,8 @@ final class ValueGenerator
         \in_array(TypeSpec::INT, $kinds, true) && !\in_array(TypeSpec::STRING, $kinds, true) and \array_push($result, Recipes::string('5'), Recipes::string('5.5'), Recipes::string(' 5'), Recipes::string('5 apples'), Recipes::string('abc'));
         \in_array(TypeSpec::INT, $kinds, true) && !\in_array(TypeSpec::FLOAT, $kinds, true) and \array_push($result, Recipes::float(5.0), Recipes::float(5.5));
         \in_array(TypeSpec::STRING, $kinds, true) && !\in_array(TypeSpec::INT, $kinds, true) and \array_push($result, Recipes::int(5), Recipes::float(1.5));
-        \in_array(TypeSpec::FLOAT, $kinds, true) && !\in_array(TypeSpec::STRING, $kinds, true) and \array_push($result, Recipes::string('1.5'), Recipes::int(3));
+        \in_array(TypeSpec::FLOAT, $kinds, true) && !\in_array(TypeSpec::STRING, $kinds, true) and $result[] = Recipes::string('1.5');
+        \in_array(TypeSpec::FLOAT, $kinds, true) && !\in_array(TypeSpec::INT, $kinds, true) and $result[] = Recipes::int(3);
         if (\array_intersect($kinds, [TypeSpec::INT, TypeSpec::FLOAT, TypeSpec::STRING]) !== [] && !\in_array(TypeSpec::BOOL, $kinds, true)) {
             \array_push($result, Recipes::bool(true), Recipes::bool(false));
         }

@@ -58,6 +58,8 @@ final class Worker
             '-d', 'display_errors=0',
             '-d', 'log_errors=0',
             '-d', 'xdebug.mode=' . ($this->options->coverage === 'xdebug' ? 'coverage' : 'off'),
+            # pcov watches only src/, lib/ or app/ of the working directory by default.
+            '-d', 'pcov.directory=/',
             (string) HarnessFiles::worker(),
             $this->token,
         ];

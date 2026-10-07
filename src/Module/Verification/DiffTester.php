@@ -292,10 +292,10 @@ final class DiffTester
             );
         }
 
-        return $this->verdict($task, $original, $outcome, $feedback, $checked);
+        return $this->verdict($task, $original, $outcome, $feedback, $checked, $lines);
     }
 
-    private function verdict(DiffTask $task, Target $original, PropertyOutcome $outcome, Feedback $feedback, int $checked): Verdict
+    private function verdict(DiffTask $task, Target $original, PropertyOutcome $outcome, Feedback $feedback, int $checked, bool $lines): Verdict
     {
         $flags = $original->flags;
         $coverage = $feedback->percent();
@@ -343,6 +343,10 @@ final class DiffTester
         $effects = \array_values(\array_filter($flags, static fn(Flag $f): bool => $f === Flag::Io || $f === Flag::Global));
         if ($effects !== []) {
             return $base(VerdictStatus::Unverified, 'side effects (' . \implode(', ', Flag::values($effects)) . '): only the project\'s tests can prove the change');
+        }
+
+        if ($lines && $feedback->probes() === 0) {
+            return $base(VerdictStatus::Unverified, "{$this->config->coverageDriver->value} reported no lines of the function: its coverage is unknown");
         }
 
         if ($coverage < (float) $this->config->minBranchCoverage) {

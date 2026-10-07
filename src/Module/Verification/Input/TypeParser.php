@@ -121,13 +121,13 @@ final class TypeParser
      */
     public function var(?string $doc): ?TypeSpec
     {
+        $type = null;
+        # The last one wins: tags() puts the Psalm/PHPStan-prefixed ones last.
         foreach ($this->tags($doc, ['@var', '@psalm-var', '@phpstan-var']) as $tag) {
-            if ($tag instanceof VarTagValueNode) {
-                return $this->doc($tag->type);
-            }
+            $tag instanceof VarTagValueNode and $type = $this->doc($tag->type) ?? $type;
         }
 
-        return null;
+        return $type;
     }
 
     private static function bound(Type\TypeNode $node): ?int

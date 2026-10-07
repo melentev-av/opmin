@@ -220,6 +220,11 @@ final class VerifierTrapsTest
             'function f() { static $n = 0; return ++$n; }',
             'App\f',
         ];
+        yield 'loop without braces gets them' => [
+            'function f(array $xs) { foreach ($xs as $x) if ($x > 0) return $x; return 0; }',
+            'function f(array $xs) { foreach ($xs as $x) { if ($x > 0) { return $x; } } return 0; }',
+            'App\f',
+        ];
         yield 'closure body simplified' => [
             'function make(int $k) { return function (int $x) use ($k) { $r = $x * $k; return $r; }; }',
             'function make(int $k) { return function (int $x) use ($k) { return $x * $k; }; }',

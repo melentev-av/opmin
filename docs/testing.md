@@ -96,11 +96,12 @@ Prefer this over `CommandTester` for anything that touches config discovery (it 
 
 ```php
 #[TestRectorFixtures('Fixture/ExtractRepeatedPropertyFetch')]   // relative to the rule file
-final class ExtractRepeatedPropertyFetchRector extends AbstractRector { ... }
+final class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedReadRector { ... }
 ```
 
+- opmin's rules live in `src/Rector/Rule/`, their fixtures in `src/Rector/Rule/Fixture/<Rule>/*.php.inc`.
 - Fixture `*.php.inc`: input, a line `-----`, expected output. **No separator = the rule must not change the
-  code** — write every negative case and every trap this way.
+  code** — write every negative case and every trap this way, and name traps `trap_*.php.inc`.
 - The `rector` suite with `RectorTestingPlugin` finds rules with the attribute in its locations and runs each
   fixture as a data set (`SmokeRector::fixture:0:0`). Each rule gets a fresh Rector container.
 - Coverage of fixtures is scoped to the rule automatically; add `#[Covers(Rule::class)]` + `#[Covers(Helper::class)]`
@@ -108,9 +109,28 @@ final class ExtractRepeatedPropertyFetchRector extends AbstractRector { ... }
 - **Configurable rules: not supported.** `RectorRunner` registers the rule with `$rectorConfig->rule($rule)`
   without configuration; its constructor accepts `$sets`, but `RectorFixtureInterceptor` never passes them
   (testo/bridge-rector 0.3.3). So a fixture always runs the rule with its defaults. Until this is fixed upstream
-  (candidate issue/PR to php-testo/testo), test non-default parameters (`min_reads`) with a small subclass of the
-  rule that fixes the parameter in its constructor, placed next to the fixtures in `tests/Rector`.
-- Smoke rule: `tests/Rector/SmokeRector.php` keeps the suite meaningful until opmin's own rules exist.
+  (candidate issue/PR to php-testo/testo), test non-default options with a small subclass of the rule that calls
+  `configure()` in its constructor, placed next to its fixtures in `tests/Rector` — see
+  `tests/Rector/FullyQualifyGlobalCallsWithMocksRector.php` (the rule is not final for that, with a comment).
+- The rules get the project's data (the shadow index, the internal functions of `php.binary`) through options;
+  without options they fall back to an empty index and the PHP running the tests.
+- **Positive fixtures must save opcodes**: `tests/Integration/Rector/RuleGainTest.php` counts the input and the
+  expected output of every positive fixture under `php.binary` (the CI matrix: 8.1–8.5). It caught a fixture the
+  optimizer folds into a constant anyway — a fixture that saves nothing proves nothing about the rule.
+- `bin/bench` measures the opcode effect of the rules' rewrites on a `php.binary` (`--php=`); the defaults
+  (`min_reads`) and the claims in the rule docblocks come from it.
+- Smoke rule: `tests/Rector/SmokeRector.php`.
+
+## The optimize pipeline
+
+- `tests/Unit/Module/Optimize/`: the line diff (a property test rebuilds both texts from the patch), units and
+  splicing, readability metrics, the signature gate.
+- `tests/Integration/Module/Optimize/`: the formatter (a fake formatter script run through `php.binary`), the rule
+  catalog (sets are expanded in a PHP process of their own: Rector keeps registered rules in static state).
+- `tests/Integration/Command/OptimizeTest.php`: `opmin optimize` as a process on a small git project — a commit per
+  step, rolled-back functions with their reasons, copy mode, dry run, a dirty tree. With `TMPDIR` inside this
+  repository (the Docker wrapper) the test project sits in an ignored directory of opmin's own repository: the
+  workspace treats a project whose files git does not track as not under git.
 
 ## Property tests (`rasuvaeff/property-testing-testo`)
 
@@ -125,6 +145,7 @@ public static function intRoundTripsThroughStringGenerators(): array   // <metho
 }
 ```
 
+- Lists: `Gen::arrayOf(Gen::elements([...]), $min, $max)` (there is no `listOf`).
 - No plugin registration: `#[Property]` registers itself. Do not combine with `#[DataProvider]` or
   `#[ExpectException]` (use `#[Property(throws: X::class)]`).
 - A failure prints the shrunk counterexample and a seed: reproduce with `#[Property(seed: N)]` or `PROPERTY_SEED=N`.
@@ -210,6 +231,11 @@ Opcode counts depend on the PHP that compiles the code (`php.binary`), not on th
   the magic literal, `exit()`/hang of the changed version as a result, nondeterminism, static chains, closures,
   mocks); `VerifierTrapsTest` is the table of traps and equivalent pairs of the brief.
 - With php.binary in Docker every worker start is a container start: a run takes seconds, not milliseconds.
+
+## Code style of the tests
+
+Run `composer cs:fix` (or `cs:diff`), not `php-cs-fixer fix <path>`: with explicit paths PHP-CS-Fixer ignores the
+config's exclusions and reformats `tests/Fixtures`, whose lines and opcodes are compared with captured dumps.
 
 ## A test that cannot fail is worse than no test
 

@@ -156,7 +156,6 @@
                             },
                             "default": [
                                 "DEAD_CODE",
-                                "EARLY_RETURN",
                                 "CODE_QUALITY",
                                 "UP_TO_PHP_TARGET"
                             ]
@@ -169,11 +168,12 @@
                                 "minLength": 1
                             },
                             "default": [
-                                "Rector\\CodeQuality\\Rector\\If_\\SimplifyIfReturnBoolRector",
-                                "Rector\\CodeQuality\\Rector\\Assign\\CombinedAssignRector",
+                                "Rector\\CodeQuality\\Rector\\FuncCall\\SingleInArrayToCompareRector",
+                                "Rector\\CodeQuality\\Rector\\FuncCall\\SimplifyFuncGetArgsCountRector",
+                                "Rector\\CodeQuality\\Rector\\Identical\\StrlenZeroToIdenticalEmptyStringRector",
+                                "Rector\\CodeQuality\\Rector\\Ternary\\UnnecessaryTernaryExpressionRector",
                                 "Rector\\DeadCode\\Rector\\Assign\\RemoveUnusedVariableAssignRector",
-                                "Rector\\EarlyReturn\\Rector\\If_\\ChangeNestedIfsToEarlyReturnRector",
-                                "Rector\\CodeQuality\\Rector\\Class_\\InlineConstructorDefaultToPropertyRector"
+                                "Rector\\DeadCode\\Rector\\Return_\\RemoveDeadConditionAboveReturnRector"
                             ]
                         },
                         "skip": {

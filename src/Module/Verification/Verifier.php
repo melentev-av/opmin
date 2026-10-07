@@ -246,7 +246,7 @@ final class Verifier
                 $backup = $work->join('backup-' . \bin2hex(\random_bytes(4)) . '.php');
                 \file_put_contents((string) $backup, $original);
                 $backups[] = [$file, $original, $backup];
-                \file_put_contents((string) $file, $candidate);
+                FS::replace((string) $file, $candidate);
             }
 
             $new = [];
@@ -269,7 +269,7 @@ final class Verifier
             return [$new, $after, null, $own, $testsOf];
         } finally {
             foreach ($backups as [$file, $original, $backup]) {
-                \file_put_contents((string) $file, $original);
+                FS::replace((string) $file, $original);
                 FS::removeFile($backup);
             }
         }

@@ -16,12 +16,23 @@ final class FS
     /**
      * Creates a directory.
      *
-     * @param non-empty-string|Path $path Path to the directory to create
-     * @param int $mode Directory permissions (default: 0777)
-     * @param bool $recursive Whether to create parent directories if they do not exist (default: true)
-     *
      * @throws \RuntimeException If the directory could not be created
      */
+    /**
+     * Replaces a file's content through a temporary file and a rename: the file gets a new inode.
+     * A process that sees the project through a Docker bind mount (a `php.binary` wrapper) may keep
+     * the size of a file rewritten in place and read it truncated; a renamed file is read anew.
+     */
+    public static function replace(string|Path $file, string $content): void
+    {
+        $file = (string) $file;
+        $tmp = $file . '.opmin-' . \bin2hex(\random_bytes(4)) . '.tmp';
+        \file_put_contents($tmp, $content);
+        $perms = @\fileperms($file);
+        $perms === false or @\chmod($tmp, $perms & 0777);
+        \rename($tmp, $file) or throw new \RuntimeException("Cannot replace `{$file}`.");
+    }
+
     public static function mkdir(string|Path $path, int $mode = 0777, bool $recursive = true): void
     {
         $path = (string) $path;

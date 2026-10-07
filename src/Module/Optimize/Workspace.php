@@ -75,7 +75,7 @@ final class Workspace
     public function write(Path $file, string $content): void
     {
         $this->backup($file);
-        \file_put_contents((string) $file, $content);
+        FS::replace((string) $file, $content);
     }
 
     /**
@@ -148,7 +148,7 @@ final class Workspace
 
         if ($this->dryRun) {
             foreach ($this->originals as $relative => $original) {
-                \file_put_contents((string) $this->project->root->join($relative), $original);
+                FS::replace((string) $this->project->root->join($relative), $original);
             }
         }
 

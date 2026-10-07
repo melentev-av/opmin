@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Opmin\Module\Optimize;
 
 use Internal\Path;
+use Opmin\Module\Common\FileSystem\FS;
 use Opmin\Module\Analysis\Flag;
 use Opmin\Module\Analysis\IgnoreMarks;
 use Opmin\Module\Analysis\ReferenceIndex;
@@ -50,6 +51,9 @@ final class Optimizer
 
     /** @var array<non-empty-string, true> Files the formatter would change before any step: not formatted. */
     private array $unformatted = [];
+
+    /** @var array<string, string> Relative file => why its last counted content could not be counted. */
+    private array $countErrors = [];
 
     /** @var array<string, true> What the verifier could not check, once per run. */
     private array $verifierNotes = [];
@@ -233,7 +237,7 @@ final class Optimizer
         $after = Units::of($content, $relative);
         $plan = new FilePlan($current, $before, $after);
         if ($countsNew === null) {
-            $step->reject($relative, '', 'the changed file cannot be counted');
+            $step->reject($relative, '', 'the changed file cannot be counted: ' . ($this->countErrors[$relative] ?? 'no functions'));
             return $plan;
         }
 
@@ -521,7 +525,7 @@ final class Optimizer
             if ($content !== $this->current[$relative]) {
                 $this->workspace->backup($path, $this->current[$relative]);
                 $new[$relative] = $content;
-                \file_put_contents((string) $path, $this->current[$relative]);
+                FS::replace((string) $path, $this->current[$relative]);
             }
         }
 
@@ -605,6 +609,7 @@ final class Optimizer
     private function counted(array $files): CountResult
     {
         $result = $this->counter->count($this->project, $files);
+        $this->countErrors = $result->errors;
         if ($this->references === null) {
             return $result;
         }
@@ -624,13 +629,13 @@ final class Optimizer
     {
         try {
             foreach ($contents as $relative => $content) {
-                \file_put_contents((string) $this->paths[$relative], $content);
+                FS::replace((string) $this->paths[$relative], $content);
             }
 
             return $body();
         } finally {
             foreach (\array_keys($contents) as $relative) {
-                \file_put_contents((string) $this->paths[$relative], $this->current[$relative]);
+                FS::replace((string) $this->paths[$relative], $this->current[$relative]);
             }
         }
     }
@@ -638,7 +643,7 @@ final class Optimizer
     private function restoreAll(): void
     {
         foreach ($this->paths as $relative => $path) {
-            (string) @\file_get_contents((string) $path) === $this->current[$relative] or \file_put_contents((string) $path, $this->current[$relative]);
+            (string) @\file_get_contents((string) $path) === $this->current[$relative] or FS::replace((string) $path, $this->current[$relative]);
         }
     }
 
@@ -662,7 +667,7 @@ final class Optimizer
         foreach ($this->paths as $relative => $path) {
             if ((string) \file_get_contents((string) $path) !== $this->current[$relative]) {
                 $this->unformatted[$relative] = true;
-                \file_put_contents((string) $path, $this->current[$relative]);
+                FS::replace((string) $path, $this->current[$relative]);
             }
         }
 

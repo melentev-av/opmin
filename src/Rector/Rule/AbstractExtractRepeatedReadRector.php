@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Opmin\Rector\Rule;
 
+use Opmin\Rector\Support\ArgumentPassing;
 use Opmin\Rector\Support\FunctionBody;
 use Opmin\Rector\Support\ReadEvent;
 use Opmin\Rector\Support\ReadEventCollector;
@@ -16,7 +17,6 @@ use PHPStan\Reflection\ClassReflection;
 use PHPStan\Type\Type;
 use Rector\Contract\Rector\ConfigurableRectorInterface;
 use Rector\NodeTypeResolver\Node\AttributeKey;
-use Rector\NodeTypeResolver\PHPStan\ParametersAcceptorSelectorVariantsWrapper;
 use Rector\Rector\AbstractRector;
 use Rector\Reflection\ReflectionResolver;
 
@@ -229,7 +229,7 @@ abstract class AbstractExtractRepeatedReadRector extends AbstractRector implemen
             $this,
             fn(Expr $e): bool => $this->neverObject($e),
             fn(Expr\PropertyFetch $e): bool => $this->plainProperty($e),
-            fn(Expr\CallLike $call, int $position): ?bool => $this->byReference($call, $position),
+            fn(Expr\CallLike $call, int $position): ?bool => (new ArgumentPassing($this->reflectionResolver))->byReference($call, $position),
         );
         $events = $collector->collect($stmts);
         $tried = [];
@@ -291,35 +291,5 @@ abstract class AbstractExtractRepeatedReadRector extends AbstractRector implemen
             ReadEvent::BASE_WRITE => $event->base === null || $event->base === $read->base,
             default => false,
         };
-    }
-
-    /**
-     * @return ?bool null — the callee or its parameter is unknown.
-     */
-    private function byReference(Expr\CallLike $call, int $position): ?bool
-    {
-        $scope = self::scope($call);
-        if ($scope === null) {
-            return null;
-        }
-
-        try {
-            $reflection = $this->reflectionResolver->resolveFunctionLikeReflectionFromCall($call);
-            if ($reflection === null) {
-                return null;
-            }
-
-            $parameters = ParametersAcceptorSelectorVariantsWrapper::select($reflection, $call, $scope)->getParameters();
-        } catch (\Throwable) {
-            return null;
-        }
-
-        $parameter = $parameters[$position] ?? null;
-        if ($parameter === null) {
-            $last = $parameters === [] ? null : $parameters[\count($parameters) - 1];
-            $parameter = $last !== null && $last->isVariadic() ? $last : null;
-        }
-
-        return $parameter === null ? null : !$parameter->passedByReference()->no();
     }
 }

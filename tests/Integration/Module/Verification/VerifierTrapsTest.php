@@ -66,6 +66,11 @@ final class VerifierTrapsTest
             'function f() { return \time() + 1; }',
             'App\f',
         ];
+        yield '\\time() against a deadline escapes the clock mock' => [
+            'function expired(int $deadline) { return time() > $deadline; }',
+            'function expired(int $deadline) { return \\time() > $deadline; }',
+            'App\expired',
+        ];
         yield '"unused" variable removed next to compact()' => [
             'function f($a) { $b = $a * 2; return compact("a", "b"); }',
             'function f($a) { return compact("a", "b"); }',

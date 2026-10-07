@@ -50,6 +50,23 @@ final class LiteralPool
     }
 
     /**
+     * Adds numbers to the pool (and their neighbours), e.g. timestamps around the fake clock for a
+     * function that reads the time: a deadline compared with `time()` is decided there.
+     *
+     * @param list<int> $values
+     */
+    public function addInts(array $values): self
+    {
+        foreach ($values as $value) {
+            $this->int($value);
+        }
+
+        $this->ints = \array_values(\array_unique($this->ints));
+
+        return $this;
+    }
+
+    /**
      * Keys worth putting into generated arrays: keys of the body, then its strings and numbers
      * (`array_key_exists('x', $a)` names the key in a string).
      *

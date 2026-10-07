@@ -226,7 +226,13 @@ final class DiffTester
         };
 
         $feedback = new Feedback($probes);
-        $planner = new InputPlanner($signature, new ValueGenerator($classes, LiteralPool::collect($original->node, $changed->node)), $feedback, mixStrict: $signatureChanged);
+        $literals = LiteralPool::collect($original->node, $changed->node);
+        if (\in_array(Flag::Time, $original->flags, true) || \in_array(Flag::Time, $changed->flags, true)) {
+            $now = (int) self::CLOCK;
+            $literals->addInts([$now, $now + 60, $now - 60, $now + 3600, $now + 86400, $now - 86400]);
+        }
+
+        $planner = new InputPlanner($signature, new ValueGenerator($classes, $literals), $feedback, mixStrict: $signatureChanged);
         $shrinker = new RecipeShrinker($signature->required());
         $comparator = new ResultComparator(new ComparisonPolicy($this->config->warnings, $this->config->floatTolerance));
         $checked = 0;

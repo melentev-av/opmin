@@ -62,7 +62,11 @@ final readonly class RectorRunner
         $dir = $this->cacheDir->join('rector');
         FS::mkdir((string) $dir);
         $config = $dir->join('config-' . \hash('xxh128', \serialize([$rule, $files, $this->phpTarget])) . '.php');
-        \file_put_contents((string) $config, $this->config($rule, $files, $dir->join('cache')));
+        # A cache per rule: Rector hashes the config by the registered rules, which are the same for
+        # every rule taken out of one set — a shared cache would let the first rule hide the files
+        # from the others.
+        $cache = $dir->join('cache', \hash('xxh128', \serialize([$rule->class, $rule->options, $this->phpTarget])));
+        \file_put_contents((string) $config, $this->config($rule, $files, $cache));
 
         $process = new Process(
             [\PHP_BINARY, '-d', 'memory_limit=-1', self::binary(), 'process', '--config=' . (string) $config, '--output-format=json', '--no-progress-bar', '--no-diffs'],

@@ -1,7 +1,8 @@
 ---
 
-# Builds a release: the scoped PHAR and the static opmin binary (PHAR + static-php-cli micro) on native
-# runners — every platform is compiled on a machine of its own OS and architecture, no Docker, no emulation.
+# Builds a release: the scoped PHAR, the static opmin binary (PHAR + static-php-cli micro) and the Docker
+# images on native runners — every platform is compiled on a machine of its own OS and architecture, no
+# emulation.
 # Publishes the archives, the PHAR, sha256sum.txt and its signature (sha256sum.txt.sig, checked by
 # `opmin self-update` and install.sh), plus GitHub build provenance attestations (`gh attestation verify`).
 # Runs only when a version is released (`release: published`, see create-release.yml) or by hand.
@@ -207,6 +208,97 @@ jobs:
           path: ${{ env.ARCHIVE }}
           retention-days: 7
           if-no-files-found: error
+
+  # The images: the linux binary of each architecture plus the PHP of production as php.binary. Every
+  # architecture is built on its own native runner; the manifest job joins them under one tag.
+  docker:
+    name: 🐳 Docker ${{ matrix.arch }}
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            target: linux-x86_64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            target: linux-aarch64
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: docker
+
+      - name: 📥 Download the binary
+        uses: actions/download-artifact@v4
+        with:
+          name: opmin-${{ matrix.target }}
+          path: dist
+
+      - name: 🏷️ Version
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          echo "VERSION=${VERSION:-dev}" >> "$GITHUB_ENV"
+          mkdir -p docker/context
+          tar -xzf dist/opmin-*-${{ matrix.target }}.tar.gz -C docker/context opmin
+
+      - name: 🔑 Log in to ghcr.io
+        if: env.RELEASE_TAG != ''
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Each image must count opcodes, start the harness and reject a changed behavior before it is pushed.
+      - name: 🐳 Build, test and push
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke/src"
+          printf '<?php\nfunction twice(int $x): int { return $x * 2; }\n' > "$RUNNER_TEMP/smoke/src/a.php"
+          printf '<?php\nfunction twice(int $x): int { return $x * 3; }\n' > "$RUNNER_TEMP/smoke/other.php"
+          for php in 8.1 8.2 8.3 8.4 8.5; do
+            tag="$IMAGE:$VERSION-php$php-${{ matrix.arch }}"
+            docker build --pull --build-arg PHP="$php" -t "$tag" -f docker/Dockerfile docker/context
+            run() { docker run --rm -v "$RUNNER_TEMP/smoke:/app" "$tag" "$@"; }
+            run opmin doctor
+            run opmin count src/a.php
+            if run opmin verify src/a.php other.php; then echo "::error::php$php: a changed behavior was accepted"; exit 1; fi
+            [ -z "$RELEASE_TAG" ] || docker push "$tag"
+          done
+
+  docker-manifest:
+    name: 🐳 Docker manifests
+    needs: docker
+    if: ${{ inputs.tag || github.event.release.tag_name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      packages: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+    steps:
+      - name: 🔑 Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🐳 Join the architectures
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          for php in 8.1 8.2 8.3 8.4 8.5; do
+            docker buildx imagetools create -t "$IMAGE:$VERSION-php$php" -t "$IMAGE:php$php" \
+              "$IMAGE:$VERSION-php$php-amd64" "$IMAGE:$VERSION-php$php-arm64"
+          done
 
   # One job attaches every asset: parallel uploads to the same release race and drop assets.
   # It publishes only when every platform is built: a release without one binary would break install.sh there.

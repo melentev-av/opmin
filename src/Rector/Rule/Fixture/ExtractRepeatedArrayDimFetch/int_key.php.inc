@@ -2,10 +2,13 @@
 
 namespace App\Dim4;
 
-function first(): int
+function first(array $list): int
 {
-    $list = [10, 20];
-    return $list[0] + $list[0] + $list[1];
+    if (isset($list[0])) {
+        return $list[0] + $list[0] * 2;
+    }
+
+    return 0;
 }
 
 ?>
@@ -14,11 +17,14 @@ function first(): int
 
 namespace App\Dim4;
 
-function first(): int
+function first(array $list): int
 {
-    $list = [10, 20];
-    $list0 = $list[0];
-    return $list0 + $list0 + $list[1];
+    if (isset($list[0])) {
+        $list0 = $list[0];
+        return $list0 + $list0 * 2;
+    }
+
+    return 0;
 }
 
 ?>

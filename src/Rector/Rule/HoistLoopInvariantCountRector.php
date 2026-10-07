@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Opmin\Rector\Rule;
 
-use Opmin\Module\Analysis\Shadow\ShadowIndex;
 use Opmin\Rector\Support\ArgumentPassing;
 use Opmin\Rector\Support\FunctionBody;
 use Opmin\Rector\Support\ReadEvent;
@@ -15,8 +14,6 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt;
 use PHPStan\Analyser\Scope;
-use PHPStan\Reflection\ReflectionProvider;
-use Rector\Contract\Rector\ConfigurableRectorInterface;
 use Rector\NodeTypeResolver\Node\AttributeKey;
 use Rector\Rector\AbstractRector;
 use Rector\Reflection\ReflectionResolver;
@@ -34,47 +31,23 @@ use Testo\Bridge\Rector\Testing\TestRectorFixtures;
  *
  * Fires only when `$a` is a local variable whose native type is an array (`Countable::count()` may
  * have its own logic), not bound by reference, nothing in the loop writes to it or may pass it by
- * reference, and `count` is the global function (brief 2.3).
+ * reference, and the call is the qualified global `\count()`.
  *
  * @internal
  */
 #[TestRectorFixtures('Fixture/HoistLoopInvariantCount')]
-final class HoistLoopInvariantCountRector extends AbstractRector implements ConfigurableRectorInterface
+final class HoistLoopInvariantCountRector extends AbstractRector
 {
-    public const string SHADOWS = 'shadows';
-
     /** The gain is in executed opcodes, not in static ones: accepted when the static count does not grow. */
     public const bool EXECUTED_GAIN = true;
 
-    private ShadowIndex $shadows;
-
     public function __construct(
-        private readonly ReflectionProvider $reflectionProvider,
         private readonly ReflectionResolver $reflectionResolver,
-    ) {
-        $this->shadows = new ShadowIndex();
-    }
+    ) {}
 
     public static function alias(): string
     {
         return 'count';
-    }
-
-    /**
-     * @param array<array-key, mixed> $configuration `shadows`: JSON file (or array) of {@see ShadowIndex::toArray()}.
-     */
-    public function configure(array $configuration): void
-    {
-        /** @var mixed $shadows */
-        $shadows = $configuration[self::SHADOWS] ?? null;
-        if (\is_string($shadows)) {
-            $raw = @\file_get_contents($shadows);
-            $raw === false and throw new \InvalidArgumentException(self::class . ": cannot read `{$shadows}`.");
-            /** @var mixed $shadows */
-            $shadows = \json_decode($raw, true, flags: \JSON_THROW_ON_ERROR);
-        }
-
-        \is_array($shadows) and $this->shadows = ShadowIndex::fromArray($shadows);
     }
 
     public function getRuleDefinition(): RuleDefinition
@@ -147,23 +120,21 @@ final class HoistLoopInvariantCountRector extends AbstractRector implements Conf
 
         /** @var mixed $scope */
         $scope = $var->getAttribute(AttributeKey::SCOPE);
-        if (!$scope instanceof Scope || !$scope->getNativeType($var)->isArray()->yes() || !$this->globalCount($call->name, $scope)) {
+        if (!$scope instanceof Scope || !$scope->getNativeType($var)->isArray()->yes() || !$this->globalCount($call->name)) {
             return null;
         }
 
         return $var->name;
     }
 
-    private function globalCount(Name $name, Scope $scope): bool
+    /**
+     * `\count()` or `count()` imported with `use function count;`. An unqualified `count()` in a
+     * namespace is left alone: hoisting it adds an opcode (measured by `bin/bench`), and
+     * {@see FullyQualifyGlobalCallsRector} runs first and qualifies it when that is safe.
+     */
+    private function globalCount(Name $name): bool
     {
-        if ($name->isFullyQualified() || $name->getAttribute('resolvedName') !== null) {
-            return $name->isFullyQualified() || \strtolower((string) $name->getAttribute('resolvedName')) === 'count';
-        }
-
-        $namespace = (string) $scope->getNamespace();
-
-        return $namespace === '' || ($this->shadows->canQualifyFunction($namespace, 'count')
-            && !$this->reflectionProvider->hasFunction(new Name\FullyQualified($namespace . '\count'), null));
+        return $name->isFullyQualified() || \strtolower((string) $name->getAttribute('resolvedName')) === 'count';
     }
 
     /**

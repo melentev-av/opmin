@@ -6,7 +6,7 @@ final class Printer
 {
     public function print(array $lines, string $n): void
     {
-        for ($i = 0; count($lines) > $i; ++$i) {
+        for ($i = 0; \count($lines) > $i; ++$i) {
             $this->line($lines[$i] . $n);
         }
     }
@@ -27,7 +27,7 @@ final class Printer
 {
     public function print(array $lines, string $n): void
     {
-        for ($i = 0, $n2 = count($lines); $n2 > $i; ++$i) {
+        for ($i = 0, $n2 = \count($lines); $n2 > $i; ++$i) {
             $this->line($lines[$i] . $n);
         }
     }

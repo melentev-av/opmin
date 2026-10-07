@@ -36,7 +36,10 @@ use Testo\Bridge\Rector\Testing\TestRectorFixtures;
  * - `symbols`: JSON file `{"functions": [...], "constants": [...]}` with the internal functions and
  *   constants of `php.binary` (default: of the PHP running Rector).
  *
+ * Not final: the tests fix the options in a subclass (testo/bridge-rector passes none).
+ *
  * @internal
+ * @psalm-suppress ClassMustBeFinal
  */
 #[TestRectorFixtures('Fixture/FullyQualifyGlobalCalls')]
 class FullyQualifyGlobalCallsRector extends AbstractRector implements ConfigurableRectorInterface

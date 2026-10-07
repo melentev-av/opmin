@@ -100,7 +100,7 @@ final class TestRunnersTest
 
         Assert::same([$all->success, $all->failed], [false, ['T::testBad']]);
         Assert::same([$filtered->success, $filtered->tests], [true, 1]);
-        Assert::same(\array_slice($args, -2), ['--filter', '/^(?:T\:\:testOk)(?: with data set .*)?$/']);
+        Assert::same(\array_slice($args, -2), ['--filter', '/^(?:T\:\:testOk(?: with data set .*)?)$/']);
         Assert::true(PhpUnitAdapter::detect($this->project()));
     }
 

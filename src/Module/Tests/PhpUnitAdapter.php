@@ -40,18 +40,15 @@ class PhpUnitAdapter implements TestRunnerAdapter
     }
 
     /**
-     * `--filter` regex that runs exactly the given tests, with all their data sets.
+     * `--filter` regex that runs exactly the given tests. A test id names a data set the way coverage
+     * reports do (`T::m#0`, `T::m#name`); PHPUnit filters on `T::m with data set #0` / `"name"`. An id
+     * without a data set runs all of them.
      *
      * @param non-empty-list<non-empty-string> $testIds
      */
     public static function filter(array $testIds): string
     {
-        $alternatives = \array_map(
-            static fn(string $id): string => \preg_quote((string) \preg_replace('/ with data set .*$/', '', $id), '/'),
-            $testIds,
-        );
-
-        return '/^(?:' . \implode('|', \array_values(\array_unique($alternatives))) . ')(?: with data set .*)?$/';
+        return '/^(?:' . \implode('|', \array_values(\array_unique(self::alternatives($testIds)))) . ')$/';
     }
 
     /**
@@ -81,7 +78,7 @@ class PhpUnitAdapter implements TestRunnerAdapter
             return new TestResult(true);
         }
 
-        return $this->runJunit(['--filter', self::filter($testIds)]);
+        return $this->runJunit(['--filter', static::filter($testIds)]);
     }
 
     public function collectCoverageMap(): ?CoverageMap
@@ -118,6 +115,29 @@ class PhpUnitAdapter implements TestRunnerAdapter
         return "<?php\n\n" . self::strictTypes($strict) . "use PHPUnit\\Framework\\TestCase;\n\n"
             . "/**\n * " . \str_replace("\n", "\n * ", $description) . "\n */\n"
             . "final class {$name} extends TestCase\n{\n    public function testBehaviorIsKept(): void\n    {\n{$body}    }\n}\n";
+    }
+
+    /**
+     * Regex alternatives of {@see self::filter()}, one per test id.
+     *
+     * @param list<non-empty-string> $testIds
+     * @return list<string>
+     */
+    protected static function alternatives(array $testIds): array
+    {
+        $alternatives = [];
+        foreach ($testIds as $id) {
+            if (\preg_match('/^(.+?)(?:#(.+)| with data set (.+))$/s', $id, $m) === 1) {
+                $set = $m[2] !== '' ? $m[2] : $m[3];
+                $set = \preg_match('/^#?\d+$/', $set) === 1 ? '#' . \ltrim($set, '#') : '"' . \trim($set, '"') . '"';
+                $alternatives[] = \preg_quote($m[1] . ' with data set ' . $set, '/');
+                continue;
+            }
+
+            $alternatives[] = \preg_quote($id, '/') . '(?: with data set .*)?';
+        }
+
+        return $alternatives;
     }
 
     protected static function requires(Project $project, string $package): bool

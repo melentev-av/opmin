@@ -10,6 +10,7 @@ use Opmin\Module\Tests\CommandLine;
 use Opmin\Module\Tests\CoverageMap;
 use Opmin\Module\Tests\CoverageXmlReport;
 use Opmin\Module\Tests\JunitReport;
+use Opmin\Module\Tests\PestAdapter;
 use Opmin\Module\Tests\PhpUnitAdapter;
 use Testo\Assert;
 use Testo\Codecov\Covers;
@@ -22,6 +23,7 @@ use Testo\Test;
 #[Covers(CommandLine::class)]
 #[Covers(PhpStanResult::class)]
 #[Covers(PhpStanRunner::class)]
+#[Covers(PestAdapter::class)]
 final class ReportsTest
 {
     private const FIXTURES = __DIR__ . '/../../../Fixtures/Tests';
@@ -47,12 +49,33 @@ final class ReportsTest
 
     public function filterMatchesExactlyTheTestsWithTheirDataSets(): void
     {
-        $filter = PhpUnitAdapter::filter(['Tests\MathTest::testAdds', 'Tests\MathTest::testDivides with data set #0']);
+        $filter = PhpUnitAdapter::filter(['Tests\MathTest::testAdds', 'Tests\MathTest::testDivides with data set #0', 'Tests\MathTest::testRounds#half up']);
 
         Assert::same(\preg_match($filter, 'Tests\MathTest::testAdds'), 1);
-        Assert::same(\preg_match($filter, 'Tests\MathTest::testDivides with data set "big"'), 1);
+        Assert::same(\preg_match($filter, 'Tests\MathTest::testAdds with data set #3'), 1);
+        Assert::same(\preg_match($filter, 'Tests\MathTest::testDivides with data set #0'), 1);
+        Assert::same(\preg_match($filter, 'Tests\MathTest::testDivides with data set #1'), 0);
+        Assert::same(\preg_match($filter, 'Tests\MathTest::testRounds with data set "half up"'), 1);
+        Assert::same(\preg_match($filter, 'Tests\MathTest::testRounds with data set "half down"'), 0);
         Assert::same(\preg_match($filter, 'Tests\MathTest::testAddsMore'), 0);
         Assert::same(\preg_match($filter, 'Other\MathTest::testAdds'), 0);
+    }
+
+    public function pestFilterRestoresDescriptionsFromEvaluableNames(): void
+    {
+        $filter = PestAdapter::filter([
+            'P\Tests\ObviousTest::__pest_evaluable_sum_of_even_numbers',
+            'P\Tests\ObviousTest::__pest_evaluable_describe#dataset "array"',
+            'P\Tests\Feature\ApiTest::__pest_evaluable_it_returns_a_snake__case_key',
+            'Tests\Unit\PlainTest::testPlain',
+        ]);
+
+        Assert::same(\preg_match($filter, 'Tests\ObviousTest::sum of even numbers'), 1);
+        Assert::same(\preg_match($filter, 'Tests\ObviousTest::sum of odd numbers'), 0);
+        Assert::same(\preg_match($filter, 'Tests\ObviousTest::describe with data set "dataset "array""'), 1);
+        Assert::same(\preg_match($filter, 'Tests\ObviousTest::describe with data set "dataset "string""'), 0);
+        Assert::same(\preg_match($filter, 'Tests\Feature\ApiTest::it returns a snake_case key'), 1);
+        Assert::same(\preg_match($filter, 'Tests\Unit\PlainTest::testPlain'), 1);
     }
 
     public function splitsCommandsLikeAShell(): void

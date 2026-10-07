@@ -182,14 +182,17 @@ Opcode counts depend on the PHP that compiles the code (`php.binary`), not on th
   `expected.php` by reading the new dumps, and check the result with awk.
 - **`OPMIN_TEST_PHP_BINARY`** selects `php.binary` for the integration tests (default: the PHP running the tests,
   see `tests/Integration/TestPhp.php`). CI runs the integration suite with 8.1–8.5 (job `🔢 Opcodes`). Locally,
-  a Docker wrapper works if it mounts the repository at the same path and the temp directory is inside it:
+  a Docker wrapper works if it mounts the repository at the same path and the temp directory is inside it.
+  `bin/playground wrapper 8.1` writes one for the `opmin-dev:8.1` image (`playground-seeds/docker/Dockerfile`:
+  the official `php:8.1-cli` plus pcov, pcntl and composer — what a developer machine may lack):
   ```bash
-  printf '#!/bin/sh\nexec docker run --rm -i --init -v "%s:%s" -w "$PWD" php:8.1-cli php "$@"\n' "$PWD" "$PWD" > playground/.bin/php8.1
-  chmod +x playground/.bin/php8.1
+  bin/playground wrapper 8.1
   TMPDIR=$PWD/playground/.tmp OPMIN_TEST_PHP_BINARY=$PWD/playground/.bin/php8.1 composer test:integration
   ```
-  `--init` matters: opmin stops a hung harness worker with SIGTERM, which `docker run` forwards to the container;
-  without an init process PHP as PID 1 ignores it and the container keeps running after the client is gone.
+  The wrapper runs `docker run --init`: opmin stops a hung harness worker with SIGTERM, which `docker run` forwards
+  to the container; without an init process PHP as PID 1 ignores it and the container outlives the client.
+  `bin/playground run --all --php=8.4` runs the playground with such a php.binary: with pcov the project's tests
+  get coverage maps, so selective test runs and the `tests` status of `opmin verify` are exercised too.
 - **Harness tests** — `tests/Integration/Module/Harness/WorkerTest.php` drives `harness/worker.php` under the same
   php.binary through the orchestrator's client: protocol, recipes, descriptions, `exit()`, fatal errors, timeouts.
 - **Property test of the whole chain** — `tests/Integration/Module/Opcode/CountPropertyTest.php` generates valid

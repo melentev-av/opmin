@@ -83,7 +83,7 @@ final class Verifier
         $testResult = null;
         $coverage = null;
         if ($withTests) {
-            [$phpstan, $testResult, $coverage, $red] = $this->levelsOneAndTwo($file, $original, $candidate, $runner, $work, $notes);
+            [$phpstan, $testResult, $coverage, $red] = $this->levelsOneAndTwo($file, $original, $candidate, $runner, $work, $notes, $changed, $relative);
             if ($red !== null) {
                 # Tests red on the original code prove nothing about a change.
                 return new CandidateReport([], null, [], $runner?->name(), $red, $notes);
@@ -120,10 +120,12 @@ final class Verifier
 
     /**
      * @param list<string> $notes
+     * @param list<non-empty-string> $changed
+     * @param non-empty-string $relative
      * @return array{list<array{file: string, message: string, identifier: string, line: int}>, ?TestResult, ?CoverageMap, ?TestResult} New
      *         PHPStan errors, tests on the candidate, coverage map, tests on the original when they are red.
      */
-    private function levelsOneAndTwo(Path $file, string $original, string $candidate, ?TestRunnerAdapter $runner, Path $work, array &$notes): array
+    private function levelsOneAndTwo(Path $file, string $original, string $candidate, ?TestRunnerAdapter $runner, Path $work, array &$notes, array $changed, string $relative): array
     {
         $phpstan = new PhpStanRunner($this->project, $this->php, $this->commands->phpstan, $this->phpTarget, $work);
         $phpstan->available() or $notes[] = 'PHPStan is not installed (commands.phpstan): the static check is skipped.';
@@ -156,7 +158,18 @@ final class Verifier
             }
 
             $after = null;
-            if ($runner !== null) {
+            if ($runner !== null && $coverage !== null) {
+                # Only the tests that execute a changed function can see the change.
+                $selected = [];
+                foreach ($changed as $key) {
+                    [$from, $to] = $this->lines($original, $key, $relative);
+                    \array_push($selected, ...$coverage->tests((string) $file, $from, $to));
+                }
+
+                $selected = \array_values(\array_unique($selected));
+                ($this->log)('Project tests on the changed code: ' . \count($selected) . ' that execute the changed functions');
+                $after = $runner->runFiltered($selected);
+            } elseif ($runner !== null) {
                 ($this->log)('Project tests on the changed code');
                 $after = $runner->runAll();
             }

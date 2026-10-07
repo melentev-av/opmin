@@ -7,8 +7,9 @@ namespace Opmin\Module\Tests;
 use Opmin\Module\Project\Project;
 
 /**
- * Pest runs on PHPUnit: the same JUnit report, `--filter` and coverage XML; tests are named by their
- * descriptions.
+ * Pest runs on PHPUnit: the same JUnit report, `--filter` and coverage XML. A test is a method
+ * `__pest_evaluable_<description>` of a generated class `P\Tests\FooTest`, and that is how coverage
+ * names it; `--filter` however matches `Tests\FooTest::<description>` (the class without `P\`).
  *
  * @internal
  */
@@ -19,6 +20,43 @@ final class PestAdapter extends PhpUnitAdapter
         return $project->root->join('vendor/bin/pest')->isFile()
             || $project->root->join('tests/Pest.php')->isFile()
             || self::requires($project, 'pestphp/pest');
+    }
+
+    /**
+     * `--filter` regex from coverage ids (`P\Tests\FooTest::__pest_evaluable_sums_numbers#dataset "big"`):
+     * the description is restored as a pattern — the evaluable name replaced every character outside
+     * `[A-Za-z0-9]` by `_` and doubled the description's own `_`.
+     *
+     * @param non-empty-list<non-empty-string> $testIds
+     */
+    public static function filter(array $testIds): string
+    {
+        $alternatives = [];
+        $other = [];
+        foreach ($testIds as $id) {
+            if (\preg_match('/^(?:P\\\\)?(.+?)::__pest_evaluable_(.+?)(?:#(.+))?$/s', $id, $m) !== 1) {
+                $other[] = $id;
+                continue;
+            }
+
+            $description = '';
+            $parts = \preg_split('/(_+)/', $m[2], -1, \PREG_SPLIT_DELIM_CAPTURE | \PREG_SPLIT_NO_EMPTY);
+            foreach ($parts === false ? [] : $parts as $part) {
+                $description .= $part[0] === '_'
+                    ? \str_repeat('(?:_|[^A-Za-z0-9\x80-\xff])', \intdiv(\strlen($part), 2)) . (\strlen($part) % 2 === 1 ? '[^A-Za-z0-9\x80-\xff]' : '')
+                    : \preg_quote($part, '/');
+            }
+
+            $set = isset($m[3]) && $m[3] !== ''
+                ? ' with data set "' . \preg_quote($m[3], '/') . '"'
+                : '(?: with data set .*)?';
+            $alternatives[] = '(?:P\\\\)?' . \preg_quote($m[1], '/') . '::' . $description . $set;
+        }
+
+        # Ids of plain PHPUnit test classes run by Pest.
+        \array_push($alternatives, ...self::alternatives($other));
+
+        return '/^(?:' . \implode('|', $alternatives) . ')$/i';
     }
 
     public function name(): string

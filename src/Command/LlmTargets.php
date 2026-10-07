@@ -64,7 +64,7 @@ final class LlmTargets extends LlmStage
         $ignore = $this->container->get(Schema\Ignore::class);
         $counts = $this->counter($php, $this->cacheDir($project))->count($project, $files);
         $targets = (new TargetSelector($project, $ignore))->select($counts, $llm->topN);
-        $session = Session::start($project->root->join('runs', \date('Ymd-His')), $targets, $php->version);
+        $session = Session::start($this->newRunDir($project), $targets, $php->version);
 
         $data = [
             'run' => $project->relative($session->runDir),

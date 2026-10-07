@@ -52,6 +52,11 @@ final class Diff extends Base
             return Command::INVALID;
         }
 
+        if ($diff->warnings !== []) {
+            $error = $output instanceof ConsoleOutputInterface ? $output->getErrorOutput() : $output;
+            (new SymfonyStyle($input, $error))->warning($diff->warnings);
+        }
+
         /** @param list<array{key: non-empty-string, before: int, after: int, delta: int}> $items */
         $rows = static fn(array $items): array => \array_map(
             /** @param array{key: non-empty-string, before: int, after: int, delta: int} $r */

@@ -18,6 +18,8 @@ final readonly class Attempt
      * @param non-empty-string $candidate The source, relative to the run directory.
      * @param string|null $before The file before an accepted attempt, relative to the run directory.
      * @param array<string, mixed>|null $counterexample The shrunk input on which the versions differ.
+     * @param list<array<string, mixed>>|null $checks How the verifier proved an accepted attempt
+     *        ({@see \Opmin\Module\Optimize\StepReport::check()}).
      */
     public function __construct(
         public int $number,
@@ -31,6 +33,7 @@ final readonly class Attempt
         public ?string $commit = null,
         public ?string $before = null,
         public ?array $counterexample = null,
+        public ?array $checks = null,
     ) {}
 
     /**
@@ -38,7 +41,7 @@ final readonly class Attempt
      */
     public static function fromArray(array $data): self
     {
-        /** @var array{n: positive-int, function: non-empty-string, file: non-empty-string, accepted: bool, gain: int, reason: string, candidate: non-empty-string, status?: string|null, commit?: string|null, before?: string|null, counterexample?: array<string, mixed>|null} $data */
+        /** @var array{n: positive-int, function: non-empty-string, file: non-empty-string, accepted: bool, gain: int, reason: string, candidate: non-empty-string, status?: string|null, commit?: string|null, before?: string|null, counterexample?: array<string, mixed>|null, checks?: list<array<string, mixed>>|null} $data */
         return new self(
             $data['n'],
             $data['function'],
@@ -51,6 +54,7 @@ final readonly class Attempt
             $data['commit'] ?? null,
             $data['before'] ?? null,
             $data['counterexample'] ?? null,
+            $data['checks'] ?? null,
         );
     }
 
@@ -71,6 +75,7 @@ final readonly class Attempt
             'candidate' => $this->candidate,
             'before' => $this->before,
             'counterexample' => $this->counterexample,
+            'checks' => $this->checks,
         ], static fn(mixed $v): bool => $v !== null);
     }
 }

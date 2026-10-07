@@ -100,7 +100,7 @@ final class OptimizeTest
         Assert::same(\trim($this->git('status', '--porcelain')), '');
 
         $report = $this->report();
-        Assert::true($report['ops_after'] < $report['ops_before']);
+        Assert::true($report['totals']['ops_after'] < $report['totals']['ops_before']);
         $reasons = [];
         foreach ($report['steps'] as $step) {
             foreach ($step['rejected'] as $rejected) {
@@ -146,6 +146,40 @@ final class OptimizeTest
         Assert::same(\file_get_contents($original[0]), self::CODE);
     }
 
+    public function reportIsForPeopleAndWarnsAboutAnotherEnvironment(): void
+    {
+        [$code] = $this->opmin('optimize', '--format=none');
+        Assert::same($code, 0);
+        $json = \glob($this->dir . '/runs/*/report.json') ?: [];
+        Assert::count($json, 1);
+        /** @var array<string, mixed> $report */
+        $report = \json_decode((string) \file_get_contents($json[0]), true, flags: \JSON_THROW_ON_ERROR);
+        $markdown = (string) \file_get_contents(\dirname($json[0]) . '/report.md');
+
+        Assert::same($report['schema'], 1);
+        Assert::array($report['environment'])->hasKeys('php', 'php_target', 'optimizer_hash', 'opmin', 'rector', 'phpstan');
+        Assert::same(\array_keys($report['functions']), ['App\Text::size']);
+        Assert::same($report['functions']['App\Text::size']['status'], 'diff-tested');
+        Assert::same($report['functions']['App\Text::size']['diff_coverage'], 100);
+        Assert::same(\array_column($report['rejected'], 'kind', 'function'), [
+            'App\Text::upper' => 'ignored',
+            'App\Text::encode' => 'no_gain',
+            'App\Text::save' => 'not_proven',
+        ]);
+        Assert::string($markdown)
+            ->contains('| `App\Text::size`<br>src/Text.php | ')
+            ->contains('### Behavior not proven (1)')
+            ->contains('### Excluded by the user (1)')
+            ->contains('| Rector | ');
+
+        $report['environment']['rector'] = '0.0.1';
+        \file_put_contents($json[0], \json_encode($report, \JSON_THROW_ON_ERROR));
+        [$again, , $err] = $this->opmin('optimize', '--format=none', '--dry-run');
+
+        Assert::same($again, 0);
+        Assert::string($err)->ignoringWhitespace(lineBreaks: true)->contains('rector changed since the run ' . \basename(\dirname($json[0])) . ': 0.0.1 →');
+    }
+
     public function dryRunChangesNothing(): void
     {
         [$code, $out] = $this->opmin('optimize', '--dry-run', '--format=none', 'src/Text.php');
@@ -178,14 +212,14 @@ final class OptimizeTest
     }
 
     /**
-     * @return array{ops_before: int, ops_after: int, patch: string, steps: list<array{rejected: list<array{function: string, reason: string}>}>}
+     * @return array{totals: array{ops_before: int, ops_after: int}, patch: string, steps: list<array{rejected: list<array{function: string, reason: string}>}>}
      */
     private function report(): array
     {
         $files = \glob($this->dir . '/runs/*/report.json') ?: [];
         Assert::count($files, 1);
 
-        /** @var array{ops_before: int, ops_after: int, patch: string, steps: list<array{rejected: list<array{function: string, reason: string}>}>} */
+        /** @var array{totals: array{ops_before: int, ops_after: int}, patch: string, steps: list<array{rejected: list<array{function: string, reason: string}>}>} */
         return \json_decode((string) \file_get_contents($files[0]), true, flags: \JSON_THROW_ON_ERROR);
     }
 

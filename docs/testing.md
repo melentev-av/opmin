@@ -132,6 +132,11 @@ final class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedRe
   repository (the Docker wrapper) the test project sits in an ignored directory of opmin's own repository: the
   workspace treats a project whose files git does not track as not under git.
 
+- The report: `tests/Unit/Module/Report/RunReportTest.php` builds a run from steps and compares `report.json` and
+  `report.md` with the snapshots in `tests/Fixtures/Report/`. After an intended change of the format, regenerate
+  them with `OPMIN_UPDATE_SNAPSHOTS=1 vendor/bin/testo --filter=RunReportTest` and read the diff: a field renamed or
+  removed in `report.json` is a breaking change (major release only).
+
 ## Property tests (`rasuvaeff/property-testing-testo`)
 
 ```php

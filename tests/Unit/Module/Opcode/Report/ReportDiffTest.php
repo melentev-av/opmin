@@ -47,6 +47,20 @@ final class ReportDiffTest
         ReportDiff::compare(self::report([], hash: 'aaa'), self::report([], hash: 'bbb'));
     }
 
+    public function warnsAboutAnotherOpminVersionOrTarget(): void
+    {
+        $before = CountReport::create('1.0.0', '8.4.1', '8.2', 'h', [self::count('App\f', 3, 'a.php')]);
+        $after = CountReport::create('1.1.0', '8.4.1', '8.3', 'h', [self::count('App\f', 2, 'a.php')]);
+
+        $diff = ReportDiff::compare($before, $after);
+
+        Assert::same($diff->warnings, [
+            'The reports were taken with different opmin versions (1.0.0 and 1.1.0).',
+            'The reports were taken with different php.target (8.2 and 8.3).',
+        ]);
+        Assert::same(ReportDiff::compare($before, $before)->warnings, []);
+    }
+
     public function reportRoundTripsThroughJson(): void
     {
         $report = self::report(['b' => 2, 'a' => 1], errors: ['z.php' => 'ParseError']);

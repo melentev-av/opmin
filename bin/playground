@@ -441,7 +441,9 @@ function optimizeResult(string $dir): string
         $rolledBack += \count($step['rejected'] ?? []);
     }
 
-    return \sprintf('%d→%d (%d/%d)', $report['ops_before'] ?? 0, $report['ops_after'] ?? 0, $kept, $rolledBack);
+    $totals = $report['totals'] ?? [];
+
+    return \sprintf('%d→%d (%d/%d)', $totals['ops_before'] ?? 0, $totals['ops_after'] ?? 0, $kept, $rolledBack);
 }
 
 /**

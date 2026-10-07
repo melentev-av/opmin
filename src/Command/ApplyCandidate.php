@@ -99,6 +99,7 @@ final class ApplyCandidate extends LlmStage
             commit: $step->commit,
             before: $accepted && $before !== null ? $session->saveBefore($number, $before) : null,
             counterexample: $rejection['counterexample'] ?? null,
+            checks: $accepted ? ($step->accepted[0]['checks'] ?? []) : null,
         );
         $session->record($attempt);
         $left = \max(0, $llm->attemptsPerFunction - \count($session->attempts($target->key)));

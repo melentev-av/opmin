@@ -19,6 +19,7 @@ use Opmin\Module\Php\PhpBinary;
 use Opmin\Module\Project\FileFinder;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Project\Targets;
+use Opmin\Module\Report\Environment;
 use Opmin\Module\Verification\Verifier;
 use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -59,6 +60,20 @@ abstract class Stage extends Base
         }));
     }
 
+    /**
+     * `runs/<timestamp>`, with a suffix when a run of the same second exists.
+     */
+    protected function newRunDir(Project $project): Path
+    {
+        $base = \date('Ymd-His');
+        $dir = $project->root->join('runs', $base);
+        for ($i = 2; $dir->exists(); ++$i) {
+            $dir = $project->root->join('runs', "{$base}-{$i}");
+        }
+
+        return $dir;
+    }
+
     protected function cacheDir(Project $project): Path
     {
         /** @var Schema\Cache $cacheConfig */
@@ -87,6 +102,20 @@ abstract class Stage extends Base
     protected function ignoredPaths(Project $project): array
     {
         return \array_values(\array_unique(['runs', $project->relative($this->cacheDir($project))]));
+    }
+
+    /**
+     * The environment of a run and what changed in it since the previous run with a report.
+     *
+     * @return array{Environment, list<non-empty-string>}
+     */
+    protected function environment(Project $project, PhpBinary $php, Optimizer $optimizer, Path $runDir): array
+    {
+        $tools = $optimizer->tools();
+        $environment = Environment::detect($project, $php, $this->phpTarget($project), $tools['test_runner'], $tools['formatter']);
+        $previous = Environment::previous($runDir->parent(), $runDir);
+
+        return [$environment, $previous === null ? [] : $environment->changesSince($previous[1], $previous[0])];
     }
 
     protected function counter(PhpBinary $php, Path $cacheDir): OpcodeCounter

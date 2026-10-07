@@ -1,0 +1,248 @@
+{
+    "schema": 1,
+    "kind": "optimize",
+    "environment": {
+        "opmin": "0.2.0",
+        "php": "8.4.12",
+        "php_target": "8.3",
+        "optimizer_hash": "a1b2c3d4e5f6",
+        "rector": "2.7.0",
+        "phpstan": "2.1.30",
+        "test_runner": "phpunit",
+        "formatter": "vendor/bin/pint {files} (pint.json)"
+    },
+    "warnings": [
+        "php changed since the run 20261006-100000: 8.4.11 → 8.4.12 (opcode counts are not comparable)."
+    ],
+    "totals": {
+        "ops_before": 40,
+        "ops_after": 33,
+        "saved": 7,
+        "percent": 17.5,
+        "functions_changed": 2,
+        "changes_rolled_back": 3
+    },
+    "final_tests": true,
+    "interrupted": false,
+    "patch": "runs/20261007-120000/opmin.patch",
+    "functions": {
+        "App\\Cart::sum": {
+            "file": "src/Cart.php",
+            "ops_before": 12,
+            "ops_after": 12,
+            "saved": 0,
+            "status": "diff-tested",
+            "diff_coverage": 92.5,
+            "inputs": 180,
+            "tests": [],
+            "flags": [],
+            "executed_gain": true,
+            "gains": [
+                {
+                    "rule": "Opmin\\Rector\\Rule\\HoistLoopInvariantCountRector",
+                    "source": "rector",
+                    "pass": 1,
+                    "gain": 0,
+                    "executed_gain": true,
+                    "commit": "bbbbbbbb22222222"
+                }
+            ]
+        },
+        "App\\Cart::total": {
+            "file": "src/Cart.php",
+            "ops_before": 20,
+            "ops_after": 13,
+            "saved": 7,
+            "status": "tests",
+            "diff_coverage": 80,
+            "inputs": 210,
+            "tests": [
+                "Tests\\CartTest::total",
+                "Tests\\CartTest::empty"
+            ],
+            "flags": [
+                "io"
+            ],
+            "executed_gain": false,
+            "gains": [
+                {
+                    "rule": "Opmin\\Rector\\Rule\\FullyQualifyGlobalCallsRector",
+                    "source": "rector",
+                    "pass": 1,
+                    "gain": 4,
+                    "executed_gain": false,
+                    "commit": "aaaaaaaa11111111"
+                },
+                {
+                    "rule": "Opmin\\Module\\Optimize\\LlmCandidate",
+                    "source": "llm",
+                    "pass": 1,
+                    "gain": 3,
+                    "executed_gain": false,
+                    "commit": "cccccccc33333333"
+                }
+            ]
+        }
+    },
+    "rejected": [
+        {
+            "file": "src/Cart.php",
+            "function": "App\\Cart::name",
+            "rule": "Opmin\\Rector\\Rule\\FullyQualifyGlobalCallsRector",
+            "pass": 1,
+            "kind": "no_gain",
+            "reason": "gain 0 is below readability.min_gain"
+        },
+        {
+            "file": "src/Cart.php",
+            "function": "App\\Cart::price",
+            "rule": "Opmin\\Rector\\Rule\\FullyQualifyGlobalCallsRector",
+            "pass": 1,
+            "kind": "diff_test",
+            "reason": "differential test: return differs: 1.5 vs 1",
+            "counterexample": {
+                "test": "runs/20261007-120000/counterexamples/CartPriceTest.php",
+                "input": {
+                    "args": [
+                        {
+                            "kind": "string",
+                            "value": "1.5"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "file": "src/Cart.php",
+            "function": "App\\Cart::total",
+            "rule": "Opmin\\Module\\Optimize\\LlmCandidate",
+            "pass": 1,
+            "kind": "readability",
+            "reason": "cyclomatic complexity grew by 1"
+        }
+    ],
+    "counterexamples": [],
+    "notes": [
+        "Formatter: vendor/bin/pint {files} (pint.json)"
+    ],
+    "steps": [
+        {
+            "rule": "Opmin\\Rector\\Rule\\FullyQualifyGlobalCallsRector",
+            "pass": 1,
+            "gain": 4,
+            "executed_gain": false,
+            "commit": "aaaaaaaa11111111",
+            "error": null,
+            "accepted": [
+                {
+                    "file": "src/Cart.php",
+                    "function": "App\\Cart::total",
+                    "gain": 4,
+                    "status": "diff-tested",
+                    "checks": [
+                        {
+                            "key": "App\\Cart::total",
+                            "status": "diff-tested",
+                            "coverage": 100,
+                            "inputs": 210,
+                            "tests": [
+                                "Tests\\CartTest::total"
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "rejected": [
+                {
+                    "file": "src/Cart.php",
+                    "function": "App\\Cart::name",
+                    "reason": "gain 0 is below readability.min_gain"
+                },
+                {
+                    "file": "src/Cart.php",
+                    "function": "App\\Cart::price",
+                    "reason": "differential test: return differs: 1.5 vs 1",
+                    "counterexample": {
+                        "test": "runs/20261007-120000/counterexamples/CartPriceTest.php",
+                        "input": {
+                            "args": [
+                                {
+                                    "kind": "string",
+                                    "value": "1.5"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "rule": "Opmin\\Rector\\Rule\\HoistLoopInvariantCountRector",
+            "pass": 1,
+            "gain": 0,
+            "executed_gain": true,
+            "commit": "bbbbbbbb22222222",
+            "error": null,
+            "accepted": [
+                {
+                    "file": "src/Cart.php",
+                    "function": "App\\Cart::sum",
+                    "gain": 0,
+                    "status": "diff-tested",
+                    "checks": [
+                        {
+                            "key": "App\\Cart::sum",
+                            "status": "diff-tested",
+                            "coverage": 92.5,
+                            "inputs": 180,
+                            "tests": []
+                        }
+                    ]
+                }
+            ],
+            "rejected": []
+        },
+        {
+            "rule": "Opmin\\Module\\Optimize\\LlmCandidate",
+            "pass": 1,
+            "gain": 3,
+            "executed_gain": false,
+            "commit": "cccccccc33333333",
+            "error": null,
+            "accepted": [
+                {
+                    "file": "src/Cart.php",
+                    "function": "App\\Cart::total",
+                    "gain": 3,
+                    "status": "tests",
+                    "checks": [
+                        {
+                            "key": "App\\Cart::total",
+                            "status": "tests",
+                            "coverage": 80,
+                            "inputs": 150,
+                            "tests": [
+                                "Tests\\CartTest::total",
+                                "Tests\\CartTest::empty"
+                            ]
+                        },
+                        {
+                            "key": "App\\Cart::total::{closure#1}",
+                            "status": "diff-tested",
+                            "coverage": null,
+                            "inputs": null,
+                            "tests": []
+                        }
+                    ]
+                }
+            ],
+            "rejected": [
+                {
+                    "file": "src/Cart.php",
+                    "function": "App\\Cart::total",
+                    "reason": "cyclomatic complexity grew by 1"
+                }
+            ]
+        }
+    ]
+}

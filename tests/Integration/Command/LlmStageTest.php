@@ -142,9 +142,11 @@ final class LlmStageTest
 
         [$finish, $finishOut, $finishErr] = $this->opmin('llm:finish', '--format=json');
         Assert::same($finish, 0, $finishOut . $finishErr);
-        /** @var array{ops_before: int, ops_after: int, patch: string, attempts: list<array<string, mixed>>} $report */
+        /** @var array{totals: array{ops_before: int, ops_after: int}, patch: string, attempts: list<array<string, mixed>>, functions: array<string, array<string, mixed>>} $report */
         $report = \json_decode($finishOut, true, flags: \JSON_THROW_ON_ERROR);
-        Assert::true($report['ops_after'] < $report['ops_before']);
+        Assert::true($report['totals']['ops_after'] < $report['totals']['ops_before']);
+        Assert::same($report['functions']['App\Text::slug']['gains'][0]['source'], 'llm');
+        Assert::true(\is_file($this->dir . '/' . $targets['run'] . '/report.md'));
         Assert::count($report['attempts'], 1);
         Assert::string((string) \file_get_contents($this->dir . '/' . $report['patch']))->contains('-        $lower = strtolower(trim($title));');
         Assert::true(\is_file($this->dir . '/' . $targets['run'] . '/report.json'));

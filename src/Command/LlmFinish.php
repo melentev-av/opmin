@@ -55,27 +55,38 @@ final class LlmFinish extends LlmStage
         }
 
         $optimizer = $this->optimizer($project, $php, $workspace, $output, false);
-        $report = $optimizer->open(\array_values($files), null);
-        foreach (\array_filter($attempts, static fn(Attempt $a): bool => $a->accepted) as $attempt) {
+        [$environment, $warnings] = $this->environment($project, $php, $optimizer, $session->runDir);
+        $report = $optimizer->open(\array_values($files), null, 'llm');
+        foreach ($attempts as $attempt) {
             $step = new StepReport(LlmCandidate::class, $attempt->number);
-            $step->accepted[] = ['file' => $attempt->file, 'function' => $attempt->function, 'gain' => $attempt->gain, 'status' => (string) $attempt->status];
-            $attempt->before === null or $step->before[$attempt->file] = (string) \file_get_contents((string) $session->runDir->join($attempt->before));
-            $step->commit = $attempt->commit;
+            if ($attempt->accepted) {
+                $step->accepted[] = [
+                    'file' => $attempt->file,
+                    'function' => $attempt->function,
+                    'gain' => $attempt->gain,
+                    'status' => (string) $attempt->status,
+                    'checks' => $attempt->checks ?? [],
+                ];
+                $attempt->before === null or $step->before[$attempt->file] = (string) \file_get_contents((string) $session->runDir->join($attempt->before));
+                $step->commit = $attempt->commit;
+            } else {
+                $step->reject($attempt->file, $attempt->function, $attempt->reason, $attempt->counterexample);
+            }
+
             $report->steps[] = $step;
         }
 
+        # The files are counted after the accepted attempts: the session started with their gains on top.
+        $report->opsBefore += \array_sum(\array_map(static fn(Attempt $a): int => $a->accepted ? $a->gain : 0, $attempts));
         $optimizer->close($report);
         $patch = $workspace->finish();
         $report->patch = $patch === null ? null : $project->relative($patch);
-        $accepted = \array_filter($attempts, static fn(Attempt $a): bool => $a->accepted);
-        $data = [
-            # The files are counted after the accepted attempts: the session started with their gains on top.
-            'ops_before' => $report->opsBefore + \array_sum(\array_map(static fn(Attempt $a): int => $a->gain, $accepted)),
-        ] + $report->toArray() + [
+        $report->environment = $environment;
+        $report->warnings = $warnings;
+        $data = $report->write([
             'run' => $project->relative($session->runDir),
             'attempts' => \array_map(static fn(Attempt $a): array => $a->toArray(), $attempts),
-        ];
-        \file_put_contents((string) $session->runDir->join('report.json'), self::json($data));
+        ]);
         $session->markFinished();
 
         $kept = \array_filter($report->steps, static fn(StepReport $s): bool => $s->accepted !== []);
@@ -91,7 +102,7 @@ final class LlmFinish extends LlmStage
                 \count($kept),
                 \count($attempts),
                 $gain,
-                $project->relative($session->runDir->join('report.json')),
+                $project->relative($session->runDir->join('report.md')),
                 $report->patch === null ? '' : ', patch: ' . $report->patch,
             ));
         }

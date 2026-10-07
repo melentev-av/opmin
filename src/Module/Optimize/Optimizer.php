@@ -19,6 +19,7 @@ use Opmin\Module\Optimize\Rector\RectorRunner;
 use Opmin\Module\Optimize\Rector\RuleSpec;
 use Opmin\Module\Php\PhpBinary;
 use Opmin\Module\Project\Project;
+use Opmin\Module\Report\RejectionKind;
 use Opmin\Module\Verification\CandidateReport;
 use Opmin\Module\Verification\Verifier;
 
@@ -57,6 +58,9 @@ final class Optimizer
 
     /** @var array<string, true> What the verifier could not check, once per run. */
     private array $verifierNotes = [];
+
+    /** @var array<string, string> "rule\0file\0function" => hash of the function when the rule's change of it was rolled back. */
+    private array $declined = [];
 
     private readonly Readability $readability;
     private readonly SignatureGate $signatures;
@@ -120,8 +124,9 @@ final class Optimizer
      *
      * @param list<Path> $files Absolute target files.
      * @param non-empty-string|null $baseline Name of the file in the run directory for the counts; null — not written.
+     * @param 'optimize'|'llm' $kind
      */
-    public function open(array $files, ?string $baseline = '00-baseline.json'): RunReport
+    public function open(array $files, ?string $baseline = '00-baseline.json', string $kind = 'optimize'): RunReport
     {
         foreach ($files as $file) {
             $relative = $this->project->relative($file);
@@ -131,7 +136,7 @@ final class Optimizer
         }
 
         $counts = $this->countCurrent();
-        $report = new RunReport(self::total($this->counts), (string) $this->workspace->runDir);
+        $report = new RunReport(self::total($this->counts), (string) $this->workspace->runDir, $kind);
         $baseline === null or $this->writeJson($baseline, $counts);
         foreach ($counts->errors as $file => $error) {
             $report->notes[] = "{$file} cannot be counted and is not changed: {$error}";
@@ -152,6 +157,21 @@ final class Optimizer
         $final = $this->countCurrent();
         $this->writeJson('99-final.json', $final);
         $report->opsAfter = self::total($this->counts);
+        foreach ($report->steps as $step) {
+            foreach ($step->accepted as $change) {
+                $report->functions[$change['function']] ??= $this->familyNow($change['file'], $change['function']);
+            }
+        }
+    }
+
+    /**
+     * What the report needs from the tools of the run: the formatter and the test runner.
+     *
+     * @return array{formatter: string, test_runner: ?string}
+     */
+    public function tools(): array
+    {
+        return ['formatter' => $this->formatter->describe(), 'test_runner' => $this->verifier->runnerName()];
     }
 
     /**
@@ -222,9 +242,38 @@ final class Optimizer
         return $total;
     }
 
+    private static function fingerprint(Units $units, string $top): string
+    {
+        return \sha1(($units->docComment($top) ?? '') . "\0" . ($units->source($top) ?? ''));
+    }
+
+    /**
+     * Opcodes and flags of a top-level function with its closures as it is now.
+     *
+     * @param non-empty-string $relative
+     * @param non-empty-string $top
+     * @return array{file: non-empty-string, ops_after: int, flags: list<string>}
+     */
+    private function familyNow(string $relative, string $top): array
+    {
+        $ops = 0;
+        $flags = [];
+        $units = Units::of($this->current[$relative] ?? '', $relative);
+        foreach ($units->family($top) as $key) {
+            $count = $this->counts[$relative][$key] ?? null;
+            if ($count !== null) {
+                $ops += $count->opsOpt;
+                $flags = [...$flags, ...$count->flags];
+            }
+        }
+
+        return ['file' => $relative, 'ops_after' => $ops, 'flags' => \array_values(\array_unique($flags))];
+    }
+
     private function step(RuleSpec $rule, int $pass): StepReport
     {
         $step = new StepReport($rule->class, $pass);
+        $step->executedGain = $rule->executedGain;
         try {
             $errors = $this->rector->run($rule, \array_values($this->paths));
         } catch (\RuntimeException $e) {
@@ -240,8 +289,42 @@ final class Optimizer
         }
 
         $new === [] or $this->apply($new, $rule, $step);
+        $this->rememberDeclined($rule, $step);
 
         return $step;
+    }
+
+    /**
+     * Remembers the functions whose change by the rule was rolled back for a reason of their own (not
+     * the project's tests or a whole file), as they are now — rolled back, so as before the step. A
+     * later pass that gets the same change of the same code skips it.
+     */
+    private function rememberDeclined(RuleSpec $rule, StepReport $step): void
+    {
+        foreach ($step->rejected as $rejected) {
+            $relative = $rejected['file'];
+            $top = $rejected['function'];
+            $kind = RejectionKind::fromReason($rejected['reason']);
+            if ($top === '' || \str_contains($top, ', ') || !isset($this->current[$relative])
+                || \in_array($kind, [RejectionKind::Tests, RejectionKind::Other], true) || \str_contains($rejected['reason'], 'all or nothing')
+            ) {
+                continue;
+            }
+
+            $units = Units::of($this->current[$relative], $relative);
+            isset($units->units[$top]) and $this->declined["{$rule->class}\0{$relative}\0{$top}"] = self::fingerprint($units, $top);
+        }
+    }
+
+    /**
+     * @param non-empty-string $relative
+     * @param non-empty-string $top
+     */
+    private function declinedBefore(RuleSpec $rule, string $relative, string $top, Units $before): bool
+    {
+        $known = $this->declined["{$rule->class}\0{$relative}\0{$top}"] ?? null;
+
+        return $known !== null && isset($before->units[$top]) && $known === self::fingerprint($before, $top);
     }
 
     /**
@@ -274,7 +357,13 @@ final class Optimizer
         $countsAfter = $this->countContents([]);
         foreach ($accepted as $relative => $plan) {
             foreach ($plan->accepted as $top => $gain) {
-                $step->accepted[] = ['file' => $relative, 'function' => $top, 'gain' => $gain, 'status' => $plan->statuses[$top] ?? 'verified'];
+                $step->accepted[] = [
+                    'file' => $relative,
+                    'function' => $top,
+                    'gain' => $gain,
+                    'status' => $plan->statuses[$top] ?? 'verified',
+                    'checks' => $plan->checks[$top] ?? [],
+                ];
             }
 
             $this->counts[$relative] = $countsAfter[$relative] ?? $this->counts[$relative];
@@ -337,6 +426,11 @@ final class Optimizer
         }
 
         foreach ($tops as $top) {
+            if ($this->declinedBefore($rule, $relative, $top, $before)) {
+                # The same change of the same code was rolled back in an earlier pass: not judged again.
+                continue;
+            }
+
             if ($reasons[$top] !== null) {
                 $step->reject($relative, $top, $reasons[$top]);
                 continue;
@@ -487,7 +581,11 @@ final class Optimizer
                 foreach ($report->functions as $function) {
                     foreach ($pending as $relative => $plan) {
                         $top = Units::of($plan->candidate, $relative)->topLevel($function->key) ?? $function->key;
-                        isset($plan->accepted[$top]) and $plan->statuses[$top] = $function->status;
+                        if (isset($plan->accepted[$top])) {
+                            # The weakest proof of the family is the status of the change.
+                            $plan->statuses[$top] = RunReport::weaker($plan->statuses[$top] ?? null, $function->status);
+                            $plan->checks[$top][] = StepReport::check($function);
+                        }
                     }
                 }
 

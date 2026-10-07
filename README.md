@@ -81,9 +81,10 @@ opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
   the changed lines (`readability.*`), complexity and nesting do not grow and its signature stays as
   `signatures.*` allow; then it is verified on all three levels. Everything else is taken back.
 - In a git working tree (must be clean) every accepted step is a commit; outside git the originals are copied to
-  `runs/<ts>/original/`; `--dry-run` restores everything. Each run writes `runs/<ts>/report.json` (every kept and
-  rolled-back function with the reason), the counts before and after and `opmin.patch`, and ends with a full run
-  of the project's tests.
+  `runs/<ts>/original/`; `--dry-run` restores everything. Each run writes the report (below), the counts before
+  and after and `opmin.patch`, and ends with a full run of the project's tests.
+- A change rolled back for a reason of its own (no gain, a difference, not proven…) is not tried again in later
+  passes while the function stays the same.
 - opmin's own rules, on by default, prove their safety conditions themselves (native types through PHPStan):
   `FullyQualifyGlobalCallsRector` (`strlen()` → `\strlen()`, only when no namespaced function or test mock —
   php-mock, ClockMock — can shadow it), `ExtractRepeatedPropertyFetchRector` (readonly properties across calls,
@@ -115,6 +116,23 @@ opmin llm:finish                               # the full test run (taking back 
   `@opmin-ignore llm` keeps a function away from this stage only.
 - The patterns the skill knows are measured on PHP 8.1–8.5 (`bin/bench --only=patterns`), including the ones that
   usually give nothing: [resources/skills/opcode-minimize/SKILL.md](resources/skills/opcode-minimize/SKILL.md).
+
+## The report
+
+Every run (`optimize`, `llm:finish`) writes `runs/<ts>/report.md` for people and `runs/<ts>/report.json` for tools:
+
+- the total: opcodes before → after, %; whether the full run of the project's tests passes;
+- every changed function: before → after, what saved the opcodes (rule or LLM), how it is proven (`diff-tested`,
+  `tests`, `unverified`), the branch coverage of the differential tests, the project's tests that run it, the flags
+  of dynamic constructs; changes that save executed opcodes rather than static ones are listed apart;
+- every rolled-back change grouped by reason (a difference with its counterexample input, failing tests, PHPStan,
+  not proven, signature, dynamic constructs, readability, no gain, excluded);
+- counterexamples as tests of the project's runner in `runs/<ts>/counterexamples/`;
+- the environment: PHP runtime, `php.target`, the optimizer settings, opmin, Rector, the project's PHPStan. A run
+  warns when one of them changed since the previous run, `opmin diff` when the reports come from other opmin
+  versions or targets.
+
+`report.json` has `"schema": 1`; its fields change only in a major release (new fields may be added).
 
 ## Excluding code
 

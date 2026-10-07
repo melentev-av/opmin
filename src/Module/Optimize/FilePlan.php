@@ -19,6 +19,9 @@ final class FilePlan
     /** @var array<non-empty-string, string> Kept top-level functions => how the verifier proved them. */
     public array $statuses = [];
 
+    /** @var array<non-empty-string, list<array<string, mixed>>> Kept top-level functions => {@see StepReport::check()} of each verified function. */
+    public array $checks = [];
+
     /** A change outside functions: the file is kept or rolled back as a whole. */
     public bool $atomic = false;
 

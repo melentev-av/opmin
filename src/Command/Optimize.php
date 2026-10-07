@@ -136,7 +136,7 @@ final class Optimize extends Stage
         }
 
         $cacheDir = $this->cacheDir($project);
-        $runDir = $project->root->join('runs', \date('Ymd-His'));
+        $runDir = $this->newRunDir($project);
         $dryRun = (bool) $input->getOption('dry-run');
         try {
             $workspace = Workspace::create($project, $runDir, $dryRun, $this->ignoredPaths($project));
@@ -157,14 +157,15 @@ final class Optimize extends Stage
 
         $rules = $this->withRuntimeOptions($rules, $project, $cacheDir, $runDir, $php);
         $optimizer = $this->optimizer($project, $php, $workspace, $output, (bool) $input->getOption('allow-public-signatures'));
+        [$environment, $warnings] = $this->environment($project, $php, $optimizer, $runDir);
+        $warnings === [] or $style->warning($warnings);
 
         $report = $optimizer->run($files, $rules);
+        $report->environment = $environment;
+        $report->warnings = $warnings;
         $patch = $workspace->finish();
         $report->patch = $patch === null ? null : $project->relative($patch);
-        \file_put_contents(
-            (string) $runDir->join('report.json'),
-            \json_encode($report->toArray(), \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE | \JSON_THROW_ON_ERROR) . "\n",
-        );
+        $report->write();
         $this->summary(new SymfonyStyle($input, $output), $report, $project, $runDir, $dryRun);
 
         $failed = $report->finalTests === false || \array_filter($report->steps, static fn(StepReport $s): bool => $s->error !== null) !== [];
@@ -237,7 +238,7 @@ final class Optimize extends Stage
             $report->opsBefore,
             $report->opsAfter,
             $report->opsAfter === $report->opsBefore ? 'no change' : \sprintf('-%d', $report->opsBefore - $report->opsAfter),
-            $project->relative($runDir->join('report.json')),
+            $project->relative($runDir->join('report.md')),
             $report->patch === null ? '' : ', patch: ' . $report->patch . ($dryRun ? ' (dry run: files restored)' : ''),
         ));
     }

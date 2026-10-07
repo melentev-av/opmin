@@ -94,6 +94,49 @@ final class LiteralPoolTest
         Assert::same(\count($pool->recipesFor(TypeSpec::of(TypeSpec::FLOAT))), 8);
     }
 
+    public function boundariesOfLengthsAndCounts(): void
+    {
+        $s32 = \str_repeat('a', 32);
+        $s33 = \str_repeat('b', 33);
+        $s64 = \str_repeat('c', 64);
+        $keys = self::pool("function f() { return ['{$s32}', '{$s33}']; }");
+        $neighbours = self::pool("function f() { return '{$s64}'; }");
+        $ints = self::pool('function f() { return [10, 20, 30, 40]; }');
+
+        Assert::true(\in_array($s32, $keys->keyCandidates(), true));
+        Assert::false(\in_array($s33, $keys->keyCandidates(), true));
+        Assert::same(\count($neighbours->strings), 5);
+        Assert::same($ints->keyCandidates(), [10, 9, 11, 20, 19, 21, 30, 29]);
+    }
+
+    public function duplicatesAreDroppedAndListsStayLists(): void
+    {
+        $pool = self::pool("function f(\$a) { return [\$a['k'], \$a['k'], 'k', 0.5, 0.5, -0.5, 'k1', 'k1']; }");
+        $added = (new LiteralPool())->addInts([5, 5, 6]);
+
+        Assert::same($pool->keys, ['k']);
+        Assert::same($pool->floats, [0.5, -0.5]);
+        Assert::same(\array_slice($pool->strings, 0, 5), ['k', 'kx', 'xk', 'K', 'k1']);
+        Assert::same($pool->keyCandidates(), ['k', 'kx', 'xk', 'K', 'k1', 'k1x', 'xk1', 'K1']);
+        Assert::same($added->ints, [5, 4, 6, 7]);
+        Assert::same(self::pool('function f() { return 0.5; }')->floats, [0.5]);
+    }
+
+    public function anyKindOfLiteralMakesThePoolNonEmpty(): void
+    {
+        Assert::false(self::pool('function f() { return 0.5; }')->isEmpty());
+        Assert::false(self::pool("function f() { return ''; }")->isEmpty());
+        Assert::false(self::pool('function f($a) { return $a[$a]["k"]; }')->isEmpty());
+        Assert::true(self::pool('function f($a) { return $a; }')->isEmpty());
+    }
+
+    public function onlyWholeNumbersInStringsBecomeInts(): void
+    {
+        $pool = self::pool("function f(\$a) { return \$a === '12abc' || \$a === '-7'; }");
+
+        Assert::same($pool->recipesFor(TypeSpec::of(TypeSpec::INT)), [Recipes::int(-7)]);
+    }
+
     private static function pool(string $function): LiteralPool
     {
         $nodes = (new ParserFactory())->createForNewestSupportedVersion()->parse("<?php {$function}") ?? [];

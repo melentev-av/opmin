@@ -84,7 +84,7 @@ final class WorkerFailuresTest
             Assert::same($e->reason, WorkerException::CRASH);
             Assert::same(\strlen($e->stderr), 8192);
             Assert::true(\str_ends_with($e->stderr, 'ab'));
-            Assert::string($e->getMessage())->contains('(exit code 3)');
+            Assert::string($e->getMessage())->startsWith('The harness ended without an answer (exit code 3).');
         }
     }
 

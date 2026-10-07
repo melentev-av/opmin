@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 MIN_MSI=${MIN_MSI:-80}
 out=runtime/infection
 top=$(ls src/Module/Verification/*.php | paste -sd, -)
-segments="Compare:src/Module/Verification/Compare Input:src/Module/Verification/Input Coverage:src/Module/Verification/Coverage Property:src/Module/Verification/Property Target:src/Module/Verification/Target Verification:$top Analysis:src/Module/Analysis Harness:src/Module/Harness"
+segments="Compare:src/Module/Verification/Compare/ Input:src/Module/Verification/Input/ Coverage:src/Module/Verification/Coverage/ Property:src/Module/Verification/Property/ Target:src/Module/Verification/Target/ Verification:$top Analysis:src/Module/Analysis Harness:src/Module/Harness"
 
 if [ -z "$1" ] || [ ! -f "$out/cov/coverage-xml/index.xml" ]; then
   rm -rf "$out/cov"

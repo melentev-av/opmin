@@ -74,6 +74,13 @@ final class TypeParserTest
         yield 'int<min, 5>' => ['int<min, 5>', 'int', ['min' => null, 'max' => 5]];
         yield 'array{int, string}' => ['array{int, string}', 'array', ['shape' => [0, 1]]];
         yield 'array{5: int}' => ['array{5: int}', 'array', ['shape' => [5]]];
+        yield "array{'a': int}" => ["array{'a': int}", 'array', ['shape' => ['a']]];
+        yield 'Positive-Int (case)' => ['Positive-Int', 'int', ['min' => 1]];
+        yield 'LIST<int> (case)' => ['LIST<int>', 'array', ['list' => true, 'key' => null]];
+        yield 'list<int>' => ['list<int>', 'array', ['list' => true, 'key' => null]];
+        yield 'array<int>' => ['array<int>', 'array', ['list' => false, 'key' => null]];
+        yield 'array<int, foo-bar>' => ['array<int, foo-bar>', 'array', ['key' => null, 'value' => null]];
+        yield '1.50' => ['1.50', 'literal', ['values' => [['type' => 'float', 'value' => '1.5']]]];
     }
 
     /**
@@ -81,7 +88,7 @@ final class TypeParserTest
      */
     public static function unsupportedDocTypes(): iterable
     {
-        foreach (['resource', 'never', 'void', 'never-return', 'noreturn', 'non-existent-type', 'array{foo: resource}|never', '?resource', 'resource[]', 'resource&Countable'] as $type) {
+        foreach (['resource', 'never', 'void', 'never-return', 'noreturn', 'non-existent-type', 'object{a: int}', 'array{foo: resource}|never', '?resource', 'resource[]', 'resource&Countable'] as $type) {
             yield $type => [$type];
         }
     }
@@ -209,6 +216,30 @@ final class TypeParserTest
     {
         Assert::same(self::parser()->params('/** @param int<0, $x */'), []);
         Assert::null(self::parser()->var(null));
+    }
+
+    public function pseudoTypesKeepEveryMember(): void
+    {
+        $parser = self::parser();
+        $scalar = $parser->params('/** @param scalar $x */')['x'] ?? null;
+        $numeric = $parser->params('/** @param numeric $x */')['x'] ?? null;
+        $shape = $parser->params('/** @param array{a: resource} $x */')['x'] ?? null;
+
+        Assert::same($scalar?->scalarKinds(), [TypeSpec::INT, TypeSpec::FLOAT, TypeSpec::STRING, TypeSpec::BOOL]);
+        Assert::same($numeric?->scalarKinds(), [TypeSpec::INT, TypeSpec::FLOAT, TypeSpec::STRING]);
+        Assert::true($numeric?->members[2]->numeric ?? false);
+        Assert::same($shape?->shape['a'][0]->kind ?? null, TypeSpec::MIXED);
+    }
+
+    public function nativeDescriptionsWithMissingParts(): void
+    {
+        $parser = self::parser();
+
+        Assert::same($parser->native([])->kind, TypeSpec::MIXED);
+        Assert::same($parser->native(['name' => 'Foo'])->class, 'Foo');
+        Assert::same($parser->native(['name' => '\\int', 'builtin' => true])->kind, TypeSpec::INT);
+        Assert::same($parser->native(['name' => '$this'])->class, 'App\Self');
+        Assert::same((new TypeParser(static fn(string $n): string => $n))->native(['name' => 'self'])->kind, TypeSpec::OBJECT);
     }
 
     private static function parser(): TypeParser

@@ -161,6 +161,67 @@ final class InputPlannerTest
         Assert::same($planner->plan(), []);
     }
 
+    public function planOfASmallSignatureInOrder(): void
+    {
+        $signature = new Signature(
+            [new Parameter('a', TypeSpec::of(TypeSpec::BOOL)), new Parameter('b', TypeSpec::of(TypeSpec::BOOL), optional: true), new Parameter('c', TypeSpec::of(TypeSpec::BOOL), optional: true)],
+            [new Parameter('k', TypeSpec::of(TypeSpec::BOOL))],
+            'App\Money',
+        );
+
+        $plan = self::planner($signature, '<?php function f($a, $b = true, $c = false) { return 1; }')->plan();
+        $short = static fn(array $r): string => match ($r['type']) {
+            'bool' => $r['value'] === true ? 'T' : 'F',
+            'object' => 'new:' . (string) $r['via'],
+            default => (string) $r['type'],
+        };
+        $rows = \array_map(
+            static fn(Input $i): string => \implode(',', \array_map($short, $i->args)) . ' k=' . $short($i->uses['k']) . ' this=' . $short((array) $i->receiver),
+            $plan,
+        );
+
+        Assert::same($rows, [
+            'F k=F this=new:ctor',
+            'F,F,F k=F this=new:ctor',
+            'T k=F this=new:ctor',
+            'F,F k=F this=new:ctor',
+            'F,T k=F this=new:ctor',
+            'F,F,T k=F this=new:ctor',
+            'F k=T this=new:ctor',
+            'F k=F this=new:props',
+        ]);
+    }
+
+    public function fuzzCrossesInputsAndChangesEveryPart(): void
+    {
+        $signature = new Signature(
+            [new Parameter('a', TypeSpec::of(TypeSpec::INT)), new Parameter('b', TypeSpec::of(TypeSpec::INT))],
+            [new Parameter('k', TypeSpec::of(TypeSpec::INT))],
+            'App\Money',
+        );
+        $receiver = ['type' => 'object', 'class' => 'App\Money', 'via' => 'ctor', 'args' => [Recipes::int(777)]];
+        $feedback = new Feedback(2);
+        $feedback->record(new Input([Recipes::int(1001), Recipes::int(1002)], $receiver, ['k' => Recipes::int(1003)]), [0]);
+        $feedback->record(new Input([Recipes::int(2001), Recipes::int(2002)], $receiver, ['k' => Recipes::int(2003)]), [1]);
+        $planner = self::planner($signature, '<?php function f($a, $b) { return 1; }', feedback: $feedback);
+        $planner->fuzz();
+        $random = new CoreRandom(new Random(11));
+        $crossed = $receivers = $uses = $edges = 0;
+        for ($i = 0; $i < 400; ++$i) {
+            $input = $planner->generate($random);
+            $pair = \array_map(static fn(array $r): mixed => $r['value'] ?? null, $input->args);
+            \in_array($pair, [[1001, 2002], [2001, 1002]], true) and ++$crossed;
+            \in_array(\PHP_INT_MAX, $pair, true) || \in_array(\PHP_INT_MIN, $pair, true) and ++$edges;
+            ($input->receiver['args'] ?? null) !== [Recipes::int(777)] && \count($input->args) === 2 && \is_int($pair[0]) && $pair[0] % 1000 === 1 and ++$receivers;
+            !\in_array($input->uses['k']['value'] ?? null, [1003, 2003], true) && \is_int($pair[0]) && $pair[0] % 1000 === 1 and ++$uses;
+        }
+
+        Assert::true($crossed > 5, "crossed: {$crossed}");
+        Assert::true($edges > 2, "edges: {$edges}");
+        Assert::true($receivers > 5, "receivers: {$receivers}");
+        Assert::true($uses > 5, "uses: {$uses}");
+    }
+
     /**
      * @param positive-int $planLimit
      */

@@ -59,6 +59,7 @@ final class WorkerTest
         function fail() { throw new \DomainException('bad', 7, new \RuntimeException('cause')); }
         function closures(int $k) { return function (int $x) use ($k) { return $x * $k; }; }
         function cwd() { return getcwd(); }
+        function limit() { return ini_get('memory_limit'); }
         PHP;
 
     private string $dir;
@@ -246,6 +247,16 @@ final class WorkerTest
         $result = $this->call(['kind' => 'closure', 'wrapper' => 'App\__opmin_closure_1'], [self::int(4)], uses: ['k' => self::int(3)]);
 
         Assert::same($result['calls'][0]['value'], self::int(12));
+    }
+
+    public function runsWithTheGivenMemoryLimit(): void
+    {
+        $this->worker = new Worker(TestPhp::binary(), new WorkerOptions(memoryLimit: '77M', timeoutMs: 10000));
+        $this->load();
+
+        $result = $this->call(['kind' => 'function', 'name' => 'App\limit']);
+
+        Assert::same($result['calls'][0]['value'], self::string('77M'));
     }
 
     public function runsInTheGivenWorkingDirectory(): void

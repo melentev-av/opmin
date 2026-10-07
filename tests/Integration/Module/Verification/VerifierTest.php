@@ -79,6 +79,13 @@ final class VerifierTest
         Assert::same($report->functions[1]->toArray()['counterexample_test'], $this->dir . '/out/OpminAppKeyofCounterexampleTest.php');
         Assert::same(\array_keys($report->toArray()), ['accepted', 'syntax_error', 'phpstan_new_errors', 'tests', 'functions', 'notes']);
         Assert::true(\in_array('Differential test of App\keep', $this->log, true));
+        $reasons = \array_map(static fn(FunctionResult $f): string => $f->reason, $report->functions);
+        Assert::same($reasons[0], '');
+        Assert::string($reasons[1])->startsWith('differential test: calls[0].value: string "yes"');
+        Assert::same($reasons[2], 'not proven: side effects (io): only the project\'s tests can prove the change');
+        Assert::same($reasons[3], 'not proven: cannot be called: `App\gone` is not in the file.');
+        $json = (string) \file_get_contents($this->dir . '/out/OpminAppKeyofCounterexampleTest.json');
+        Assert::string($json)->startsWith("{\n    \"function\": \"App\\\\key_of\",\n    \"file\": \"src/A.php\",\n");
     }
 
     public function selectedFunctionsOnly(): void
@@ -132,7 +139,8 @@ final class VerifierTest
 
         Assert::false($report->accepted());
         Assert::same($report->functions, []);
-        Assert::string(\implode("\n", $report->notes))->contains('fail on the original code');
+        Assert::same($report->notes[\count($report->notes) - 1], 'The project\'s tests fail on the original code: fix them first. Failed: ');
+        Assert::same($report->runner, 'command');
     }
 
     public function failingTestsOnTheCandidateRejectIt(): void

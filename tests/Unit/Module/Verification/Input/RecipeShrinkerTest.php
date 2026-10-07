@@ -41,6 +41,8 @@ final class RecipeShrinkerTest
         yield 'ref' => [['type' => 'ref', 'id' => 1], []];
         yield 'true' => [Recipes::bool(true), [$n, Recipes::bool(false)]];
         yield 'false' => [Recipes::bool(false), [$n]];
+        yield 'bool without value' => [['type' => 'bool'], [$n]];
+        yield 'int without value' => [['type' => 'int'], [$n]];
         yield 'zero' => [$i(0), [$n]];
         yield 'int' => [$i(-9), [$n, $i(0), $i(-4), $i(-8)]];
         yield 'one' => [$i(1), [$n, $i(0)]];
@@ -52,10 +54,12 @@ final class RecipeShrinkerTest
         yield 'small fraction' => [Recipes::float(0.5), [$n, Recipes::float(0.0)]];
         yield 'whole float' => [Recipes::float(-4.0), [$n, Recipes::float(0.0), Recipes::float(-2.0)]];
         yield 'one float' => [Recipes::float(1.0), [$n, Recipes::float(0.0)]];
+        yield 'largest floats' => [Recipes::float(1.7e308), [$n, Recipes::float(0.0), Recipes::float(8.5e307)]];
         yield 'huge float' => [Recipes::float(1.5e300), [$n, Recipes::float(0.0), Recipes::float(7.5e299)]];
         yield 'empty string' => [$s(''), [$n]];
         yield 'one char' => [$s('a'), [$n, $s('')]];
         yield 'string' => [$s('abcd'), [$n, $s(''), $s('ab'), $s('abc')]];
+        yield 'control bytes' => [$s("\x01b"), [$n, $s(''), $s("\x01"), $s("\x01"), $s('ab')]];
         yield 'unicode string' => [$s('жa'), [$n, $s(''), $s("\xd0"), $s("\xd0\xb6"), $s('aaa')]];
         yield 'empty array' => [Recipes::array([]), [$n]];
         yield 'array' => [Recipes::list([$i(2), Recipes::bool(true)]), [

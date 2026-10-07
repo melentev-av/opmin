@@ -21,6 +21,46 @@
             "Opmin\\Module\\Verification\\Input\\ValueGenerator::randomFloat",
             "Opmin\\Module\\Verification\\Input\\ValueGenerator::randomKey",
             "Opmin\\Module\\Verification\\Input\\ValueGenerator::randomMixed"
-        ]
+        ],
+        "IncrementInteger": {
+            "ignoreSourceCodeByRegex": [
+                ".*\\$random->int\\(.*"
+            ]
+        },
+        "DecrementInteger": {
+            "ignoreSourceCodeByRegex": [
+                ".*\\$random->int\\(.*"
+            ]
+        },
+        "Identical": {
+            "ignoreSourceCodeByRegex": [
+                ".*\\$random->int\\(.*"
+            ]
+        },
+        "NotIdentical": {
+            "ignoreSourceCodeByRegex": [
+                ".*\\$random->int\\(.*"
+            ]
+        },
+        "LessThan": {
+            "ignoreSourceCodeByRegex": [
+                ".*\\$random->int\\(.*"
+            ]
+        },
+        "LessThanOrEqualTo": {
+            "ignoreSourceCodeByRegex": [
+                ".*\\$random->int\\(.*"
+            ]
+        },
+        "GreaterThan": {
+            "ignoreSourceCodeByRegex": [
+                ".*\\$random->int\\(.*"
+            ]
+        },
+        "GreaterThanOrEqualTo": {
+            "ignoreSourceCodeByRegex": [
+                ".*\\$random->int\\(.*"
+            ]
+        }
     }
 }

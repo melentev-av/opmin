@@ -59,7 +59,9 @@ opmin verify src/Cart.php /tmp/Cart.php --with-tests    # + php -l, PHPStan "no 
 - A difference is shrunk to a minimal input and saved to `runs/<timestamp>/counterexamples/` as JSON and as a
   test for the project's runner (PHPUnit, Pest, Testo; a plain script otherwise).
 - Accepted: proven by differential tests with `verification.min_branch_coverage` of the original's branches,
-  or unverified but executed by passing project tests, or with `verification.allow_unverified`.
+  or unverified but executed by passing project tests, or with `verification.allow_unverified`. Branches the
+  project's PHPStan proves dead (`--with-tests`: always-true or impossible conditions, unreachable code) are
+  not counted. Functions with I/O are never called with generated inputs: only the project's tests prove them.
 - Flags of `opmin count` (`compact`, `static_var`, `eval`, `io`…) say which constructs restrict a function.
 
 ## Installation

@@ -68,6 +68,36 @@ final class FeedbackTest
         Assert::same($feedback->percent(), 33.3);
     }
 
+    public function deadProbesAreLeftOut(): void
+    {
+        $feedback = new Feedback(4);
+        $feedback->exclude([3, 3, 9]);
+        $feedback->exclude([1]);
+        $feedback->record(self::input(1), [0, 1]);
+
+        Assert::same($feedback->probes(), 2);
+        Assert::same($feedback->dead(), 2);
+        Assert::same($feedback->covered(), 1);
+        Assert::same($feedback->missed(), [2]);
+        Assert::same($feedback->percent(), 50.0);
+
+        $feedback->record(self::input(2), [2, 3]);
+        Assert::true($feedback->complete());
+    }
+
+    public function deadLinesAreLeftOutOnResize(): void
+    {
+        $feedback = new Feedback(0);
+        $feedback->resize([10, 11, 12, 13], [12, 13, 40]);
+
+        Assert::same($feedback->probes(), 2);
+        Assert::same($feedback->dead(), 2);
+        Assert::same($feedback->missed(), [10, 11]);
+
+        $feedback->resize([10, 11]);
+        Assert::same($feedback->dead(), 0);
+    }
+
     private static function input(int $value): Input
     {
         return new Input([Recipes::int($value)]);

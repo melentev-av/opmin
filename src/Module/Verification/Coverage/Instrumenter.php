@@ -38,6 +38,9 @@ final class Instrumenter
 
     private int $next = 0;
 
+    /** @var list<array{int, Stmt\If_|null}> Per probe: position of its branch, the `if` of an added `else`. */
+    private array $sites = [];
+
     public function __construct()
     {
         $this->parser = (new ParserFactory())->createForNewestSupportedVersion();
@@ -53,6 +56,7 @@ final class Instrumenter
         $this->tokens = \array_values($this->parser->getTokens());
         $this->edits = [];
         $this->next = 0;
+        $this->sites = [];
 
         if ($function instanceof Expr\ArrowFunction) {
             $this->wrap($function->expr, 0);
@@ -69,6 +73,18 @@ final class Instrumenter
         }
 
         return [$this->apply($code), $this->next];
+    }
+
+    /**
+     * Where the probes of the last {@see self::instrument()} are, by probe id: the start of the code
+     * the probe marks (a statement list, an operand, an arm), and for the probe of an added `else`
+     * the `if` it belongs to (its position is the start of that `if`).
+     *
+     * @return list<array{int, Stmt\If_|null}>
+     */
+    public function sites(): array
+    {
+        return $this->sites;
     }
 
     private function walk(mixed $node, int $depth): void
@@ -129,7 +145,7 @@ final class Instrumenter
         # The path where no branch runs: an `else` with a probe. Not for the `if: … endif;` syntax.
         if ($braced && !$this->alternative($node)) {
             # Outside the branches' braces (level 2d + 1), inside anything around the `if` (2d - 1).
-            $this->closer($node->getEndFilePos() + 1, 2 * $depth, ' else { ' . $this->probe() . '; }');
+            $this->closer($node->getEndFilePos() + 1, 2 * $depth, ' else { ' . $this->probe($node->getStartFilePos(), $node) . '; }');
         }
     }
 
@@ -157,13 +173,13 @@ final class Instrumenter
         $before = $this->significantBefore($start);
         $level = 2 * $depth + 1;
         if ($inline || $before === null || \in_array($before->text, ['{', ':', ';'], true)) {
-            $this->opener($start, $level, $this->probe() . '; ');
+            $this->opener($start, $level, $this->probe($start) . '; ');
             return true;
         }
 
         # `if ($x) return 1;` — wrap the one statement.
         $last = $stmts[\array_key_last($stmts)];
-        $this->opener($start, $level, '{ ' . $this->probe() . '; ');
+        $this->opener($start, $level, '{ ' . $this->probe($start) . '; ');
         $this->closer($last->getEndFilePos() + 1, $level, ' }');
 
         return true;
@@ -174,7 +190,7 @@ final class Instrumenter
      */
     private function wrap(Expr $expr, int $depth): void
     {
-        $this->opener($expr->getStartFilePos(), 2 * $depth + 1, '(' . $this->probe() . ' ?? (');
+        $this->opener($expr->getStartFilePos(), 2 * $depth + 1, '(' . $this->probe($expr->getStartFilePos()) . ' ?? (');
         $this->closer($expr->getEndFilePos() + 1, 2 * $depth + 1, '))');
     }
 
@@ -220,8 +236,10 @@ final class Instrumenter
         return null;
     }
 
-    private function probe(): string
+    private function probe(int $position, ?Stmt\If_ $missingElseOf = null): string
     {
+        $this->sites[] = [$position, $missingElseOf];
+
         return \sprintf(self::PROBE, $this->next++);
     }
 

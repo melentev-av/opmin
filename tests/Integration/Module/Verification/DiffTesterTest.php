@@ -312,6 +312,49 @@ final class DiffTesterTest
         Assert::same($verdict->counterexample?->input->args[0]['type'] ?? null, 'mock');
     }
 
+    public function deadBranchesByPhpstanAreNotCounted(): void
+    {
+        $code = "<?php\nfunction f(int \$a) {\n    if (is_int(\$a)) {\n        return \$a;\n    }\n\n    return 0;\n}\n";
+        $dead = [['file' => $this->dir . '/Code.php', 'message' => 'Call to function is_int() with int will always evaluate to true.', 'identifier' => 'function.alreadyNarrowedType', 'line' => 3]];
+
+        $counted = $this->verify($code, $code, minCoverage: 100);
+        $left = $this->verify($code, $code, minCoverage: 100, staticErrors: $dead);
+
+        Assert::same($counted->status, VerdictStatus::Unverified);
+        Assert::same($counted->reason, 'differential tests cover 66.7% of the branches of the original, 100% required (verification.min_branch_coverage)');
+        Assert::same($counted->dead, 0);
+        Assert::same($left->status, VerdictStatus::Equivalent, $left->reason);
+        Assert::same([$left->probes, $left->dead, $left->coverage], [2, 1, 100.0]);
+        Assert::same($left->toArray()['dead_branches'], 1);
+    }
+
+    public function reasonNamesTheDeadBranches(): void
+    {
+        $code = "<?php\nfunction f(int \$a) {\n    if (is_int(\$a)) {\n        return md5((string) \$a) === '0' ? 1 : 2;\n    }\n\n    return 0;\n}\n";
+        $dead = [['file' => $this->dir . '/Code.php', 'message' => '', 'identifier' => 'function.alreadyNarrowedType', 'line' => 3]];
+
+        $verdict = $this->verify($code, $code, minCoverage: 100, staticErrors: $dead);
+
+        Assert::same($verdict->status, VerdictStatus::Unverified);
+        Assert::string($verdict->reason)->endsWith('(verification.min_branch_coverage); 1 dead by PHPStan are not counted');
+    }
+
+    public function lineCoverageLeavesDeadLinesOut(): void
+    {
+        if (!\in_array('pcov', TestPhp::binary()->zendExtensions, true) && !self::hasPcov()) {
+            Assert::true(true);
+            return;
+        }
+
+        $code = "<?php\nfunction f(int \$a) {\n    if (is_string(\$a)) {\n        return 1;\n    }\n\n    return 2;\n}\n";
+        $dead = [['file' => $this->dir . '/Code.php', 'message' => '', 'identifier' => 'function.impossibleType', 'line' => 3]];
+
+        $verdict = $this->verify($code, $code, minCoverage: 100, driver: CoverageDriver::Pcov, staticErrors: $dead);
+
+        Assert::same($verdict->status, VerdictStatus::Equivalent, $verdict->reason);
+        Assert::same([$verdict->dead, $verdict->coverage], [1, 100.0]);
+    }
+
     public function lineCoverageWithAnExtension(): void
     {
         if (!\in_array('pcov', TestPhp::binary()->zendExtensions, true) && !self::hasPcov()) {
@@ -338,7 +381,10 @@ final class DiffTesterTest
      * @param int<0, 100> $minCoverage
      * @param non-negative-int $fuzzTimeMs
      */
-    private function verify(string $original, string $changed, string $key = 'App\f', int $callTimeoutMs = 2000, int $fuzzTimeMs = 500, int $minCoverage = 90, CoverageDriver $driver = CoverageDriver::Auto): Verdict
+    /**
+     * @param list<array{file: string, message: string, identifier: string, line: int}> $staticErrors
+     */
+    private function verify(string $original, string $changed, string $key = 'App\f', int $callTimeoutMs = 2000, int $fuzzTimeMs = 500, int $minCoverage = 90, CoverageDriver $driver = CoverageDriver::Auto, array $staticErrors = []): Verdict
     {
         \str_contains($original, 'namespace App;') or $key = \str_replace('App\\', '', $key);
         $file = Path::create($this->dir)->join('Code.php');
@@ -351,6 +397,6 @@ final class DiffTesterTest
         $tester = new DiffTester(TestPhp::binary(), $config, Path::create($this->dir));
 
         /** @var non-empty-string $key */
-        return $tester->verify(new DiffTask($key, $file, 'Code.php', $original, $changed));
+        return $tester->verify(new DiffTask($key, $file, 'Code.php', $original, $changed, staticErrors: $staticErrors));
     }
 }

@@ -28,6 +28,9 @@ final class Feedback
     /** @var non-negative-int */
     private int $probes;
 
+    /** @var non-negative-int Probes left out as dead code. */
+    private int $dead = 0;
+
     /**
      * @param non-negative-int $probes Number of branch probes of the original function.
      */
@@ -49,11 +52,38 @@ final class Feedback
      * Line coverage: the probes are the executable lines, known after the first call.
      *
      * @param list<int> $ids
+     * @param list<int> $dead Lines no input reaches: not counted.
      */
-    public function resize(array $ids): void
+    public function resize(array $ids, array $dead = []): void
     {
         $this->known = \array_fill_keys($ids, true);
+        $this->dead = 0;
+        $this->exclude($dead);
+    }
+
+    /**
+     * Leaves probes of dead code out: no input can hit them.
+     *
+     * @param list<int> $ids
+     */
+    public function exclude(array $ids): void
+    {
+        foreach ($ids as $id) {
+            if (isset($this->known[$id])) {
+                unset($this->known[$id]);
+                ++$this->dead;
+            }
+        }
+
         $this->probes = \count($this->known);
+    }
+
+    /**
+     * @return non-negative-int
+     */
+    public function dead(): int
+    {
+        return $this->dead;
     }
 
     /**

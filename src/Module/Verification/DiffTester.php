@@ -15,6 +15,7 @@ use Opmin\Module\Harness\WorkerOptions;
 use Opmin\Module\Php\PhpBinary;
 use Opmin\Module\Verification\Compare\ComparisonPolicy;
 use Opmin\Module\Verification\Compare\ResultComparator;
+use Opmin\Module\Verification\Coverage\DeadBranches;
 use Opmin\Module\Verification\Coverage\Instrumenter;
 use Opmin\Module\Verification\Input\ClassInfoProvider;
 use Opmin\Module\Verification\Input\Feedback;
@@ -79,6 +80,7 @@ final class DiffTester
             $verdict->counterexample,
             $verdict->flags,
             (float) (\hrtime(true) - $start) / 1e9,
+            $verdict->dead,
         );
     }
 
@@ -117,9 +119,10 @@ final class DiffTester
      *
      * @param array<string, mixed> $result
      * @param array{int, int} $range
+     * @param list<int> $dead Lines of dead code: not counted.
      * @return list<int>
      */
-    private static function lines(array $result, string $file, array $range, Feedback $feedback): array
+    private static function lines(array $result, string $file, array $range, Feedback $feedback, array $dead): array
     {
         /** @var array<string, array{executed: list<int>, executable: list<int>}> $lines */
         $lines = \is_array($result['lines'] ?? null) ? $result['lines'] : [];
@@ -130,7 +133,7 @@ final class DiffTester
 
         $inside = static fn(int $line): bool => $line >= $range[0] && $line <= $range[1];
         $executable = \array_values(\array_filter($data['executable'], $inside));
-        $feedback->probes() === 0 && $executable !== [] and $feedback->resize($executable);
+        $feedback->probes() === 0 && $feedback->dead() === 0 && $executable !== [] and $feedback->resize($executable, $dead);
 
         return \array_values(\array_filter($data['executed'], $inside));
     }
@@ -176,10 +179,14 @@ final class DiffTester
         }
 
         $lines = \in_array($this->config->coverageDriver, [CoverageDriver::Xdebug, CoverageDriver::Pcov], true);
+        $dead = DeadBranches::find($original->node, $task->staticErrors);
+        $deadProbes = [];
+        $deadLines = $lines && !$dead->isEmpty() ? $dead->lines($task->original) : [];
         $probes = 0;
         $probed = $original;
         if (!$lines) {
             [$originalCode, $probes] = $this->instrumenter->instrument($task->original, $original->node);
+            $dead->isEmpty() or $deadProbes = $dead->probes($this->instrumenter->sites());
             # The closure wrapper must carry the probes too.
             $probed = $this->locator->locate($originalCode, $task->key, $task->relative);
         }
@@ -201,7 +208,7 @@ final class DiffTester
         ), fresh: $static);
 
         try {
-            return $this->test($task, $probed, $changed, $originalSession, $changedSession, $probes, $lines, $static);
+            return $this->test($task, $probed, $changed, $originalSession, $changedSession, $probes, $lines, $static, $deadProbes, $deadLines);
         } catch (HarnessException $e) {
             return new Verdict($task->key, VerdictStatus::Unverified, 'the harness cannot run the function: ' . $e->getMessage(), flags: $flags);
         } finally {
@@ -213,8 +220,10 @@ final class DiffTester
 
     /**
      * @param non-negative-int $probes
+     * @param list<int> $deadProbes Probes of dead code.
+     * @param list<int> $deadLines Lines of dead code (line coverage).
      */
-    private function test(DiffTask $task, Target $original, Target $changed, Session $originalSession, Session $changedSession, int $probes, bool $lines, bool $static): Verdict
+    private function test(DiffTask $task, Target $original, Target $changed, Session $originalSession, Session $changedSession, int $probes, bool $lines, bool $static, array $deadProbes, array $deadLines): Verdict
     {
         $describedOriginal = $this->describe($originalSession, $original);
         $describedChanged = $this->describe($changedSession, $changed);
@@ -233,6 +242,7 @@ final class DiffTester
         };
 
         $feedback = new Feedback($probes);
+        $feedback->exclude($deadProbes);
         $literals = LiteralPool::collect($original->node, $changed->node);
         if (\in_array(Flag::Time, $original->flags, true) || \in_array(Flag::Time, $changed->flags, true)) {
             $now = (int) self::CLOCK;
@@ -245,7 +255,7 @@ final class DiffTester
         $checked = 0;
         $range = [(int) ($describedOriginal['line'] ?? 0), (int) ($describedOriginal['end_line'] ?? 0)];
         $file = (string) $task->file;
-        $check = static function (Input $input) use ($original, $changed, $originalSession, $changedSession, $comparator, $feedback, $static, $lines, $range, $file, &$checked): void {
+        $check = static function (Input $input) use ($original, $changed, $originalSession, $changedSession, $comparator, $feedback, $static, $lines, $range, $file, $deadLines, &$checked): void {
             $repeat = $static ? 3 : 1;
             $requests = [
                 ['target' => $original->call, 'input' => $input->toArray(), 'errors' => 'record', 'repeat' => $repeat],
@@ -263,7 +273,7 @@ final class DiffTester
                 throw new Nondeterminism($noise, 'original');
             }
 
-            $feedback->record($input, $lines ? self::lines($o1, $file, $range, $feedback) : self::probes($o1));
+            $feedback->record($input, $lines ? self::lines($o1, $file, $range, $feedback, $deadLines) : self::probes($o1));
             $difference = $comparator->compare($o1, $c1) ?? $comparator->compare($c1, $c2);
             $changedResult = $c1;
             if ($difference === null && (self::hasErrors($o1) || self::hasErrors($c1))) {
@@ -316,6 +326,7 @@ final class DiffTester
             $feedback->probes(),
             $counterexample,
             $flags,
+            dead: $feedback->dead(),
         );
 
         if ($outcome->isFalsified()) {
@@ -357,9 +368,10 @@ final class DiffTester
 
         if ($coverage < (float) $this->config->minBranchCoverage) {
             return $base(VerdictStatus::Unverified, \sprintf(
-                'differential tests cover %s%% of the branches of the original, %d%% required (verification.min_branch_coverage)',
+                'differential tests cover %s%% of the branches of the original, %d%% required (verification.min_branch_coverage)%s',
                 $coverage,
                 $this->config->minBranchCoverage,
+                $feedback->dead() === 0 ? '' : \sprintf('; %d dead by PHPStan are not counted', $feedback->dead()),
             ));
         }
 

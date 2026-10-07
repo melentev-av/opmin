@@ -20,6 +20,8 @@ final readonly class DiffTask
      * @param Path|null $autoload The project's `vendor/autoload.php`; null — bare files.
      * @param array<non-empty-string, array{string, string}> $otherChanges Other files changed in the
      *        same step: real path => [original content, changed content].
+     * @param list<array{file: string, message: string, identifier: string, line: int}> $staticErrors
+     *        PHPStan errors of the original file: they tell which branches are dead.
      */
     public function __construct(
         public string $key,
@@ -29,5 +31,6 @@ final readonly class DiffTask
         public string $changed,
         public ?Path $autoload = null,
         public array $otherChanges = [],
+        public array $staticErrors = [],
     ) {}
 }

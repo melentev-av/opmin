@@ -80,10 +80,11 @@ final class Verifier
         $changed = $keys ?? $this->changedFunctions($original, $candidate, $relative, $notes);
         $runner = $withTests ? TestRunnerFactory::create($this->project, $this->tests, $this->php, $work) : null;
         $phpstan = [];
+        $staticErrors = [];
         $testResult = null;
         $coverage = null;
         if ($withTests) {
-            [$phpstan, $testResult, $coverage, $red] = $this->levelsOneAndTwo($file, $original, $candidate, $runner, $work, $notes, $changed, $relative);
+            [$phpstan, $testResult, $coverage, $red, $staticErrors] = $this->levelsOneAndTwo($file, $original, $candidate, $runner, $work, $notes, $changed, $relative);
             if ($red !== null) {
                 # Tests red on the original code prove nothing about a change.
                 return new CandidateReport([], null, [], $runner?->name(), $red, $notes);
@@ -95,7 +96,7 @@ final class Verifier
         $results = [];
         foreach ($changed as $key) {
             ($this->log)("Differential test of {$key}");
-            $verdict = $tester->verify(new DiffTask($key, $file, $relative, $original, $candidate, $autoload->isFile() ? $autoload : null));
+            $verdict = $tester->verify(new DiffTask($key, $file, $relative, $original, $candidate, $autoload->isFile() ? $autoload : null, staticErrors: $staticErrors));
             $tests = [];
             if ($coverage !== null) {
                 [$from, $to] = $this->lines($original, $key, $relative);
@@ -122,8 +123,9 @@ final class Verifier
      * @param list<string> $notes
      * @param list<non-empty-string> $changed
      * @param non-empty-string $relative
-     * @return array{list<array{file: string, message: string, identifier: string, line: int}>, ?TestResult, ?CoverageMap, ?TestResult} New
-     *         PHPStan errors, tests on the candidate, coverage map, tests on the original when they are red.
+     * @return array{list<array{file: string, message: string, identifier: string, line: int}>, ?TestResult, ?CoverageMap, ?TestResult, list<array{file: string, message: string, identifier: string, line: int}>} New
+     *         PHPStan errors, tests on the candidate, coverage map, tests on the original when they are red,
+     *         PHPStan errors of the original file (they mark dead branches).
      */
     private function levelsOneAndTwo(Path $file, string $original, string $candidate, ?TestRunnerAdapter $runner, Path $work, array &$notes, array $changed, string $relative): array
     {
@@ -132,6 +134,11 @@ final class Verifier
         $runner === null and $notes[] = 'No test runner found (tests.runner): the project\'s tests are not run.';
 
         $before = $phpstan->available() ? $phpstan->analyse([$file]) : null;
+        $real = \realpath((string) $file);
+        $own = \array_values(\array_filter(
+            $before->errors ?? [],
+            static fn(array $e): bool => $e['file'] === (string) $file || ($real !== false && \realpath($e['file']) === $real),
+        ));
         $baseline = null;
         $coverage = null;
         if ($runner !== null) {
@@ -140,7 +147,7 @@ final class Verifier
             if (!$baseline->success) {
                 $notes[] = 'The project\'s tests fail on the original code: fix them first. Failed: ' . \implode(', ', \array_slice($baseline->failed, 0, 10));
 
-                return [[], null, null, $baseline];
+                return [[], null, null, $baseline, $own];
             }
 
             $coverage = $runner->collectCoverageMap();
@@ -174,7 +181,7 @@ final class Verifier
                 $after = $runner->runAll();
             }
 
-            return [$new, $after, $coverage, null];
+            return [$new, $after, $coverage, null, $own];
         } finally {
             \file_put_contents((string) $file, $original);
             FS::removeFile($backup);

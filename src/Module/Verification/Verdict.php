@@ -19,6 +19,7 @@ final readonly class Verdict
      * @param float $coverage Branch coverage (%) of the original version by the inputs.
      * @param non-negative-int $inputs Inputs checked.
      * @param list<Flag> $flags
+     * @param non-negative-int $dead Branches (or lines) of dead code left out of the coverage.
      */
     public function __construct(
         public string $key,
@@ -30,6 +31,7 @@ final readonly class Verdict
         public ?Counterexample $counterexample = null,
         public array $flags = [],
         public float $seconds = 0.0,
+        public int $dead = 0,
     ) {}
 
     public function accepted(): bool
@@ -48,6 +50,7 @@ final readonly class Verdict
             'reason' => $this->reason,
             'coverage' => $this->coverage,
             'probes' => $this->probes,
+            'dead_branches' => $this->dead,
             'inputs' => $this->inputs,
             'flags' => Flag::values($this->flags),
             'seconds' => \round($this->seconds, 3),

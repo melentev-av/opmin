@@ -74,6 +74,28 @@ final class InstrumenterTest
         Assert::string($result)->contains("fn(\$x) => (\\Opmin\\Harness\\Probe::hit(0) ?? (\$x > 1 ? (\\Opmin\\Harness\\Probe::hit(1) ?? ('a'))");
     }
 
+    public function sitesTellWhereEveryProbeIs(): void
+    {
+        $code = "<?php\nfunction f(\$a) { if (\$a) return 1; \$b = \$a ?: 2; return \$b; }\n";
+        $function = self::node($code, 'f');
+        $instrumenter = new Instrumenter();
+
+        [, $count] = $instrumenter->instrument($code, $function);
+        $sites = $instrumenter->sites();
+
+        Assert::same($count, 4);
+        Assert::same(\count($sites), 4);
+        $at = static fn(string $text): int => (int) \strpos($code, $text);
+        $if = $function->getStmts()[0] ?? null;
+        Assert::same($sites[0], [$at('if ('), null]);
+        Assert::same($sites[1], [$at('return 1'), null]);
+        Assert::same($sites[2], [$at('if ('), $if]);
+        Assert::same($sites[3], [$at('2;'), null]);
+
+        $instrumenter->instrument("<?php\nfunction g() {}\n", self::node("<?php\nfunction g() {}\n", 'g'));
+        Assert::same($instrumenter->sites(), []);
+    }
+
     private static function node(string $code, string $key): \PhpParser\Node\FunctionLike
     {
         foreach ((new FunctionLocator())->locate($code, 'x.php::<main>') as $unit) {

@@ -157,15 +157,38 @@ final class VerifierTest
         Assert::same($report->functions[0]->status, 'diff-tested');
     }
 
+    public function phpstanTellsWhichBranchesAreDead(): void
+    {
+        $original = "<?php\nnamespace App;\nfunction g(int \$a) {\n    if (is_int(\$a)) {\n        \$s = \$a;\n        return \$s;\n    }\n    return 0;\n}\n";
+        \file_put_contents($this->dir . '/src/A.php', $original);
+        $candidate = \str_replace("\$s = \$a;\n        return \$s;", 'return $a;', $original);
+        $tests = new Schema\Tests();
+        $tests->runner = Schema\TestRunner::Command;
+        $tests->command = 'true';
+        $commands = new Schema\Commands();
+        $commands->phpstan = \escapeshellarg((string) \realpath(__DIR__ . '/../../../../vendor/bin/phpstan')) . ' analyse --no-progress --error-format=json --level=9';
+        $without = new Schema\Commands();
+        $without->phpstan = null;
+
+        $withPhpstan = $this->verifier(tests: $tests, commands: $commands, minCoverage: 100)->verify($this->file(), $candidate, withTests: true);
+        $withoutPhpstan = $this->verifier(tests: $tests, commands: $without, minCoverage: 100)->verify($this->file(), $candidate, withTests: true);
+
+        Assert::same($withPhpstan->functions[0]->verdict?->dead, 1);
+        Assert::same($withPhpstan->functions[0]->status, 'diff-tested', $withPhpstan->functions[0]->reason);
+        Assert::same($withoutPhpstan->functions[0]->verdict?->dead, 0);
+        Assert::string($withoutPhpstan->functions[0]->reason)->contains('min_branch_coverage');
+    }
+
     private function file(): Path
     {
         return Path::create($this->dir)->join('src/A.php');
     }
 
-    private function verifier(?Schema\Tests $tests = null, bool $allowUnverified = false): Verifier
+    private function verifier(?Schema\Tests $tests = null, bool $allowUnverified = false, ?Schema\Commands $commands = null, int $minCoverage = 90): Verifier
     {
         $verification = new Schema\Verification();
         $verification->fuzzTimeMs = 200;
+        $verification->minBranchCoverage = $minCoverage;
         $verification->allowUnverified = $allowUnverified;
         $this->log = [];
 
@@ -173,7 +196,7 @@ final class VerifierTest
             new Project(Path::create($this->dir), false, null),
             TestPhp::binary(),
             $verification,
-            new Schema\Commands(),
+            $commands ?? new Schema\Commands(),
             $tests ?? new Schema\Tests(),
             Path::create($this->dir)->join('.opmin-cache'),
             '8.1',

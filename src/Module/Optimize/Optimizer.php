@@ -17,6 +17,10 @@ use Opmin\Module\Opcode\FunctionCount;
 use Opmin\Module\Opcode\OpcodeCounter;
 use Opmin\Module\Optimize\Rector\RectorRunner;
 use Opmin\Module\Optimize\Rector\RuleSpec;
+use Opmin\Module\Optimize\Review\Change;
+use Opmin\Module\Optimize\Review\Decision;
+use Opmin\Module\Optimize\Review\Declined;
+use Opmin\Module\Optimize\Review\Reviewer;
 use Opmin\Module\Php\PhpBinary;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Report\RejectionKind;
@@ -60,10 +64,21 @@ final class Optimizer
     private array $verifierNotes = [];
 
     /** @var array<string, string> "rule\0file\0function" => hash of the function when the rule's change of it was rolled back. */
-    private array $declined = [];
+    private array $rolledBack = [];
 
     private readonly Readability $readability;
     private readonly SignatureGate $signatures;
+    private readonly Declined $declined;
+    private ?Reviewer $reviewer = null;
+
+    /** `opmin.baseline.yaml` when the review of this run added to it. */
+    private ?Path $declinedFile = null;
+
+    /** @var array<class-string, true> Rules the review answered "all" for. */
+    private array $approvedRules = [];
+
+    /** The run ends after the current step (`q` in the review, a signal). */
+    private bool $stopped = false;
 
     /** @var \Closure(string): void */
     private readonly \Closure $log;
@@ -87,7 +102,9 @@ final class Optimizer
         private readonly Path $workDir,
         bool $allowPublicSignatures = false,
         ?\Closure $log = null,
+        ?Declined $declined = null,
     ) {
+        $this->declined = $declined ?? Declined::none();
         $this->readability = new Readability($readability);
         $this->signatures = new SignatureGate($signatures, $allowPublicSignatures);
         $this->log = $log ?? static function (string $message): void {};
@@ -100,13 +117,16 @@ final class Optimizer
     public function run(array $files, array $rules): RunReport
     {
         $report = $this->open($files);
-        for ($pass = 1; $pass <= $this->rectorConfig->maxPasses; ++$pass) {
+        for ($pass = 1; $pass <= $this->rectorConfig->maxPasses && !$this->stopped(); ++$pass) {
             $improved = false;
             foreach ($rules as $rule) {
                 ($this->log)("Pass {$pass}: {$rule->shortName()}");
                 $step = $this->step($rule, $pass);
                 $step->accepted === [] && $step->rejected === [] && $step->error === null or $report->steps[] = $step;
                 $improved = $improved || $step->accepted !== [];
+                if ($this->stopped()) {
+                    break;
+                }
             }
 
             if (!$improved) {
@@ -114,9 +134,31 @@ final class Optimizer
             }
         }
 
+        $report->interrupted = $this->stopped();
         $this->close($report);
 
         return $report;
+    }
+
+    /**
+     * Asks the reviewer about every change that passed the checks (`--review`).
+     */
+    public function withReviewer(Reviewer $reviewer): void
+    {
+        $this->reviewer = $reviewer;
+    }
+
+    /**
+     * Ends the run after the current step.
+     */
+    public function stop(): void
+    {
+        $this->stopped = true;
+    }
+
+    public function stopped(): bool
+    {
+        return $this->stopped;
     }
 
     /**
@@ -153,6 +195,14 @@ final class Optimizer
     public function close(RunReport $report): void
     {
         \array_push($report->notes, ...\array_keys($this->verifierNotes));
+        if ($this->declinedFile !== null) {
+            try {
+                $this->workspace->commit([$this->declinedFile], "opmin: remember the changes declined in the review\n\nThey are listed in " . Declined::FILE . '.');
+            } catch (\RuntimeException $e) {
+                $report->notes[] = Declined::FILE . ' is not committed: ' . $e->getMessage();
+            }
+        }
+
         $this->finalTests($report);
         $final = $this->countCurrent();
         $this->writeJson('99-final.json', $final);
@@ -312,7 +362,7 @@ final class Optimizer
             }
 
             $units = Units::of($this->current[$relative], $relative);
-            isset($units->units[$top]) and $this->declined["{$rule->class}\0{$relative}\0{$top}"] = self::fingerprint($units, $top);
+            isset($units->units[$top]) and $this->rolledBack["{$rule->class}\0{$relative}\0{$top}"] = self::fingerprint($units, $top);
         }
     }
 
@@ -322,7 +372,7 @@ final class Optimizer
      */
     private function declinedBefore(RuleSpec $rule, string $relative, string $top, Units $before): bool
     {
-        $known = $this->declined["{$rule->class}\0{$relative}\0{$top}"] ?? null;
+        $known = $this->rolledBack["{$rule->class}\0{$relative}\0{$top}"] ?? null;
 
         return $known !== null && isset($before->units[$top]) && $known === self::fingerprint($before, $top);
     }
@@ -344,6 +394,7 @@ final class Optimizer
         }
 
         $accepted = $this->verify($plans, $step);
+        $this->reviewer === null || $accepted === [] or $accepted = $this->review($accepted, $rule, $step);
         if ($accepted === []) {
             return;
         }
@@ -483,6 +534,10 @@ final class Optimizer
             || ($unit->class !== null && IgnoreMarks::ignored($unit->class, $names))
         ) {
             return [$gain, 'excluded by the user (ignore)'];
+        }
+
+        if ($this->declined->has($top, [...$names, $rule->class])) {
+            return [$gain, 'declined in the review earlier (' . Declined::FILE . ')'];
         }
 
         foreach ($restrictions as $key => $list) {
@@ -669,6 +724,94 @@ final class Optimizer
         }
 
         return $taken;
+    }
+
+    /**
+     * Asks the reviewer about every verified change: a function (a whole file changed outside
+     * functions) at a time. What is declined is rolled back and remembered in `opmin.baseline.yaml`;
+     * when only a part of the step is left, it is verified again — the checks ran on all of it.
+     *
+     * @param array<non-empty-string, FilePlan> $plans
+     * @return array<non-empty-string, FilePlan>
+     */
+    private function review(array $plans, RuleSpec $rule, StepReport $step): array
+    {
+        \assert($this->reviewer !== null);
+        $alias = $rule->alias();
+        $name = $alias === null || $alias === '' ? $rule->shortName() : $alias;
+        $partial = false;
+        foreach ($plans as $relative => $plan) {
+            $groups = $plan->atomic ? [\array_keys($plan->accepted)] : \array_map(static fn(string $t): array => [$t], \array_keys($plan->accepted));
+            foreach ($groups as $tops) {
+                if ($tops === [] || isset($this->approvedRules[$rule->class])) {
+                    continue;
+                }
+
+                $decision = $this->stopped ? Decision::Quit : $this->reviewer->review($this->change($relative, $plan, $tops, $rule, $name, $step));
+                if ($decision === Decision::All) {
+                    $this->approvedRules[$rule->class] = true;
+                }
+
+                if ($decision === Decision::Yes || $decision === Decision::All) {
+                    continue;
+                }
+
+                $decision === Decision::Quit and $this->stopped = true;
+                foreach ($tops as $top) {
+                    $decision === Decision::No and $this->declined->add($top, $name);
+                    $step->reject($relative, $top, $decision === Decision::No ? 'declined in the review' : 'declined in the review: the run was stopped');
+                    unset($plan->accepted[$top], $plan->statuses[$top], $plan->checks[$top]);
+                }
+
+                $partial = true;
+            }
+
+            # A file changed outside functions is one answer: all or nothing.
+            if ($plan->accepted === []) {
+                $plan->candidate = $plan->current;
+            } elseif (!$plan->atomic) {
+                $plan->candidate = (string) $plan->before->withUnitsFrom($plan->after, \array_keys($plan->accepted));
+            }
+        }
+
+        $this->declinedFile = $this->declined->save() ?? $this->declinedFile;
+        $left = \array_filter($plans, static fn(FilePlan $p): bool => $p->accepted !== []);
+        if (!$partial || $left === []) {
+            return $left;
+        }
+
+        ($this->log)('Verifying what is left of the step after the review');
+
+        return $this->verify($left, $step);
+    }
+
+    /**
+     * @param non-empty-string $relative
+     * @param non-empty-list<non-empty-string> $tops
+     * @param non-empty-string $name
+     */
+    private function change(string $relative, FilePlan $plan, array $tops, RuleSpec $rule, string $name, StepReport $step): Change
+    {
+        if ($plan->atomic) {
+            $diff = (new LineDiff($plan->current, $plan->candidate))->unified();
+        } else {
+            $top = $tops[0];
+            $diff = (new LineDiff(
+                ($plan->before->docComment($top) ?? '') . ($plan->before->source($top) ?? ''),
+                ($plan->after->docComment($top) ?? '') . ($plan->after->source($top) ?? ''),
+            ))->unified();
+        }
+
+        $status = null;
+        $checks = [];
+        $gain = 0;
+        foreach ($tops as $top) {
+            $gain += $plan->accepted[$top] ?? 0;
+            $status = RunReport::weaker($status, $plan->statuses[$top] ?? 'verified');
+            \array_push($checks, ...($plan->checks[$top] ?? []));
+        }
+
+        return new Change($relative, $tops, $rule->class, $name, $gain, $status, $checks, $diff, $step->executedGain);
     }
 
     private function unitAtLine(Units $units, int $line): ?string

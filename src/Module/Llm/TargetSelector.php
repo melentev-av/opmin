@@ -11,6 +11,7 @@ use Opmin\Module\Analysis\Restriction;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Opcode\CountResult;
 use Opmin\Module\Optimize\LlmCandidate;
+use Opmin\Module\Optimize\Review\Declined;
 use Opmin\Module\Optimize\Units;
 use Opmin\Module\Project\Project;
 
@@ -19,7 +20,8 @@ use Opmin\Module\Project\Project;
  * closures, which are rewritten together with them), `llm.top_n` of them.
  *
  * Left out: main code, functions that are never changed (`eval`, `include`, line numbers) and the
- * ones the user excluded for the LLM stage (`ignore.functions`, `#[\Opmin\Ignore]`, `@opmin-ignore`).
+ * ones the user excluded for the LLM stage (`ignore.functions`, `#[\Opmin\Ignore]`, `@opmin-ignore`,
+ * `{function, rule: llm}` declined in the review).
  *
  * @internal
  */
@@ -28,6 +30,7 @@ final readonly class TargetSelector
     public function __construct(
         private Project $project,
         private Schema\Ignore $ignore,
+        private Declined $declined,
     ) {}
 
     /**
@@ -96,6 +99,7 @@ final readonly class TargetSelector
         $names = [LlmCandidate::alias()];
 
         return IgnoreMarks::byConfig($this->ignore->functions, $key)
+            || $this->declined->has($key, [...$names, LlmCandidate::class])
             || ($unit->node !== null && IgnoreMarks::ignored($unit->node, $names))
             || ($unit->class !== null && IgnoreMarks::ignored($unit->class, $names));
     }

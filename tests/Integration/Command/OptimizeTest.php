@@ -59,6 +59,27 @@ final class OptimizeTest
         }
 
         PHP;
+    private const REVIEWED = <<<'PHP'
+        <?php
+
+        declare(strict_types=1);
+
+        namespace App;
+
+        final class Text
+        {
+            public function size(string $s): int
+            {
+                return strlen($s) + count(str_split($s));
+            }
+
+            public function length(string $s): int
+            {
+                return strlen($s) * 2;
+            }
+        }
+
+        PHP;
 
     private string $dir = '';
 
@@ -200,27 +221,104 @@ final class OptimizeTest
         Assert::same(\file_get_contents($this->dir . '/src/Text.php'), self::CODE);
     }
 
+    public function reviewAppliesWhatIsAcceptedAndRemembersWhatIsDeclined(): void
+    {
+        \file_put_contents($this->dir . '/src/Text.php', self::REVIEWED);
+        $this->commitAll();
+
+        [$code, $out, $err] = $this->opmin(['optimize', '--format=none', '--review'], "n\ny\n");
+
+        Assert::same($code, 0, $out . $err);
+        Assert::string($err)
+            ->contains('App\Text::size — src/Text.php')
+            ->contains('-        return strlen($s) + count(str_split($s));')
+            ->contains('rule fqn, checks: diff-tested 100%')
+            ->contains('Apply? [y]es, [n]o');
+        $code = (string) \file_get_contents($this->dir . '/src/Text.php');
+        Assert::string($code)->contains('return strlen($s) + count(str_split($s));');
+        Assert::string($code)->contains('return \strlen($s) * 2;');
+        Assert::same(
+            (string) \file_get_contents($this->dir . '/opmin.baseline.yaml'),
+            "# Changes declined in `opmin optimize --review`: opmin does not propose them again.\n"
+            . "# Remove an entry to let opmin try the change again.\n"
+            . "rejected:\n  - { function: 'App\\Text::size', rule: fqn }\n",
+        );
+        Assert::same(\trim($this->git('status', '--porcelain')), '');
+        Assert::string($this->git('log', '-1', '--format=%s'))->contains('opmin: remember the changes declined in the review');
+        $report = $this->report();
+        Assert::same(\array_column($report['rejected'], 'kind', 'function'), ['App\Text::size' => 'review']);
+
+        # Not proposed again, also without --review.
+        [$again, $againOut, $againErr] = $this->opmin(['optimize', '--format=none', '--review'], '');
+
+        Assert::same($again, 0, $againOut . $againErr);
+        Assert::string($againErr)->notContains('Apply?');
+        Assert::string((string) \file_get_contents($this->dir . '/src/Text.php'))->contains('return strlen($s) + count(str_split($s));');
+    }
+
+    public function reviewQuitEndsTheRunAndAllAcceptsTheRule(): void
+    {
+        \file_put_contents($this->dir . '/src/Text.php', self::REVIEWED);
+        $this->commitAll();
+
+        [$code, $out, $err] = $this->opmin(['optimize', '--format=none', '--review'], "q\n");
+
+        Assert::same($code, 0, $out . $err);
+        Assert::same(\file_get_contents($this->dir . '/src/Text.php'), self::REVIEWED);
+        Assert::false(\is_file($this->dir . '/opmin.baseline.yaml'));
+        $report = $this->report();
+        Assert::true($report['interrupted']);
+        $markdown = \glob($this->dir . '/runs/*/report.md') ?: [];
+        Assert::string((string) \file_get_contents($markdown[0] ?? ''))->contains('The run was interrupted');
+
+        \exec('rm -rf ' . \escapeshellarg($this->dir . '/runs'));
+        [$all, $allOut, $allErr] = $this->opmin(['optimize', '--format=none', '--review'], "a\n");
+
+        Assert::same($all, 0, $allOut . $allErr);
+        Assert::same(\substr_count($allErr, 'Apply?'), 1);
+        Assert::string((string) \file_get_contents($this->dir . '/src/Text.php'))->contains('return \strlen($s) + \count(\str_split($s));');
+    }
+
+    public function reviewWithoutInteractionAppliesEverything(): void
+    {
+        \file_put_contents($this->dir . '/src/Text.php', self::REVIEWED);
+        $this->commitAll();
+
+        [$code, $out, $err] = $this->opmin(['optimize', '--format=none', '--review', '--no-interaction']);
+
+        Assert::same($code, 0, $out . $err);
+        Assert::string($err)->ignoringWhitespace(lineBreaks: true)->contains('--review needs an interactive session');
+        Assert::string((string) \file_get_contents($this->dir . '/src/Text.php'))->contains('return \strlen($s) * 2;');
+    }
+
     public function laterStagesAreNotImplementedYet(): void
     {
-        [$code, , $err] = $this->opmin('optimize', '--review');
+        [$code, , $err] = $this->opmin('optimize', '--resume');
         [$gitCode, , $gitErr] = $this->opmin('optimize', 'git@github.com:vendor/pkg.git');
 
         Assert::same($code, 2);
-        Assert::string($err)->contains('--review is not implemented yet (stage M5)');
+        Assert::string($err)->contains('--resume is not implemented yet (stage M5)');
         Assert::same($gitCode, 2);
         Assert::string($gitErr)->contains('stage M7');
     }
 
     /**
-     * @return array{totals: array{ops_before: int, ops_after: int}, patch: string, steps: list<array{rejected: list<array{function: string, reason: string}>}>}
+     * @return array{totals: array{ops_before: int, ops_after: int}, patch: ?string, interrupted: bool, rejected: list<array<string, mixed>>, steps: list<array{rejected: list<array{function: string, reason: string}>}>}
      */
     private function report(): array
     {
         $files = \glob($this->dir . '/runs/*/report.json') ?: [];
         Assert::count($files, 1);
 
-        /** @var array{totals: array{ops_before: int, ops_after: int}, patch: string, steps: list<array{rejected: list<array{function: string, reason: string}>}>} */
+        /** @var array{totals: array{ops_before: int, ops_after: int}, patch: ?string, interrupted: bool, rejected: list<array<string, mixed>>, steps: list<array{rejected: list<array{function: string, reason: string}>}>} */
         return \json_decode((string) \file_get_contents($files[0]), true, flags: \JSON_THROW_ON_ERROR);
+    }
+
+    private function commitAll(): void
+    {
+        $this->git('init', '-q');
+        $this->git('add', '.');
+        $this->git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init');
     }
 
     private function git(string ...$args): string
@@ -233,13 +331,15 @@ final class OptimizeTest
     }
 
     /**
+     * @param string|list<string> $command The first argument, or all of them with the standard input after.
      * @return array{int, string, string} Exit code, stdout, stderr.
      */
-    private function opmin(string ...$args): array
+    private function opmin(string|array $command, string ...$args): array
     {
+        [$args, $stdin] = \is_array($command) ? [$command, $args[0] ?? null] : [[$command, ...$args], null];
         $process = \proc_open(
             [\PHP_BINARY, __DIR__ . '/../../../bin/opmin', '--no-ansi', ...$args],
-            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            [0 => $stdin === null ? ['file', '/dev/null', 'r'] : ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes,
             $this->dir,
             \array_merge(\getenv(), [
@@ -247,6 +347,11 @@ final class OptimizeTest
                 'GIT_AUTHOR_NAME' => 't', 'GIT_AUTHOR_EMAIL' => 't@t', 'GIT_COMMITTER_NAME' => 't', 'GIT_COMMITTER_EMAIL' => 't@t',
             ]),
         );
+        if ($stdin !== null) {
+            \fwrite($pipes[0], $stdin);
+            \fclose($pipes[0]);
+        }
+
         $out = (string) \stream_get_contents($pipes[1]);
         $err = (string) \stream_get_contents($pipes[2]);
 

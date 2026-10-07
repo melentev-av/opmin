@@ -13,6 +13,8 @@ use Opmin\Module\Opcode\Dump\OpcacheDumper;
 use Opmin\Module\Opcode\OpcodeCounter;
 use Opmin\Module\Optimize\Formatter;
 use Opmin\Module\Optimize\Optimizer;
+use Opmin\Module\Optimize\Review\Declined;
+use Opmin\Module\Config\Exception\ConfigException;
 use Opmin\Module\Optimize\Rector\RectorRunner;
 use Opmin\Module\Optimize\Workspace;
 use Opmin\Module\Php\PhpBinary;
@@ -101,7 +103,8 @@ abstract class Stage extends Base
      */
     protected function ignoredPaths(Project $project): array
     {
-        return \array_values(\array_unique(['runs', $project->relative($this->cacheDir($project))]));
+        # The review writes opmin.baseline.yaml and commits it at the end of the run.
+        return \array_values(\array_unique(['runs', $project->relative($this->cacheDir($project)), Declined::FILE]));
     }
 
     /**
@@ -151,6 +154,12 @@ abstract class Stage extends Base
         /** @var Schema\Ignore $ignore */
         $ignore = $this->container->get(Schema\Ignore::class);
 
+        try {
+            $declined = Declined::load($project->root);
+        } catch (\InvalidArgumentException $e) {
+            throw new ConfigException($e->getMessage(), previous: $e);
+        }
+
         return new Optimizer(
             $project,
             $php,
@@ -169,6 +178,7 @@ abstract class Stage extends Base
             static function (string $message) use ($errorOutput): void {
                 $errorOutput->writeln("  {$message}", OutputInterface::VERBOSITY_NORMAL);
             },
+            $declined,
         );
     }
 }

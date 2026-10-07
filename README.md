@@ -72,6 +72,7 @@ opmin verify src/Cart.php /tmp/Cart.php --with-tests    # + php -l, PHPStan "no 
 opmin optimize                         # the config `paths` (src/ or app/)
 opmin optimize src/Cart.php 'src/**/*Service.php' --dry-run
 opmin optimize --with-standard-rector  # also the standard Rector rules (off by default)
+opmin optimize --review                # confirm every change: y / n / a (all of this rule) / q
 opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
 ```
 
@@ -83,6 +84,11 @@ opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
 - In a git working tree (must be clean) every accepted step is a commit; outside git the originals are copied to
   `runs/<ts>/original/`; `--dry-run` restores everything. Each run writes the report (below), the counts before
   and after and `opmin.patch`, and ends with a full run of the project's tests.
+- `--review` shows each change that passed every check — the diff of the function, `−N opcodes, rule X, checks:
+  diff-tested 96% (210 inputs) ✓` — and asks `y` (apply), `n` (roll back and never propose again), `a` (apply this
+  and the rest of the rule), `q` (roll back and end the run). Declined changes go to `opmin.baseline.yaml`
+  (`rejected: [{function, rule}]`, committed at the end of the run; remove an entry to allow it again) and are
+  skipped by both stages. Without an interactive session (`-n`, CI, an agent) every change that passes is applied.
 - A change rolled back for a reason of its own (no gain, a difference, not proven…) is not tried again in later
   passes while the function stays the same.
 - opmin's own rules, on by default, prove their safety conditions themselves (native types through PHPStan):

@@ -9,6 +9,7 @@ use Opmin\Module\Analysis\Shadow\ShadowIndex;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Optimize\Rector\RuleCatalog;
 use Opmin\Module\Optimize\Rector\RuleSpec;
+use Opmin\Module\Optimize\Review\ConsoleReviewer;
 use Opmin\Module\Optimize\RunReport;
 use Opmin\Module\Optimize\StepReport;
 use Opmin\Module\Optimize\Workspace;
@@ -51,7 +52,7 @@ final class Optimize extends Stage
 {
     /** Options of later stages: [option, stage]. */
     private const LATER = [
-        'review' => 'M5', 'resume' => 'M5', 'guard-perf' => 'M5', 'mutation-check' => 'M5',
+        'resume' => 'M5', 'guard-perf' => 'M5', 'mutation-check' => 'M5',
         'ref' => 'M7', 'no-docker' => 'M7', 'allow-scripts' => 'M7', 'force-public-api' => 'M7', 'yes' => 'M7',
     ];
 
@@ -159,6 +160,12 @@ final class Optimize extends Stage
         $optimizer = $this->optimizer($project, $php, $workspace, $output, (bool) $input->getOption('allow-public-signatures'));
         [$environment, $warnings] = $this->environment($project, $php, $optimizer, $runDir);
         $warnings === [] or $style->warning($warnings);
+        if ($input->getOption('review')) {
+            # Without a terminal (-n, CI, an agent) every change that passes the checks is applied.
+            $input->isInteractive()
+                ? $optimizer->withReviewer(new ConsoleReviewer(new SymfonyStyle($input, $errorOutput)))
+                : $style->warning('--review needs an interactive session: every change that passes the checks is applied.');
+        }
 
         $report = $optimizer->run($files, $rules);
         $report->environment = $environment;

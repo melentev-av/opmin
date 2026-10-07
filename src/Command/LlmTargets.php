@@ -9,6 +9,7 @@ use Opmin\Module\Config\Schema;
 use Opmin\Module\Llm\Session;
 use Opmin\Module\Llm\Target;
 use Opmin\Module\Llm\TargetSelector;
+use Opmin\Module\Optimize\Review\Declined;
 use Opmin\Module\Php\PhpBinaryException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -53,6 +54,7 @@ final class LlmTargets extends LlmStage
             $arguments = $input->getArgument('path');
             [$project, $paths, $php] = $this->project($arguments);
             $files = $this->files($project, $paths);
+            $declined = Declined::load($project->root);
         } catch (PhpBinaryException|\InvalidArgumentException $e) {
             $style->error($e->getMessage());
             return Command::INVALID;
@@ -63,7 +65,7 @@ final class LlmTargets extends LlmStage
         /** @var Schema\Ignore $ignore */
         $ignore = $this->container->get(Schema\Ignore::class);
         $counts = $this->counter($php, $this->cacheDir($project))->count($project, $files);
-        $targets = (new TargetSelector($project, $ignore))->select($counts, $llm->topN);
+        $targets = (new TargetSelector($project, $ignore, $declined))->select($counts, $llm->topN);
         $session = Session::start($this->newRunDir($project), $targets, $php->version);
 
         $data = [

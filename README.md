@@ -11,8 +11,8 @@ object state, calls to collaborators).
 As a CI guard, `opmin check` fails a pull request when functions grow in opcodes compared to a committed baseline.
 
 > **Status: early development.** The CLI skeleton, configuration and build (M0), opcode counting — `count` and
-> `diff` (M1), behavior verification — `verify` (M2) and the Rector stage of `optimize` (M3) work; the LLM stage,
-> `check` and the rest are being implemented stage by stage. Commands and options that are not implemented yet
+> `diff` (M1), behavior verification — `verify` (M2), the Rector stage of `optimize` (M3) and the LLM stage — a
+> Claude Code skill with `apply-candidate` (M4) work; `check` and the rest are being implemented stage by stage. Commands and options that are not implemented yet
 > fail with a message naming the stage.
 
 ## Quick start (planned flow)
@@ -21,7 +21,8 @@ As a CI guard, `opmin check` fails a pull request when functions grow in opcodes
 opmin init        # writes opmin.yaml with every key, its default and a comment
 opmin doctor      # checks php.binary, OPcache, git, tests, PHPStan
 opmin count src   # opcodes per function
-opmin optimize .  # Rector + LLM stages, every accepted step is a separate commit
+opmin optimize .  # Rector stage, every accepted step is a separate commit
+# then, in Claude Code: "minimize opcodes with opmin" — the skill opcode-minimize (LLM stage)
 ```
 
 ## Counting opcodes
@@ -91,6 +92,30 @@ opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
 - Exclude code with `#[\Opmin\Ignore]` / `#[\Opmin\Ignore(rules: ['fqn'])]`, `@opmin-ignore [rules]`,
   `ignore.paths`, `ignore.functions`; `vendor/` and `@generated` files are never touched.
 - Which standard Rector rules save opcodes: [docs/standard-rules.md](docs/standard-rules.md).
+
+## Optimizing (Stage B: LLM, a Claude Code skill)
+
+What rules cannot do, a model proposes and opmin judges — one function at a time, through the same checks as a
+Rector step. `opmin init` puts the skill `opcode-minimize` into `.claude/skills/` (`--no-skill` to skip);
+`opmin skill:install --global` puts it into `~/.claude/skills/`, `opmin skill:update` brings it to the version of
+the installed opmin. The skill drives these commands:
+
+```bash
+opmin llm:targets src --format=json            # starts a session in runs/<ts>/: the llm.top_n functions with the most opcodes
+opmin llm:context 'App\Cart::total'            # source, opcode listing, histogram, dynamic constructs with their rules,
+                                               # readability and signature rules, rejected attempts with their reasons
+opmin apply-candidate 'App\Cart::total' runs/<ts>/candidate.php --format=json
+opmin llm:finish                               # the full test run (taking back attempts while it fails), report, patch
+```
+
+- A candidate is the new source of **only that function**; anything else changed (another function, an import) is
+  refused. It is kept only with strictly fewer opcodes, within `readability.*` and `signatures.*`, and proven by
+  PHPStan, the project's tests and differential tests; then it is a commit. A rejection names the reason — with
+  the shrunk counterexample input when behavior differs — and goes into the context of the next attempt.
+- At most `llm.attempts_per_function` attempts per function. `#[\Opmin\Ignore(rules: ['llm'])]` /
+  `@opmin-ignore llm` keeps a function away from this stage only.
+- The patterns the skill knows are measured on PHP 8.1–8.5 (`bin/bench --only=patterns`), including the ones that
+  usually give nothing: [resources/skills/opcode-minimize/SKILL.md](resources/skills/opcode-minimize/SKILL.md).
 
 ## Installation
 

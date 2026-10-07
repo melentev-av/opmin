@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Opmin\Command;
 
 use Internal\Path;
+use Opmin\Info;
 use Opmin\Module\Config\ConfigWriter;
+use Opmin\Module\Skill\Skill;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\QuestionHelper;
@@ -16,11 +18,13 @@ use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Symfony\Component\Console\Style\StyleInterface;
 
 /**
- * Creates `opmin.yaml` with every key, its default value and a comment.
+ * Creates `opmin.yaml` with every key, its default value and a comment, and puts the Claude Code
+ * skill `opcode-minimize` into `.claude/skills/` next to it (unless `--no-skill`).
  *
  * ```bash
  * opmin init
  * opmin init --config=./custom.yaml --overwrite
+ * opmin init --no-skill
  * ```
  *
  * @internal
@@ -43,6 +47,7 @@ final class Init extends Base
             InputOption::VALUE_NONE,
             'Overwrite existing configuration file without confirmation',
         );
+        $this->addOption('no-skill', null, InputOption::VALUE_NONE, 'Do not put the Claude Code skill into .claude/skills');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -61,6 +66,7 @@ final class Init extends Base
         $style->success("Configuration file created: {$configPath}");
 
         $this->ignoreCacheDirectory($configPath->parent(), $style);
+        $input->getOption('no-skill') or $this->installSkill($configPath->parent(), $style);
 
         return Command::SUCCESS;
     }
@@ -128,5 +134,22 @@ final class Init extends Base
         $prefix = $content === '' || \str_ends_with($content, "\n") ? '' : "\n";
         \file_put_contents((string) $gitignore, $prefix . self::CACHE_IGNORE_LINE . "\n", \FILE_APPEND);
         $style->text('Added ' . self::CACHE_IGNORE_LINE . ' to .gitignore');
+    }
+
+    /**
+     * Puts the skill next to the config, or updates an older copy.
+     */
+    private function installSkill(Path $root, StyleInterface $style): void
+    {
+        $skills = $root->join('.claude', 'skills');
+        if (Skill::installedVersion($skills) === Info::version()) {
+            return;
+        }
+
+        try {
+            $style->text('Claude Code skill: ' . (string) Skill::install($skills));
+        } catch (\RuntimeException $e) {
+            $style->warning('The Claude Code skill is not installed: ' . $e->getMessage());
+        }
     }
 }

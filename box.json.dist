@@ -16,6 +16,7 @@
     "files": [
         "resources/version.json",
         "resources/opmin.schema.json",
+        "resources/skills/opcode-minimize/SKILL.md",
         "bin/opmin",
         "LICENSE.md",
         "NOTICE.md",

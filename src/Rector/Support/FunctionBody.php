@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Opmin\Rector\Support;
 
+use Opmin\Module\Analysis\IgnoreMarks;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\FunctionLike;
@@ -46,42 +47,12 @@ final class FunctionBody
     }
 
     /**
-     * Whether the user excluded the function from optimization: `#[\Opmin\Ignore]` (resolved by name,
-     * the class need not exist) or `@opmin-ignore` in its docblock, for every rule or for `$alias`.
+     * Whether the user excluded the function from optimization for the rule `$alias`
+     * ({@see IgnoreMarks}).
      */
     public static function ignored(FunctionLike $function, string $alias): bool
     {
-        foreach ($function->getAttrGroups() as $group) {
-            foreach ($group->attrs as $attribute) {
-                if (\strtolower(\ltrim($attribute->name->toString(), '\\')) !== 'opmin\ignore') {
-                    continue;
-                }
-
-                $rules = null;
-                foreach ($attribute->args as $arg) {
-                    if (($arg->name === null || $arg->name->toString() === 'rules') && $arg->value instanceof Expr\Array_) {
-                        $rules = [];
-                        foreach ($arg->value->items as $item) {
-                            $value = $item?->value;
-                            $value instanceof Node\Scalar\String_ and $rules[] = \strtolower($value->value);
-                        }
-                    }
-                }
-
-                if ($rules === null || \in_array($alias, $rules, true)) {
-                    return true;
-                }
-            }
-        }
-
-        $doc = (string) $function->getDocComment()?->getText();
-        if (\preg_match('/@opmin-ignore\b[ \t]*([\w, \t]*)/', $doc, $m) !== 1) {
-            return false;
-        }
-
-        $rules = \array_filter(\array_map('trim', \explode(',', \strtolower($m[1]))));
-
-        return $rules === [] || \in_array($alias, $rules, true);
+        return IgnoreMarks::ignored($function, [$alias]);
     }
 
     /**

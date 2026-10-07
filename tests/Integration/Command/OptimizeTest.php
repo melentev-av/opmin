@@ -305,12 +305,17 @@ final class OptimizeTest
     public function laterStagesAreNotImplementedYet(): void
     {
         [$code, , $err] = $this->opmin('optimize', '--mutation-check');
-        [$gitCode, , $gitErr] = $this->opmin('optimize', 'git@github.com:vendor/pkg.git');
 
         Assert::same($code, 2);
         Assert::string($err)->contains('--mutation-check is not implemented yet (after the MVP)');
-        Assert::same($gitCode, 2);
-        Assert::string($gitErr)->contains('stage M7');
+    }
+
+    public function packageOptionsNeedAGitUrl(): void
+    {
+        [$code, , $err] = $this->opmin('optimize', '--ref=v1.0.0');
+
+        Assert::same($code, 2);
+        Assert::string($err)->ignoringWhitespace(lineBreaks: true)->contains('--ref is for a git package');
     }
 
     /**

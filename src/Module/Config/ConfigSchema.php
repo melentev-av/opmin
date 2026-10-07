@@ -35,6 +35,7 @@ final class ConfigSchema
         Schema\Llm::class,
         Schema\GuardPerf::class,
         Schema\Check::class,
+        Schema\Package::class,
         Schema\Cache::class,
     ];
 

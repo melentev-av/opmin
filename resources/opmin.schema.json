@@ -416,6 +416,49 @@
                 }
             }
         },
+        "package": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "docker_image": {
+                    "description": "Image for git packages; {version} — opmin version, {php} — the PHP minor the package allows",
+                    "type": "string",
+                    "minLength": 1,
+                    "default": "ghcr.io/melentev-av/opmin:{version}-php{php}"
+                },
+                "workspace": {
+                    "description": "Where the clone is made; null — ~/.cache/opmin/packages with Docker (the Docker VM shares home), the temp directory without",
+                    "anyOf": [
+                        {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
+                },
+                "memory": {
+                    "description": "Memory limit of the container (docker --memory)",
+                    "type": "string",
+                    "minLength": 1,
+                    "default": "4g"
+                },
+                "cpus": {
+                    "description": "CPU limit of the container (docker --cpus); null — all cores of the Docker host",
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
+                }
+            }
+        },
         "cache": {
             "type": "object",
             "additionalProperties": false,

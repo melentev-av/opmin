@@ -7,6 +7,7 @@ namespace Opmin\Command;
 use Internal\Path;
 use Opmin\Module\Analysis\Shadow\ShadowIndex;
 use Opmin\Module\Config\Schema;
+use Opmin\Module\Config\Schema\NativeTypesPolicy;
 use Opmin\Module\Optimize\Rector\RuleCatalog;
 use Opmin\Module\Optimize\Rector\RuleSpec;
 use Opmin\Module\Optimize\Review\ConsoleReviewer;
@@ -15,6 +16,8 @@ use Opmin\Module\Optimize\RunReport;
 use Opmin\Module\Optimize\RunState;
 use Opmin\Module\Optimize\StepReport;
 use Opmin\Module\Optimize\Workspace;
+use Opmin\Module\Package\PackageException;
+use Opmin\Module\Package\PackageRun;
 use Opmin\Module\Php\InternalSymbols;
 use Opmin\Module\Php\PhpBinaryException;
 use Opmin\Module\Php\PhpBinaryProbe;
@@ -34,7 +37,11 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 /**
  * Minimize opcodes: Stage A (Rector) with behavior verification on every step (brief, «Модуль 3»).
  * Stage B is the Claude Code skill driving `llm:targets` → `apply-candidate` → `llm:finish`; `--review`,
- * `--resume`, `--guard-perf` come in M5, git packages in M7.
+ * `--resume`, `--guard-perf` come in M5.
+ *
+ * A git URL (`opmin optimize <git-url> --ref=<tag>`) optimizes a clone of the package in a temporary
+ * workspace, in Docker unless `--no-docker`: see {@see PackageRun}. The report and the patch land in the
+ * current directory.
  *
  * In a git working tree (must be clean) every accepted step is a commit; outside git the originals
  * are copied to `runs/<ts>/original/`; `--dry-run` restores everything at the end. Every run writes
@@ -55,8 +62,13 @@ final class Optimize extends Stage
     /** Options of later stages: [option, stage]. */
     private const LATER = [
         'mutation-check' => 'after the MVP',
-        'ref' => 'stage M7', 'no-docker' => 'stage M7', 'allow-scripts' => 'stage M7', 'force-public-api' => 'stage M7', 'yes' => 'stage M7',
     ];
+
+    /** Options that only make sense for a git package. */
+    private const PACKAGE_ONLY = ['ref', 'no-docker', 'allow-scripts', 'force-public-api', 'yes'];
+
+    /** Options passed on to the opmin that optimizes the clone of a git package. */
+    private const PACKAGE_FORWARDED = ['dry-run', 'guard-perf', 'with-standard-rector', 'without-standard-rector', 'allow-unverified'];
 
     public function configure(): void
     {
@@ -94,9 +106,14 @@ final class Optimize extends Stage
 
         /** @var list<string> $arguments */
         $arguments = $input->getArgument('path');
-        foreach ($arguments as $argument) {
-            if (\preg_match('~^(?:git@|[a-z][a-z0-9+.-]*://)~i', $argument) === 1) {
-                $style->error('Optimizing a git package by URL is not implemented yet (stage M7).');
+        $urls = \array_values(\array_filter($arguments, static fn(string $a): bool => \preg_match('~^(?:git@|[a-z][a-z0-9+.-]*://)~i', $a) === 1));
+        if ($urls !== []) {
+            return $this->package($input, $output, $style, $arguments);
+        }
+
+        foreach (self::PACKAGE_ONLY as $option) {
+            if ($input->getOption($option)) {
+                $style->error("--{$option} is for a git package: opmin optimize <git-url> --ref=<tag>.");
                 return Command::INVALID;
             }
         }
@@ -220,6 +237,95 @@ final class Optimize extends Stage
         $failed = $report->finalTests === false || \array_filter($report->steps, static fn(StepReport $s): bool => $s->error !== null) !== [];
 
         return $failed ? Command::FAILURE : Command::SUCCESS;
+    }
+
+    /**
+     * `opmin optimize <git-url> [paths in the package] --ref=<tag>`: see {@see PackageRun}.
+     *
+     * @param list<string> $arguments The URL first, then paths inside the package.
+     */
+    private function package(InputInterface $input, OutputInterface $output, SymfonyStyle $style, array $arguments): int
+    {
+        $url = $arguments[0];
+        if ($url === '' || \preg_match('~^(?:git@|[a-z][a-z0-9+.-]*://)~i', $url) !== 1) {
+            $style->error('Pass the git URL first, then paths inside the package.');
+            return Command::INVALID;
+        }
+
+        $paths = \array_slice($arguments, 1);
+        foreach ($paths as $path) {
+            if (\preg_match('~^(?:git@|[a-z][a-z0-9+.-]*://)~i', $path) === 1 || \str_starts_with($path, '/') || \str_contains($path, '..')) {
+                $style->error("Pass one git URL first, then paths inside the package: `{$path}` is not one.");
+                return Command::INVALID;
+            }
+        }
+
+        foreach (['--resume', '--config'] as $name) {
+            if ($input->hasParameterOption($name)) {
+                $style->error("{$name} does not work for a git package: the package's own opmin.yaml applies, override keys with --set.");
+                return Command::INVALID;
+            }
+        }
+
+        /** @var Schema\Signatures $signatures */
+        $signatures = $this->container->get(Schema\Signatures::class);
+        $force = (bool) $input->getOption('force-public-api');
+        $docker = !$input->getOption('no-docker') && PackageRun::dockerAvailable();
+        $docker || $input->getOption('no-docker') or $style->note('Docker is not available: the package would run without isolation.');
+
+        $inner = [];
+        foreach (self::PACKAGE_FORWARDED as $option) {
+            $input->getOption($option) and $inner[] = "--{$option}";
+        }
+
+        /** @var list<string> $rules */
+        $rules = (array) $input->getOption('rector-rule');
+        foreach ($rules as $rule) {
+            $rule === '' or $inner[] = "--rector-rule={$rule}";
+        }
+
+        /** @var string|null $format */
+        $format = $input->getOption('format');
+        $format === null || $format === '' or $inner[] = "--format={$format}";
+        /** @var list<string> $sets */
+        $sets = (array) $input->getOption('set');
+        foreach ($sets as $set) {
+            $inner[] = "--set={$set}";
+        }
+
+        # The public API of a package is called from code nobody can see (brief, «Изменение сигнатур»).
+        if (!$force) {
+            $inner[] = '--set=signatures.public_api=false';
+            $signatures->nativeTypes === NativeTypesPolicy::All and $inner[] = '--set=signatures.native_types=non_overridable';
+        } elseif ($input->getOption('allow-public-signatures')) {
+            $inner[] = '--allow-public-signatures';
+        }
+
+        $interactive = $input->isInteractive() && !$docker;
+        $input->getOption('review') && $interactive and $inner[] = '--review';
+        $interactive or $inner[] = '--no-interaction';
+        $inner[] = $output->isDecorated() ? '--ansi' : '--no-ansi';
+        $output->isVerbose() and $inner[] = '-' . \str_repeat('v', match (true) {
+            $output->isDebug() => 3,
+            $output->isVeryVerbose() => 2,
+            default => 1,
+        });
+
+        /** @var Schema\Package $config */
+        $config = $this->container->get(Schema\Package::class);
+        /** @var Schema\Php $php */
+        $php = $this->container->get(Schema\Php::class);
+        /** @var string|null $ref */
+        $ref = $input->getOption('ref');
+        $run = new PackageRun($url, $ref === '' ? null : $ref, $inner, $paths, $docker, (bool) $input->getOption('allow-scripts'), $config, $php, $style, Path::create((string) \getcwd()));
+        $yes = (bool) $input->getOption('yes');
+
+        try {
+            return $run->run(static fn(): bool => $yes || $input->isInteractive() && $style->confirm('Run the package\'s composer install and tests on this machine?', false));
+        } catch (PackageException $e) {
+            $style->error($e->getMessage());
+            return Command::INVALID;
+        }
     }
 
     /**

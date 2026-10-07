@@ -36,6 +36,8 @@ final class VerifierTrapsTest
         }
         PHP;
     private const LOG = 'interface Log { public function write(string $message): void; }';
+    private const HOLDER = 'final class Node { public ?Holder $owner = null; public function bar(): int { $this->owner?->reset(); return 1; } } final class Holder { private ?Node $foo; public function __construct() { $this->foo = new Node(); $this->foo->owner = $this; } public function reset(): void { $this->foo = null; }';
+    private const OFFSETS = 'final class Offsets implements \ArrayAccess { private int $reads = 0; public function offsetExists(mixed $o): bool { return true; } public function offsetGet(mixed $o): mixed { return ++$this->reads; } public function offsetSet(mixed $o, mixed $v): void {} public function offsetUnset(mixed $o): void {} }';
 
     private string $dir;
 
@@ -141,6 +143,56 @@ final class VerifierTrapsTest
             'final class Box { public int $v = 0; } function f(Box $box) { return [$box, clone $box]; }',
             'App\f',
         ];
+
+        # Rewrites opmin's own rules must never make (brief, «Ловушки для traps/ к этим правилам»):
+        # each one is what a naive version of the rule would produce.
+        yield 'property extracted although a call reassigns it through a back reference' => [
+            self::HOLDER . ' public function run() { $a = $this->foo->bar(); $b = $this->foo?->bar(); return [$a, $b]; } }',
+            self::HOLDER . ' public function run() { $foo = $this->foo; $a = $foo->bar(); $b = $foo?->bar(); return [$a, $b]; } }',
+            'App\Holder::run',
+        ];
+        yield 'property extracted from a class whose __get counts reads' => [
+            'final class Counter { private int $reads = 0; public function __get(string $n): int { return ++$this->reads; } public function twice() { return $this->value + $this->value; } }',
+            'final class Counter { private int $reads = 0; public function __get(string $n): int { return ++$this->reads; } public function twice() { $value = $this->value; return $value + $value; } }',
+            'App\Counter::twice',
+        ];
+        yield 'property extracted across a write through a reference' => [
+            'final class Ref { public int $foo = 1; } function f(Ref $r) { $a = $r->foo; $ref = &$r->foo; $ref = 5; return $a + $r->foo; }',
+            'final class Ref { public int $foo = 1; } function f(Ref $r) { $foo = $r->foo; $a = $foo; $ref = &$r->foo; $ref = 5; return $a + $foo; }',
+            'App\f',
+        ];
+        yield 'property extracted from a lazy proxy that unsets it for __get' => [
+            'class Entity { public string $name = "real"; } final class Proxy extends Entity { private int $loads = 0; public function __construct() { unset($this->name); } public function __get(string $p): string { return "loaded" . ++$this->loads; } public function greet() { return $this->name . ", " . $this->name; } }',
+            'class Entity { public string $name = "real"; } final class Proxy extends Entity { private int $loads = 0; public function __construct() { unset($this->name); } public function __get(string $p): string { return "loaded" . ++$this->loads; } public function greet() { $name = $this->name; return $name . ", " . $name; } }',
+            'App\Proxy::greet',
+        ];
+        yield 'element extracted from an ArrayAccess object' => [
+            self::OFFSETS . ' function f(Offsets $o) { return $o["k"] + $o["k"]; }',
+            self::OFFSETS . ' function f(Offsets $o) { $k = $o["k"]; return $k + $k; }',
+            'App\f',
+        ];
+        yield 'element extracted although the key may be missing: one warning instead of two' => [
+            'function f(array $a) { return [$a["k"], $a["k"]]; }',
+            'function f(array $a) { $k = $a["k"]; return [$k, $k]; }',
+            'App\f',
+        ];
+        yield 'count() hoisted out of a loop that appends to the array' => [
+            '/** @param list<int> $a */ function f(array $a) { $k = 0; for ($i = 0; $i < count($a); $i++) { $k++; if ($a[$i] === 1) { $a[] = 2; } } return $k; }',
+            '/** @param list<int> $a */ function f(array $a) { $k = 0; for ($i = 0, $n = count($a); $i < $n; $i++) { $k++; if ($a[$i] === 1) { $a[] = 2; } } return $k; }',
+            'App\f',
+        ];
+        yield 'count() hoisted for a Countable with a side effect' => [
+            'final class Shrinking implements \Countable { private int $n = 3; public function count(): int { return $this->n--; } } function f(Shrinking $c) { $k = 0; for ($i = 0; $i < count($c); $i++) { $k++; } return $k; }',
+            'final class Shrinking implements \Countable { private int $n = 3; public function count(): int { return $this->n--; } } function f(Shrinking $c) { $k = 0; for ($i = 0, $n = count($c); $i < $n; $i++) { $k++; } return $k; }',
+            'App\f',
+        ];
+        if (\version_compare(TestPhp::minor(), '8.4', '>=')) {
+            yield 'property extracted although its get hook has a side effect' => [
+                'final class Hooked { private int $reads = 0; public int $value { get => ++$this->reads; } public function twice() { return $this->value + $this->value; } }',
+                'final class Hooked { private int $reads = 0; public int $value { get => ++$this->reads; } public function twice() { $value = $this->value; return $value + $value; } }',
+                'App\Hooked::twice',
+            ];
+        }
     }
 
     /**
@@ -199,6 +251,26 @@ final class VerifierTrapsTest
             'function f(array $xs) { $n = 0; foreach ($xs as $x) { if ($x) { $n++; } } return $n; }',
             'function f(array $xs) { $n = 0; foreach ($xs as $x) { if ($x) { ++$n; } } return $n; }',
             'App\f',
+        ];
+        yield 'readonly property extracted across method calls' => [
+            'final class Mailer { public array $sent = []; public function send(string $m): void { $this->sent[] = $m; } } final class Service { public function __construct(private readonly Mailer $mailer = new Mailer()) {} public function run(string $a) { $this->mailer->send($a); $this->mailer->send(strtoupper($a)); return $this->mailer->sent; } }',
+            'final class Mailer { public array $sent = []; public function send(string $m): void { $this->sent[] = $m; } } final class Service { public function __construct(private readonly Mailer $mailer = new Mailer()) {} public function run(string $a) { $mailer = $this->mailer; $mailer->send($a); $mailer->send(strtoupper($a)); return $mailer->sent; } }',
+            'App\Service::run',
+        ];
+        yield 'element of a proven shape extracted' => [
+            'function address(string $host, int $port) { $c = ["host" => $host, "port" => $port]; return $c["host"] . ":" . $c["port"] . " (" . $c["host"] . ")"; }',
+            'function address(string $host, int $port) { $c = ["host" => $host, "port" => $port]; $h = $c["host"]; return $h . ":" . $c["port"] . " (" . $h . ")"; }',
+            'App\address',
+        ];
+        yield 'count() of an invariant array hoisted out of the loop' => [
+            '/** @param list<int> $a */ function sum(array $a) { $s = 0; for ($i = 0; $i < \count($a); $i++) { $s += $a[$i]; } return $s; }',
+            '/** @param list<int> $a */ function sum(array $a) { $s = 0; for ($i = 0, $n = \count($a); $i < $n; $i++) { $s += $a[$i]; } return $s; }',
+            'App\sum',
+        ];
+        yield 'global functions and constants qualified' => [
+            'function line(string $s) { return strlen(trim($s)) . PHP_EOL . (is_numeric($s) ? M_PI : 0); }',
+            'function line(string $s) { return \strlen(\trim($s)) . \PHP_EOL . (\is_numeric($s) ? \M_PI : 0); }',
+            'App\line',
         ];
         yield 'repeated property fetch extracted' => [
             'final class User { public function __construct(public readonly array $roles = []) {} public function f() { return count($this->roles) > 0 && in_array("admin", $this->roles, true); } }',

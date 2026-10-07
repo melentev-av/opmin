@@ -718,8 +718,13 @@ function wrappers(array $versions): int
         \preg_match('/^8\.[1-5]$/', $version) === 1 or throw new \RuntimeException("Unknown PHP version {$version}");
         devImage($version);
         $wrapper = PLAYGROUND . "/.bin/php{$version}";
+        # Docker Desktop on macOS caches file attributes of the bind mount for about a second: a PHP
+        # file rewritten just now (a candidate written in place for a count or the tests) is read
+        # with its old size, truncated. Wait when one changed in the last two seconds.
         \file_put_contents($wrapper, \sprintf(
-            "#!/bin/sh\nexec docker run --rm -i --init -v %s:%s -w \"\$PWD\" opmin-dev:%s php \"\$@\"\n",
+            "#!/bin/sh\n"
+            . "if [ \"\$(uname)\" = Darwin ] && [ -n \"\$(find \"\$PWD\" -maxdepth 4 \\( -name vendor -o -name node_modules -o -name .git -o -name storage \\) -prune -o -name '*.php' -mtime -2s -print 2>/dev/null | head -1)\" ]; then sleep 2; fi\n"
+            . "exec docker run --rm -i --init -v %s:%s -w \"\$PWD\" opmin-dev:%s php \"\$@\"\n",
             \escapeshellarg($root),
             \escapeshellarg($root),
             $version,

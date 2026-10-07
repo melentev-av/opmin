@@ -120,10 +120,10 @@ final class CliTest
 
     public function notImplementedCommandFails(): void
     {
-        [$code, $out] = $this->opmin('optimize');
+        [$code, $out] = $this->opmin('apply-candidate');
 
         Assert::same($code, 1);
-        Assert::string($out)->contains('not implemented yet (planned for M3)');
+        Assert::string($out)->contains('not implemented yet (planned for M4)');
     }
 
     /**

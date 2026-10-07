@@ -18,7 +18,7 @@ use Opmin\Module\Opcode\Report\CountReport;
 use Opmin\Module\Php\PhpBinaryException;
 use Opmin\Module\Php\PhpBinaryProbe;
 use Opmin\Module\Project\FileFinder;
-use Opmin\Module\Project\Project;
+use Opmin\Module\Project\Targets;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\ProgressBar;
@@ -46,7 +46,7 @@ final class Count extends Base
     public function configure(): void
     {
         parent::configure();
-        $this->addArgument('path', InputArgument::IS_ARRAY, 'Files or directories to analyze (default: `paths` from the config)');
+        $this->addArgument('path', InputArgument::IS_ARRAY, 'Files, directories or globs to analyze (default: `paths` from the config)');
         $this->addOption('filter', null, InputOption::VALUE_REQUIRED, 'Only functions matching the FQN pattern, e.g. App\\Service\\*');
         $this->addOption('exclude', null, InputOption::VALUE_REQUIRED, 'Comma-separated paths to skip (overrides `exclude`)');
         $this->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table | json', 'table');
@@ -73,7 +73,9 @@ final class Count extends Base
 
         try {
             $php = (new PhpBinaryProbe())->probe($phpConfig->binary);
-            [$project, $paths] = $this->target($input, $projectConfig);
+            /** @var list<string> $arguments */
+            $arguments = $input->getArgument('path');
+            [$project, $paths] = Targets::resolve($arguments, Path::create((string) \getcwd()), $projectConfig);
             $files = (new FileFinder())->find($project, $paths, $projectConfig->exclude);
         } catch (PhpBinaryException|\InvalidArgumentException $e) {
             $style->error($e->getMessage());
@@ -130,39 +132,6 @@ final class Count extends Base
         }
 
         return Command::SUCCESS;
-    }
-
-    /**
-     * The project and the paths to analyze: the arguments (relative to the current directory) or the
-     * config `paths` (relative to the project root).
-     *
-     * @return array{Project, list<Path>}
-     */
-    private function target(InputInterface $input, Schema\Project $config): array
-    {
-        $cwd = Path::create((string) \getcwd());
-        /** @var list<string> $arguments */
-        $arguments = $input->getArgument('path');
-        $paths = \array_map(static fn(string $p): Path => Path::create($p)->absolute((string) $cwd), $arguments);
-        foreach ($paths as $path) {
-            $path->exists() or throw new \InvalidArgumentException("Path `{$path}` does not exist.");
-        }
-
-        $project = Project::detect($paths[0] ?? $cwd, $cwd);
-        if ($paths === []) {
-            $configured = $config->paths;
-            # The default `src` falls back to `app` (Laravel and similar layouts).
-            $configured === (new Schema\Project())->paths && !$project->root->join('src')->exists()
-                && $project->root->join('app')->isDir() and $configured = ['app'];
-            $paths = \array_map(static fn(string $p): Path => $project->root->join($p), $configured);
-            foreach ($paths as $path) {
-                $path->exists() or throw new \InvalidArgumentException(
-                    "Path `{$path}` from the config key `paths` does not exist; pass paths as arguments or fix `paths`.",
-                );
-            }
-        }
-
-        return [$project, $paths];
     }
 
     /**

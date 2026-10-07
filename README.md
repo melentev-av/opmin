@@ -89,8 +89,7 @@ opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
   php-mock, ClockMock — can shadow it), `ExtractRepeatedPropertyFetchRector` (readonly properties across calls,
   mutable ones while no user code runs, no `__get`/hooks), `ExtractRepeatedArrayDimFetchRector` (only keys proven to
   exist), `HoistLoopInvariantCountRector` (`\count()` of an unchanged local array out of a `for` condition).
-- Exclude code with `#[\Opmin\Ignore]` / `#[\Opmin\Ignore(rules: ['fqn'])]`, `@opmin-ignore [rules]`,
-  `ignore.paths`, `ignore.functions`; `vendor/` and `@generated` files are never touched.
+- Code can be excluded from every rule or from some: see [Excluding code](#excluding-code).
 - Which standard Rector rules save opcodes: [docs/standard-rules.md](docs/standard-rules.md).
 
 ## Optimizing (Stage B: LLM, a Claude Code skill)
@@ -116,6 +115,35 @@ opmin llm:finish                               # the full test run (taking back 
   `@opmin-ignore llm` keeps a function away from this stage only.
 - The patterns the skill knows are measured on PHP 8.1–8.5 (`bin/bench --only=patterns`), including the ones that
   usually give nothing: [resources/skills/opcode-minimize/SKILL.md](resources/skills/opcode-minimize/SKILL.md).
+
+## Excluding code
+
+```php
+#[\Opmin\Ignore]                          // the function, method or class: every rule, both stages
+#[\Opmin\Ignore(rules: ['fqn', 'llm'])]   // only these rules
+// @opmin-ignore                           // the same without the dependency, right before the declaration
+/** @opmin-ignore fqn,count */             // or in its docblock
+```
+
+```yaml
+ignore:
+  paths: [src/Legacy, database/migrations]
+  functions: ['App\Foo\Bar::hotPath', 'App\Utils\*']   # function keys, * matches anything
+```
+
+- The attribute is recognized by its name in the source: the class `Opmin\Ignore` need not be installed (PHP
+  checks attributes only in `newInstance()`); with opmin in `require-dev` the IDE knows it.
+- A mark on a class covers all its methods and closures. `vendor/` and files marked `@generated` are never touched.
+- Rule names in `rules:` and `@opmin-ignore` — an alias or the short class name of any rule, case-insensitive:
+
+  | Alias | Rule |
+  |---|---|
+  | `fqn` | `FullyQualifyGlobalCallsRector` |
+  | `property_fetch` | `ExtractRepeatedPropertyFetchRector` |
+  | `array_dim_fetch` | `ExtractRepeatedArrayDimFetchRector` |
+  | `count` | `HoistLoopInvariantCountRector` |
+  | `llm` | Stage B: rewrites proposed by the model |
+  | `simplifyifreturnboolrector`, … | a standard Rector rule by its short class name |
 
 ## Installation
 

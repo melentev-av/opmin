@@ -39,6 +39,20 @@ final class ReferenceIndexTest
         yield 'first-class callable of a method' => ['$f = $svc->run(...);', 'App\Svc::run', UnitKind::Method, [Flag::CalledDynamically]];
         yield 'dynamic method name' => ['$svc->$method();', 'App\Svc::anything', UnitKind::Method, [Flag::CalledDynamically]];
         yield 'reflection of a class' => ['new \ReflectionClass(\App\Svc::class);', 'App\Svc::run', UnitKind::Method, [Flag::Reflection]];
+        yield 'reflection of an unknown object' => ['new \ReflectionObject($any);', 'App\Svc::run', UnitKind::Method, [Flag::Reflection]];
+        yield 'function with a leading backslash' => ['$f = "\\\\App\\\\helper";', 'App\helper', UnitKind::Function, [Flag::CalledDynamically]];
+        yield 'mixed-case string names a method' => ['$f = "App\\\\SVC::Run";', 'App\Svc::run', UnitKind::Method, [Flag::CalledDynamically]];
+        yield 'static first-class callable' => ['$f = \App\Svc::run(...);', 'App\Svc::run', UnitKind::Method, [Flag::CalledDynamically]];
+        yield 'nullsafe first-class callable' => ['$f = $svc?->run(...);', 'App\Other::run', UnitKind::Method, [Flag::CalledDynamically]];
+        yield 'dynamic static method' => ['\App\Svc::$name();', 'App\Svc::run', UnitKind::Method, [Flag::CalledDynamically]];
+        yield 'dynamic static method of a variable class' => ['$class::$name();', 'App\Other::run', UnitKind::Method, [Flag::CalledDynamically]];
+        yield 'array callable built with new' => ['$f = [new \App\Svc(), "run"];', 'App\Svc::run', UnitKind::Method, [Flag::CalledDynamically]];
+        yield 'array callable of a class string' => ['$f = ["App\\\\Svc", "run"];', 'App\Svc::run', UnitKind::Method, [Flag::CalledDynamically]];
+        yield 'array_filter with a property callback' => ['array_filter($a, $this->filter);', 'App\x', UnitKind::Function, [Flag::CalledDynamically]];
+        yield 'callback from a concatenation' => ['usort($a, "cmp_" . $kind);', 'App\x', UnitKind::Function, [Flag::CalledDynamically]];
+        yield 'callback from an array element' => ['call_user_func($handlers[0]);', 'App\x', UnitKind::Function, [Flag::CalledDynamically]];
+        yield 'callback from a static property' => ['call_user_func(self::$handler);', 'App\x', UnitKind::Function, [Flag::CalledDynamically]];
+        yield 'reflection method of a string with method' => ['new \ReflectionMethod("App\\\\Svc::run");', 'App\Svc::other', UnitKind::Method, [Flag::Reflection]];
         yield 'reflection of a method by string' => ['new \ReflectionMethod("App\\\\Svc::run");', 'App\Svc::run', UnitKind::Method, [Flag::CalledDynamically, Flag::Reflection]];
     }
 
@@ -56,6 +70,16 @@ final class ReferenceIndexTest
         yield 'string that is not a name' => ['echo "Hello, world";', 'App\helper', UnitKind::Function];
         yield 'closures are never called by name' => ['call_user_func($cb);', 'App\f::{closure:1}', UnitKind::Closure];
         yield 'reflection of another class' => ['new \ReflectionClass(\App\Other::class);', 'App\Svc::run', UnitKind::Method];
+        yield 'keyed array is not a callable' => ['$f = ["a" => $svc, "b" => "run"];', 'App\Svc::run', UnitKind::Method];
+        yield 'three items are not a callable' => ['$f = [$svc, "run", 1];', 'App\Svc::run', UnitKind::Method];
+        yield 'array of a variable and a variable' => ['$pair = [$a, $m];', 'App\Svc::run', UnitKind::Method];
+        yield 'callable function with a literal callback' => ['usort($a, "strcmp");', 'App\x', UnitKind::Function];
+        yield 'callable function with a closure' => ['array_map(fn($x) => $x, $a);', 'App\x', UnitKind::Function];
+        yield 'first-class callable of call_user_func' => ['$f = call_user_func(...);', 'App\x', UnitKind::Function];
+        yield 'reflection without arguments' => ['new \ReflectionClass();', 'App\Svc::run', UnitKind::Method];
+        yield 'not reflection' => ['new \App\Reflector(\App\Svc::class);', 'App\Svc::run', UnitKind::Method];
+        yield 'hooks are not called by name' => ['$f = "App\\\\Svc::run";', 'App\Svc::$p::get', UnitKind::Hook];
+        yield 'string of an invalid name' => ['$f = "App\\\\Svc::run()";', 'App\Svc::run', UnitKind::Method];
     }
 
     /**

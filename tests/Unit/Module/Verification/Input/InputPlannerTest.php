@@ -74,7 +74,97 @@ final class InputPlannerTest
         Assert::same($draw(), $draw());
     }
 
-    private static function planner(Signature $signature, string $code): InputPlanner
+    public function planCoversReceiverUsesVariadicsAndStrictCallers(): void
+    {
+        $signature = new Signature(
+            [new Parameter('a', TypeSpec::of(TypeSpec::BOOL)), new Parameter('rest', TypeSpec::of(TypeSpec::BOOL), optional: true, variadic: true)],
+            [new Parameter('k', TypeSpec::of(TypeSpec::BOOL))],
+            'App\\Money',
+        );
+
+        $plan = self::planner($signature, '<?php function f($a, ...$rest) { return 1; }', mixStrict: true)->plan();
+        $weak = \array_values(\array_filter($plan, static fn(Input $i): bool => !$i->strict));
+
+        Assert::same(\count($plan), 2 * \count($weak));
+        Assert::same($plan[1]->toArray(), $plan[0]->withStrict(true)->toArray());
+        Assert::same($weak[0]->args, [Recipes::bool(false)]);
+        Assert::same($weak[0]->uses, ['k' => Recipes::bool(false)]);
+        Assert::same($weak[0]->receiver['via'] ?? null, 'ctor');
+        # Variadic: the base arguments plus one value.
+        Assert::true(\in_array([Recipes::bool(false), Recipes::bool(true)], \array_map(static fn(Input $i): array => $i->args, $weak), true));
+        # A `use` value of its own.
+        Assert::true(\in_array(['k' => Recipes::bool(true)], \array_map(static fn(Input $i): array => $i->uses, $weak), true));
+        # The second receiver: through properties.
+        Assert::true(\in_array('props', \array_map(static fn(Input $i): ?string => $i->receiver['via'] ?? null, $weak), true));
+        Assert::same(\count($weak), \count(\array_unique(\array_map(Recipes::key(...), $weak))));
+    }
+
+    public function planIsLimitedAcrossItsWholeLength(): void
+    {
+        $signature = new Signature([new Parameter('a', TypeSpec::of(TypeSpec::INT)), new Parameter('b', TypeSpec::of(TypeSpec::STRING))]);
+        $full = self::planner($signature, '<?php function f($a, $b) { return 1; }')->plan();
+        $limited = self::planner($signature, '<?php function f($a, $b) { return 1; }', planLimit: 10)->plan();
+        $exact = self::planner($signature, '<?php function f($a, $b) { return 1; }', planLimit: \count($full))->plan();
+
+        Assert::same(\count($limited), 10);
+        Assert::same($limited[0]->toArray(), $full[0]->toArray());
+        Assert::same($limited[9]->toArray(), $full[\intdiv(9 * \count($full), 10)]->toArray());
+        Assert::same(\count($exact), \count($full));
+        # The base, 15 int edges and the body's 1, 0, 2 without duplicates, 24 string edges and '2'.
+        Assert::same(\count($full), 1 + 14 + 24);
+    }
+
+    public function randomInputsRespectTheSignature(): void
+    {
+        $signature = new Signature(
+            [new Parameter('a', TypeSpec::of(TypeSpec::INT)), new Parameter('b', TypeSpec::of(TypeSpec::INT), optional: true), new Parameter('more', TypeSpec::of(TypeSpec::INT), optional: true, variadic: true)],
+            [new Parameter('k', TypeSpec::of(TypeSpec::INT))],
+            'App\\Money',
+        );
+        $planner = self::planner($signature, '<?php function f($a, $b = 1, ...$more) { return 1; }', mixStrict: true);
+        $planner->fuzz();
+        $random = new CoreRandom(new Random(9));
+        $counts = [];
+        $strict = 0;
+        for ($i = 0; $i < 300; ++$i) {
+            $input = $planner->generate($random);
+            $counts[\count($input->args)] = true;
+            $strict += $input->strict ? 1 : 0;
+            Assert::true(\count($input->args) >= 1 && \count($input->args) <= 4);
+            Assert::same(\array_keys($input->uses), ['k']);
+            Assert::notNull($input->receiver);
+        }
+
+        \ksort($counts);
+        Assert::same(\array_keys($counts), [1, 2, 3, 4]);
+        Assert::true($strict > 60 && $strict < 140, "strict: {$strict}");
+    }
+
+    public function fuzzMutatesOneArgumentOfAnInputThatOpenedABranch(): void
+    {
+        $signature = new Signature([new Parameter('a', TypeSpec::of(TypeSpec::INT)), new Parameter('b', TypeSpec::of(TypeSpec::INT))]);
+        $feedback = new Feedback(3);
+        $seed = new Input([Recipes::int(123456789), Recipes::int(987654321)]);
+        $feedback->record($seed, [0, 1]);
+        $planner = self::planner($signature, '<?php function f($a, $b) { return 1; }', feedback: $feedback);
+        $planner->fuzz();
+        $random = new CoreRandom(new Random(4));
+        $mutants = 0;
+        for ($i = 0; $i < 200; ++$i) {
+            $args = $planner->generate($random)->args;
+            $kept = (int) ($args[0] === Recipes::int(123456789)) + (int) (($args[1] ?? null) === Recipes::int(987654321));
+            $kept === 1 and ++$mutants;
+        }
+
+        # Three draws in four mutate an input of the pool, changing one argument.
+        Assert::true($mutants > 100, "mutants: {$mutants}");
+        Assert::same($planner->plan(), []);
+    }
+
+    /**
+     * @param positive-int $planLimit
+     */
+    private static function planner(Signature $signature, string $code, bool $mixStrict = false, int $planLimit = 300, ?Feedback $feedback = null): InputPlanner
     {
         $function = (new NodeFinder())->findFirstInstanceOf((new ParserFactory())->createForNewestSupportedVersion()->parse($code) ?? [], Function_::class);
         \assert($function instanceof Function_);
@@ -93,6 +183,6 @@ final class InputPlannerTest
             }
         };
 
-        return new InputPlanner($signature, new ValueGenerator($classes, LiteralPool::collect($function)), new Feedback(1));
+        return new InputPlanner($signature, new ValueGenerator($classes, LiteralPool::collect($function)), $feedback ?? new Feedback(1), $mixStrict, $planLimit);
     }
 }

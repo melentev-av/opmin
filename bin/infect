@@ -1,0 +1,44 @@
+#!/bin/sh
+# Mutation testing of the verifier (Infection + testo/bridge-infection), segment by segment.
+# Needs pcov or Xdebug: locally run it in the dev image — `bin/playground php 8.4 bin/infect`.
+#
+#   bin/infect                 coverage once, then every segment; fails below MIN_MSI (default 80)
+#   bin/infect Input           one segment (reuses the coverage of the last run)
+set -e
+cd "$(dirname "$0")/.."
+MIN_MSI=${MIN_MSI:-80}
+out=runtime/infection
+top=$(ls src/Module/Verification/*.php | paste -sd, -)
+segments="Compare:src/Module/Verification/Compare Input:src/Module/Verification/Input Coverage:src/Module/Verification/Coverage Property:src/Module/Verification/Property Target:src/Module/Verification/Target Verification:$top Analysis:src/Module/Analysis Harness:src/Module/Harness"
+
+if [ -z "$1" ] || [ ! -f "$out/cov/coverage-xml/index.xml" ]; then
+  rm -rf "$out/cov"
+  php -d pcov.enabled=1 -d memory_limit=2G -d sys_temp_dir=/tmp vendor/bin/testo --json \
+    --coverage-xml="$out/cov/coverage-xml" --log-junit="$out/cov/junit.xml" > "$out.coverage.json" \
+    || { cat "$out.coverage.json"; exit 1; }
+fi
+
+mkdir -p "$out/mut"
+for seg in $segments; do
+  name=${seg%%:*}; dir=${seg#*:}
+  [ -n "$1" ] && [ "$1" != "$name" ] && continue
+  php -d memory_limit=4G -d sys_temp_dir=/tmp vendor/bin/infection --quiet --test-framework=testo \
+    --skip-initial-tests --configuration=infection.json --coverage="$out/cov" --filter="$dir" \
+    --threads=max --log-verbosity=default --no-progress \
+    --logger-summary-json="$out/mut/$name.json" --logger-gitlab="$out/mut/$name.gitlab.json" || true
+done
+
+php -r '
+  $total = $scored = 0;
+  foreach (glob($argv[1] . "/*.json") as $f) {
+      if (str_ends_with($f, ".gitlab.json")) { continue; }
+      $s = json_decode(file_get_contents($f), true)["stats"];
+      $n = $s["totalMutantsCount"] - $s["skippedCount"] - $s["ignoredCount"];
+      $k = $s["killedCount"] + $s["timeOutCount"] + $s["errorCount"];
+      printf("%-14s %5d mutants  MSI %5.1f%%\n", basename($f, ".json"), $n, $n ? 100 * $k / $n : 0);
+      $total += $n; $scored += $k;
+  }
+  $msi = $total ? 100 * $scored / $total : 0;
+  printf("%-14s %5d mutants  MSI %5.1f%% (required %d%%)\n", "total", $total, $msi, $argv[2]);
+  exit($msi + 1e-9 >= $argv[2] ? 0 : 1);
+' "$out/mut" "$MIN_MSI"

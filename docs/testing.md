@@ -216,6 +216,23 @@ Opcode counts depend on the PHP that compiles the code (`php.binary`), not on th
 For every new suite, rule or fixture table: break the code or the expectation once and see the test go red.
 This was done for all three suites in M0 (broken fixture, broken `ValueCaster`, broken exit code of config errors).
 
+## Mutation testing (Infection)
+
+The verifier is the critical part: its tests are measured with Infection through `testo/bridge-infection`
+(`infection.json`, sources `src/Module/Verification`, `Analysis`, `Harness`; target MSI ≥ 80%). Infection needs a
+coverage driver, so locally it runs in the dev image; CI runs it weekly (`🧬 Mutation testing`).
+
+```bash
+bin/playground php 8.4 bin/infect          # coverage once, then every segment; fails below MIN_MSI=80
+bin/playground php 8.4 bin/infect Input    # one segment, reusing the last coverage
+```
+
+Survivors are in `runtime/infection/mut/<segment>.gitlab.json` (the diff of each mutant). Excluded on purpose
+(`mutators.global-ignore`): the random distributions of `ValueGenerator` (`randomInt`, `randomFloat`,
+`randomString`, `randomKey`, `randomMixed`) — tuning whose effect the trap table measures, not exact values.
+Survivors that are equivalent mutants (a cast the types already guarantee, `true`/`false` in a set read with
+`isset`, a timeout constant) are left as they are rather than bent into tests.
+
 ## Coverage
 
 Testo collects coverage with pcov or Xdebug (`coverage` mode) through `--coverage`/`--coverage-clover=`; the CI

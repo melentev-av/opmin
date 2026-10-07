@@ -139,6 +139,71 @@ final class CorePropertyRunnerTest
         Assert::same($generated, 0);
     }
 
+    public function timeBudgetEndsTheRunWithoutAFailure(): void
+    {
+        $outcome = (new CorePropertyRunner())->run(
+            new PropertySpec('f', runs: 1_000_000, seed: 1, budgetMs: 50),
+            self::ints(),
+            self::shrinker(),
+            static function (): void {
+                \usleep(1000);
+            },
+        );
+
+        Assert::false($outcome->isFalsified());
+        Assert::false($outcome->gaveUp);
+        Assert::true($outcome->checks > 0 && $outcome->checks < 1_000_000);
+    }
+
+    public function discardingEverythingGivesUp(): void
+    {
+        $outcome = (new CorePropertyRunner())->run(
+            new PropertySpec('f', runs: 5, seed: 1),
+            self::ints(),
+            self::shrinker(),
+            static function (): void {
+                throw new Discard();
+            },
+        );
+
+        Assert::same([$outcome->gaveUp, $outcome->checks, $outcome->isFalsified()], [true, 0, false]);
+    }
+
+    public function noShrinkingWhenMaxShrinksIsZero(): void
+    {
+        $outcome = (new CorePropertyRunner())->run(
+            new PropertySpec('f', runs: 200, seed: 42, maxShrinks: 0),
+            self::ints(),
+            self::shrinker(),
+            static function (Input $input): void {
+                self::int($input) > 37 and throw new \RuntimeException('differs');
+            },
+        );
+
+        Assert::true($outcome->isFalsified());
+        Assert::same(self::int($outcome->shrunk), self::int($outcome->original));
+        Assert::same($outcome->shrinkSteps, 0);
+        Assert::true($outcome->checks >= 0);
+    }
+
+    public function corpusReplayReportsTheStoredInput(): void
+    {
+        $this->dir = FS::tmpDir(sub: 'opmin-corpus');
+        $corpus = $this->dir->join('nested', 'corpus');
+        $spec = new PropertySpec('g', runs: 100, seed: 5, corpus: $corpus);
+        $check = static function (Input $input): void {
+            self::int($input) >= 900 and throw new \RuntimeException('differs', 7);
+        };
+        (new CorePropertyRunner())->run($spec, self::ints(), self::shrinker(), $check);
+
+        $replayed = (new CorePropertyRunner())->run($spec, self::ints(), self::shrinker(), $check);
+
+        Assert::true($corpus->isDir());
+        Assert::same([$replayed->checks, $replayed->shrinkSteps, $replayed->flaky], [0, 0, false]);
+        Assert::same($replayed->failure?->getMessage(), 'differs');
+        Assert::same($replayed->original?->toArray(), $replayed->shrunk?->toArray());
+    }
+
     private static function ints(): InputGenerator
     {
         return new class implements InputGenerator {

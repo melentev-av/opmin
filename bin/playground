@@ -639,7 +639,7 @@ function dockerPhp(array $args): int
     $cwd = (string) \getcwd();
 
     return shCode(\sprintf(
-        'docker run --rm -i --init -v %s:%s -w %s -e COMPOSER_HOME=%s opmin-dev:%s sh -c %s',
+        'docker run --rm -i --init --ulimit core=0 -v %s:%s -w %s -e COMPOSER_HOME=%s opmin-dev:%s sh -c %s',
         \escapeshellarg($root),
         \escapeshellarg($root),
         \escapeshellarg(\str_starts_with($cwd, $root) ? $cwd : $root),

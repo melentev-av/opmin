@@ -1,0 +1,26 @@
+{
+    "$schema": "vendor/infection/infection/resources/schema.json",
+    "testFramework": "testo",
+    "tmpDir": "runtime/infection",
+    "source": {
+        "directories": [
+            "src/Module/Verification",
+            "src/Module/Analysis",
+            "src/Module/Harness"
+        ]
+    },
+    "timeout": 120,
+    "logs": {
+        "summaryJson": "runtime/infection/summary.json"
+    },
+    "mutators": {
+        "@default": true,
+        "global-ignore": [
+            "Opmin\\Module\\Verification\\Input\\ValueGenerator::randomString",
+            "Opmin\\Module\\Verification\\Input\\ValueGenerator::randomInt",
+            "Opmin\\Module\\Verification\\Input\\ValueGenerator::randomFloat",
+            "Opmin\\Module\\Verification\\Input\\ValueGenerator::randomKey",
+            "Opmin\\Module\\Verification\\Input\\ValueGenerator::randomMixed"
+        ]
+    }
+}

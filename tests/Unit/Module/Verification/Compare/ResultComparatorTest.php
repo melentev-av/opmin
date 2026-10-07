@@ -102,6 +102,11 @@ final class ResultComparatorTest
         ];
         yield 'coverage is not behavior' => [self::with('probes', [1, 2]), self::with('probes', [1])];
         yield 'field order of a description' => [self::returned(['value' => 1, 'type' => 'int']), self::returned(['type' => 'int', 'value' => 1])];
+        yield 'suppressed warning before a reported one' => [
+            self::returned(self::null(), errors: [self::error('quiet', suppressed: true), self::error('loud')]),
+            self::returned(self::null(), errors: [self::error('loud')]),
+        ];
+        yield 'large floats within the relative tolerance' => [self::returned(self::float('1.0E+20')), self::returned(self::float('1.00000000000005E+20'))];
     }
 
     /**
@@ -110,6 +115,38 @@ final class ResultComparatorTest
     public static function returned(array $value, string $output = '', array $errors = []): array
     {
         return ['status' => 'done', 'calls' => [self::call($value, $output, $errors)], 'args' => [], 'this' => null, 'mocks' => [], 'globals' => [], 'statics' => []];
+    }
+
+    /**
+     * The text of a difference names both sides in short form: [original, changed, text].
+     *
+     * @return iterable<string, array{array<string, mixed>, array<string, mixed>, string}>
+     */
+    public static function texts(): iterable
+    {
+        yield 'null and bool' => [self::returned(self::null()), self::returned(['type' => 'bool', 'value' => true]), 'calls[0].value: null → true'];
+        yield 'bools' => [self::returned(['type' => 'bool', 'value' => false]), self::returned(['type' => 'bool', 'value' => true]), 'calls[0].value.value: false → true'];
+        yield 'int and float' => [self::returned(self::int(1)), self::returned(self::float('1.5')), 'calls[0].value.type: "int" → "float"'];
+        yield 'floats' => [self::returned(self::float('1.5')), self::returned(self::float('2.5')), 'calls[0].value: float 1.5 → float 2.5'];
+        yield 'strings' => [self::returned(self::string('a')), self::returned(self::string('b')), 'calls[0].value: string "a" → string "b"'];
+        yield 'long string' => [self::returned(self::string(\str_repeat('x', 100))), self::returned(self::string('y')), 'calls[0].value: string "' . \str_repeat('x', 76) . '…" → string "y"'];
+        yield 'object and enum' => [
+            self::returned(['type' => 'object', 'class' => 'App\A', 'id' => 1, 'props' => []]),
+            self::returned(['type' => 'enum', 'class' => 'App\E', 'case' => 'On']),
+            'calls[0].value: object App\A → enum App\E::On',
+        ];
+        yield 'array and generator' => [self::returned(self::array([[self::int(0), self::null()]])), self::returned(['type' => 'generator', 'id' => 1, 'items' => []]), 'calls[0].value: array(1) → generator'];
+        yield 'warnings' => [self::returned(self::null(), errors: [self::error('a'), self::error('b')]), self::returned(self::null()), 'calls[0].errors: E_WARNING: a; E_WARNING: b → none'];
+        yield 'fatal messages' => [
+            ['status' => 'fatal', 'calls' => [['status' => 'fatal', 'message' => 'Out of memory']]],
+            ['status' => 'fatal', 'calls' => [['status' => 'fatal', 'message' => 'Timeout']]],
+            'calls[0].message: "Out of memory" → "Timeout"',
+        ];
+        yield 'a value is checked before the output' => [self::returned(self::int(1), output: 'a'), self::returned(self::int(2), output: 'b'), 'calls[0].value.value: 1 → 2'];
+        yield 'the output before the warnings' => [self::returned(self::null(), output: 'a', errors: [self::error('x')]), self::returned(self::null(), output: 'b'), 'calls[0].output: string "a" → string "b"'];
+        yield 'a description against a plain value' => [self::returned(self::int(1)), ['status' => 'done', 'calls' => [['status' => 'returned', 'value' => 5, 'output' => self::string(''), 'errors' => []]]], 'calls[0].value: int 1 → 5'];
+        yield 'missing field' => [self::returned(self::int(1)), self::returned(['type' => 'int', 'other' => 1]), 'calls[0].value.value: 1 → absent'];
+        yield 'base64 strings' => [self::returned(['type' => 'string', 'base64' => \base64_encode("\xff")]), self::returned(['type' => 'string', 'base64' => \base64_encode("\xfe")]), "calls[0].value: string \"\u{fffd}\" → string \"\u{fffd}\""];
     }
 
     /**
@@ -132,6 +169,24 @@ final class ResultComparatorTest
     public function acceptsEquivalent(array $original, array $changed): void
     {
         Assert::null((new ResultComparator())->compare($original, $changed));
+    }
+
+    /**
+     * @param array<string, mixed> $original
+     * @param array<string, mixed> $changed
+     */
+    #[DataProvider('texts')]
+    public function describesTheDifference(array $original, array $changed, string $text): void
+    {
+        Assert::same((string) (new ResultComparator())->compare($original, $changed), $text);
+    }
+
+    public function toleranceIsRelativeAndInclusive(): void
+    {
+        $comparator = new ResultComparator(new ComparisonPolicy(floatTolerance: 0.5));
+
+        Assert::null($comparator->compare(self::returned(self::float('2.0')), self::returned(self::float('1.0'))));
+        Assert::notNull($comparator->compare(self::returned(self::float('2.0')), self::returned(self::float('0.9'))));
     }
 
     public function zeroToleranceComparesFloatsBitwise(): void

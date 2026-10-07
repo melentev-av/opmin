@@ -69,6 +69,19 @@ final class DynamicScopeDetectorTest
         yield 'Randomizer without engine' => ['return new \Random\Randomizer();', [Flag::Random]];
         yield 'getenv' => ['return getenv("HOME");', [Flag::Environment]];
         yield 'memory_get_usage' => ['return memory_get_usage();', [Flag::Environment]];
+        yield 'coalesce assignment on a property' => ['$o->x ??= 1; return $o;', [Flag::Magic]];
+        yield 'nullsafe trace' => ['return $e?->getTrace();', [Flag::Backtrace]];
+        yield 'reflection of self' => ['return new \\ReflectionClass(self::class);', [Flag::Reflection]];
+        yield 'reflection of __CLASS__' => ['return new \\ReflectionClass(__CLASS__);', [Flag::Reflection]];
+        yield 'reflection of get_class($this)' => ['return new \\ReflectionClass(get_class($this));', [Flag::Reflection]];
+        yield 'reflection of __METHOD__' => ['return new \\ReflectionMethod(__METHOD__);', [Flag::MagicConstant, Flag::Reflection]];
+        yield 'DateTime of today' => ['return new \\DateTime(" Today ");', [Flag::Time]];
+        yield 'DateTime of a variable' => ['return new \\DateTime($when);', [Flag::Time]];
+        yield 'DateTime without a date' => ['return new \\DateTimeImmutable("+1 day");', [Flag::Time]];
+        yield 'DateTime written with a leading backslash' => ['return new \\DateTimeImmutable;', [Flag::Time]];
+        yield 'I/O by prefix' => ['return stream_get_contents($h);', [Flag::Io]];
+        yield 'arguments of an anonymous class' => ['return new class(compact("a")) { public function __construct($x) {} };', [Flag::Compact]];
+        yield 'arrow function body is its own' => ['return fn() => $$name;', []];
         yield 'several, in declaration order' => ['static $n; return compact("n") + func_get_args();', [Flag::Compact, Flag::FuncArgs, Flag::StaticVar]];
     }
 
@@ -80,6 +93,10 @@ final class DynamicScopeDetectorTest
     public static function staticConstructs(): iterable
     {
         yield 'namespaced function with the same name' => ['return Other\compact("a");'];
+        yield 'variable function name' => ['return $compact("a");'];
+        yield 'plain method call' => ['return $e->getMessage();'];
+        yield 'DateTime of a fixed date with spaces' => ['return new \\DateTimeImmutable("2020-01-02");'];
+        yield 'Randomizer of another namespace' => ['return new Random\\Randomizer();'];
         yield 'method named compact' => ['return $this->compact("a");'];
         yield 'isset on an array' => ['return isset($a["x"]) ? $a["x"] : null;'];
         yield 'static property' => ['return self::$cache ?? null;'];
@@ -120,6 +137,37 @@ final class DynamicScopeDetectorTest
         Assert::same((new DynamicScopeDetector())->detect($accessMethod, $accessClass), [Flag::Magic]);
     }
 
+    public function flagsMagicThroughInterfacesAndEnums(): void
+    {
+        [$enum, $enumMethod] = self::enumMethod('enum E: int implements \\ArrayAccess { case A = 1; public function f() { return 1; } }');
+        $interface = self::parse('<?php interface Map extends \\ArrayAccess { public function f(); }')[0];
+        \assert($interface instanceof \PhpParser\Node\Stmt\Interface_);
+        $trait = self::parse('<?php trait T { public function f() { return 1; } }')[0];
+        \assert($trait instanceof \PhpParser\Node\Stmt\Trait_);
+
+        Assert::same((new DynamicScopeDetector())->detect($enumMethod, $enum), [Flag::Magic]);
+        Assert::true(DynamicScopeDetector::isMagicClass($interface));
+        Assert::false(DynamicScopeDetector::isMagicClass($trait));
+    }
+
+    public function arrowFunctionBodyIsScanned(): void
+    {
+        $stmts = self::parse('<?php $f = fn($x) => compact("x");');
+        $arrow = (new NodeFinder())->findFirstInstanceOf($stmts, Node\Expr\ArrowFunction::class);
+        \assert($arrow instanceof Node\Expr\ArrowFunction);
+
+        Assert::same((new DynamicScopeDetector())->detect($arrow), [Flag::Compact]);
+    }
+
+    public function globalFunctionNames(): void
+    {
+        Assert::same(DynamicScopeDetector::globalFunction(new Node\Name('Compact')), 'compact');
+        Assert::same(DynamicScopeDetector::globalFunction(new Node\Name\FullyQualified('time')), 'time');
+        Assert::null(DynamicScopeDetector::globalFunction(new Node\Name('App\\time')));
+        Assert::null(DynamicScopeDetector::globalFunction(new Node\Name\Relative('time')));
+        Assert::null(DynamicScopeDetector::globalFunction(new Node\Expr\Variable('fn')));
+    }
+
     public function flagsReflectionOfOwnClass(): void
     {
         [$class, $method] = self::method('namespace App; class Svc { public function f() { return new \ReflectionClass(Svc::class); } }', 'f');
@@ -153,6 +201,20 @@ final class DynamicScopeDetectorTest
     {
         Assert::same(Flag::fromValues(Flag::values([Flag::StaticVar, Flag::Compact, Flag::StaticVar])), [Flag::Compact, Flag::StaticVar]);
         Assert::same(Flag::fromValues(['compact', 'from_the_future']), [Flag::Compact]);
+    }
+
+    /**
+     * @return array{Node\Stmt\Enum_, Node\Stmt\ClassMethod}
+     */
+    private static function enumMethod(string $code): array
+    {
+        $stmts = self::parse("<?php {$code}");
+        $enum = (new NodeFinder())->findFirstInstanceOf($stmts, Node\Stmt\Enum_::class);
+        \assert($enum instanceof Node\Stmt\Enum_);
+        $method = $enum->getMethod('f');
+        \assert($method !== null);
+
+        return [$enum, $method];
     }
 
     private static function function(string $body, string $params = '$o = null'): Node\FunctionLike

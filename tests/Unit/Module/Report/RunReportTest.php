@@ -50,7 +50,8 @@ final class RunReportTest
         Assert::same([$total['ops_before'], $total['ops_after'], $total['saved']], [20, 13, 7]);
         # The weakest proof and the lowest coverage of the steps.
         Assert::same([$total['status'], $total['diff_coverage'], $total['inputs']], ['tests', 80.0, 210]);
-        Assert::same($total['tests'], ['Tests\CartTest::total', 'Tests\CartTest::empty']);
+        # A check without inputs (the differential test did not run) adds its tests, not a 0% coverage.
+        Assert::same($total['tests'], ['Tests\CartTest::total', 'Tests\CartTest::empty', 'Tests\CartTest::io']);
         Assert::same(\array_column($total['gains'], 'source'), ['rector', 'llm']);
         Assert::true($functions['App\Cart::sum']['executed_gain']);
         Assert::same($data['totals'], [
@@ -103,6 +104,7 @@ final class RunReportTest
         $llm->accepted[] = ['file' => 'src/Cart.php', 'function' => 'App\Cart::total', 'gain' => 3, 'status' => 'tests', 'checks' => [
             ['key' => 'App\Cart::total', 'status' => 'tests', 'coverage' => 80.0, 'inputs' => 150, 'tests' => ['Tests\CartTest::total', 'Tests\CartTest::empty']],
             ['key' => 'App\Cart::total::{closure#1}', 'status' => 'diff-tested', 'coverage' => null, 'inputs' => null, 'tests' => []],
+            ['key' => 'App\Cart::total::{closure#2}', 'status' => 'tests', 'coverage' => 0.0, 'inputs' => 0, 'tests' => ['Tests\CartTest::io']],
         ]];
         $llm->reject('src/Cart.php', 'App\Cart::total', 'cyclomatic complexity grew by 1');
         $report->steps[] = $llm;

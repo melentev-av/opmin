@@ -59,7 +59,8 @@
             "inputs": 210,
             "tests": [
                 "Tests\\CartTest::total",
-                "Tests\\CartTest::empty"
+                "Tests\\CartTest::empty",
+                "Tests\\CartTest::io"
             ],
             "flags": [
                 "io"
@@ -235,6 +236,15 @@
                             "coverage": null,
                             "inputs": null,
                             "tests": []
+                        },
+                        {
+                            "key": "App\\Cart::total::{closure#2}",
+                            "status": "tests",
+                            "coverage": 0,
+                            "inputs": 0,
+                            "tests": [
+                                "Tests\\CartTest::io"
+                            ]
                         }
                     ]
                 }

@@ -145,6 +145,14 @@ final class RunReport
                 $entry['executed_gain'] = $entry['executed_gain'] || $step->executedGain;
                 $entry['status'] = self::weaker($entry['status'], $change['status']);
                 foreach ($change['checks'] ?? [] as $check) {
+                    # A function the differential test did not run (I/O, eval) has no coverage to show.
+                    if (!\is_int($check['inputs'] ?? null) || $check['inputs'] === 0) {
+                        /** @var list<string> $tests */
+                        $tests = \is_array($check['tests'] ?? null) ? $check['tests'] : [];
+                        $entry['tests'] = \array_values(\array_unique([...$entry['tests'], ...$tests]));
+                        continue;
+                    }
+
                     $coverage = \is_float($check['coverage'] ?? null) || \is_int($check['coverage'] ?? null) ? (float) $check['coverage'] : null;
                     $coverage === null or $entry['diff_coverage'] = $entry['diff_coverage'] === null ? $coverage : \min($entry['diff_coverage'], $coverage);
                     /** @var mixed $time */

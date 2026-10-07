@@ -12,7 +12,7 @@
 
 | Function | Opcodes | Saved by | Proof | Diff-test coverage | Project tests | Flags |
 |---|---|---|---|---|---|---|
-| `App\Cart::total`<br>src/Cart.php | 20 → 13 | FullyQualifyGlobalCallsRector, LLM | tests | 80%, 210 inputs | 2 | io |
+| `App\Cart::total`<br>src/Cart.php | 20 → 13 | FullyQualifyGlobalCallsRector, LLM | tests | 80%, 210 inputs | 3 | io |
 | `App\Cart::sum`<br>src/Cart.php | 12 → 12 (executed: fewer) | HoistLoopInvariantCountRector | diff-tested, time -12.5% | 92.5%, 180 inputs | 0 |  |
 
 ## Fewer executed opcodes, not static ones

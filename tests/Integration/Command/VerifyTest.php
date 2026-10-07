@@ -59,6 +59,20 @@ final class VerifyTest
         Assert::same($report['functions']['App\g']['status'], 'diff-tested');
     }
 
+    public function candidateMayLieOutsideTheCurrentDirectory(): void
+    {
+        $outside = \sys_get_temp_dir() . '/opmin-candidate-' . \bin2hex(\random_bytes(4)) . '.php';
+        \file_put_contents($outside, \str_replace('$s = $a + $b; return $s;', 'return $a + $b;', self::ORIGINAL));
+
+        try {
+            [$code] = $this->opmin('verify', $this->dir . '/src/A.php', $outside, '--format=json');
+        } finally {
+            \unlink($outside);
+        }
+
+        Assert::same($code, 0);
+    }
+
     public function rejectsAChangeAndWritesTheCounterexample(): void
     {
         $this->candidate(\str_replace("array_key_exists('x', \$a)", "isset(\$a['x'])", self::ORIGINAL));

@@ -26,13 +26,13 @@ final class Targets
         $paths = [];
         foreach ($arguments as $argument) {
             if (\strpbrk($argument, '*?[') !== false) {
-                $matches = self::glob(Path::create($argument)->absolute((string) $cwd));
+                $matches = self::glob(self::absolute($argument, $cwd));
                 $matches === [] and throw new \InvalidArgumentException("The glob `{$argument}` matches no PHP file.");
                 \array_push($paths, ...$matches);
                 continue;
             }
 
-            $path = Path::create($argument)->absolute((string) $cwd);
+            $path = self::absolute($argument, $cwd);
             $path->exists() or throw new \InvalidArgumentException("Path `{$path}` does not exist.");
             $paths[] = $path;
         }
@@ -88,6 +88,17 @@ final class Targets
         \ksort($matches, \SORT_STRING);
 
         return \array_values($matches);
+    }
+
+    /**
+     * An argument path relative to the current directory; an absolute one as it is (it may be
+     * anywhere, `Path::absolute()` would insist on being under the directory).
+     */
+    public static function absolute(string $path, Path $cwd): Path
+    {
+        $result = Path::create($path);
+
+        return $result->isAbsolute() ? $result : $result->absolute((string) $cwd);
     }
 
     /**

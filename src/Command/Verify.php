@@ -9,6 +9,7 @@ use Opmin\Module\Config\Schema;
 use Opmin\Module\Php\PhpBinaryException;
 use Opmin\Module\Php\PhpBinaryProbe;
 use Opmin\Module\Project\Project;
+use Opmin\Module\Project\Targets;
 use Opmin\Module\Verification\CandidateReport;
 use Opmin\Module\Verification\Verifier;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -59,8 +60,8 @@ final class Verify extends Base
         }
 
         $cwd = Path::create((string) \getcwd());
-        $file = Path::create((string) $input->getArgument('file'))->absolute((string) $cwd);
-        $candidate = Path::create((string) $input->getArgument('candidate'))->absolute((string) $cwd);
+        $file = Targets::absolute((string) $input->getArgument('file'), $cwd);
+        $candidate = Targets::absolute((string) $input->getArgument('candidate'), $cwd);
         foreach ([$file, $candidate] as $path) {
             if (!$path->isFile()) {
                 $style->error("File `{$path}` does not exist.");

@@ -10,9 +10,10 @@ object state, calls to collaborators).
 
 As a CI guard, `opmin check` fails a pull request when functions grow in opcodes compared to a committed baseline.
 
-> **Status: early development.** The CLI skeleton, configuration and build (M0) and opcode counting —
-> `count` and `diff` (M1) — work; `optimize`, `check` and the rest are being implemented stage by stage.
-> Commands that are not implemented yet fail with a message naming the stage.
+> **Status: early development.** The CLI skeleton, configuration and build (M0), opcode counting — `count` and
+> `diff` (M1), behavior verification — `verify` (M2) and the Rector stage of `optimize` (M3) work; the LLM stage,
+> `check` and the rest are being implemented stage by stage. Commands and options that are not implemented yet
+> fail with a message naming the stage.
 
 ## Quick start (planned flow)
 
@@ -63,6 +64,33 @@ opmin verify src/Cart.php /tmp/Cart.php --with-tests    # + php -l, PHPStan "no 
   project's PHPStan proves dead (`--with-tests`: always-true or impossible conditions, unreachable code) are
   not counted. Functions with I/O are never called with generated inputs: only the project's tests prove them.
 - Flags of `opmin count` (`compact`, `static_var`, `eval`, `io`…) say which constructs restrict a function.
+
+## Optimizing (Stage A: Rector)
+
+```bash
+opmin optimize                         # the config `paths` (src/ or app/)
+opmin optimize src/Cart.php 'src/**/*Service.php' --dry-run
+opmin optimize --with-standard-rector  # also the standard Rector rules (off by default)
+opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
+```
+
+- Rules are applied one by one, in passes until a pass changes nothing (`rector.max_passes`). After each rule:
+  the project's formatter on the changed files (Pint, PHP-CS-Fixer, ECS, PHPCBF — detected, or `commands.format`,
+  `--format=none`), `php -l`, a count. A changed function is kept only when it saves opcodes, the gain is worth
+  the changed lines (`readability.*`), complexity and nesting do not grow and its signature stays as
+  `signatures.*` allow; then it is verified on all three levels. Everything else is taken back.
+- In a git working tree (must be clean) every accepted step is a commit; outside git the originals are copied to
+  `runs/<ts>/original/`; `--dry-run` restores everything. Each run writes `runs/<ts>/report.json` (every kept and
+  rolled-back function with the reason), the counts before and after and `opmin.patch`, and ends with a full run
+  of the project's tests.
+- opmin's own rules, on by default, prove their safety conditions themselves (native types through PHPStan):
+  `FullyQualifyGlobalCallsRector` (`strlen()` → `\strlen()`, only when no namespaced function or test mock —
+  php-mock, ClockMock — can shadow it), `ExtractRepeatedPropertyFetchRector` (readonly properties across calls,
+  mutable ones while no user code runs, no `__get`/hooks), `ExtractRepeatedArrayDimFetchRector` (only keys proven to
+  exist), `HoistLoopInvariantCountRector` (`\count()` of an unchanged local array out of a `for` condition).
+- Exclude code with `#[\Opmin\Ignore]` / `#[\Opmin\Ignore(rules: ['fqn'])]`, `@opmin-ignore [rules]`,
+  `ignore.paths`, `ignore.functions`; `vendor/` and `@generated` files are never touched.
+- Which standard Rector rules save opcodes: [docs/standard-rules.md](docs/standard-rules.md).
 
 ## Installation
 

@@ -137,6 +137,19 @@ final class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedRe
   them with `OPMIN_UPDATE_SNAPSHOTS=1 vendor/bin/testo --filter=RunReportTest` and read the diff: a field renamed or
   removed in `report.json` is a breaking change (major release only).
 
+## The CI guard (`baseline`, `check`)
+
+- `tests/Unit/Module/Check/`: the baseline file (a property test: the JSON does not depend on the order of the
+  functions and round-trips), the comparison table (tolerance, limit of new functions, removed and moved
+  functions, scope of the changed files), and the outputs — snapshots of `json`, `github`, `gitlab` and
+  `checkstyle` in `tests/Fixtures/Check/` (`OPMIN_UPDATE_SNAPSHOTS=1`, like the report), plus the validity of the
+  Code Quality JSON and the checkstyle XML.
+- `tests/Integration/Command/CheckTest.php`: `opmin baseline` and `opmin check` as processes on a git project
+  with a feature branch: growth → exit 1 with an annotation, a decrease → the hint and `--update-baseline`,
+  another PHP → exit 2, `--all` against the changed-files mode, closure keys after lines moved, a renamed file
+  and function, `--suggest` on copies (the project is not touched). Opcode numbers are never asserted: they
+  differ between the PHP versions of the matrix, the direction does not.
+
 ## Property tests (`rasuvaeff/property-testing-testo`)
 
 ```php

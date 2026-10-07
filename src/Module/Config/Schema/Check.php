@@ -6,6 +6,7 @@ namespace Opmin\Module\Config\Schema;
 
 use Opmin\Module\Common\Internal\Attribute\ConfigKey;
 use Opmin\Module\Common\Internal\Attribute\InflectableConfig;
+use Opmin\Module\Common\Internal\Attribute\InputOption;
 
 /**
  * CI guard: `opmin check` against the baseline.
@@ -25,5 +26,6 @@ final class Check
 
     /** @var non-empty-string */
     #[ConfigKey('check.base_ref', 'Base ref for "changed files only" mode')]
+    #[InputOption('base')]
     public string $baseRef = 'origin/main';
 }

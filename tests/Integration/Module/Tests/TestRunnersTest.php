@@ -42,6 +42,7 @@ use Testo\Test;
 #[Covers(TestRunnerFactory::class)]
 #[Covers(SyntaxChecker::class)]
 #[Covers(PhpStanRunner::class)]
+#[Covers(CounterexampleRenderer::class)]
 final class TestRunnersTest
 {
     private const VENDOR = __DIR__ . '/../../../../vendor';

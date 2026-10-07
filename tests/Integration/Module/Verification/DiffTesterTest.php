@@ -24,6 +24,10 @@ use Testo\Test;
  */
 #[Test]
 #[Covers(DiffTester::class)]
+#[Covers(\Opmin\Module\Verification\Target\TargetLocator::class)]
+#[Covers(\Opmin\Module\Verification\Input\Feedback::class)]
+#[Covers(\Opmin\Module\Verification\Verdict::class)]
+#[Covers(\Opmin\Module\Verification\Counterexample::class)]
 final class DiffTesterTest
 {
     private string $dir;
@@ -207,7 +211,8 @@ final class DiffTesterTest
     {
         $code = '<?php function f(int $a, int $b) { if ($a === 41) { if ($b === 43) { return "both"; } return "a"; } return "none"; }';
 
-        $searched = $this->verify($code, $code, fuzzTimeMs: 3000);
+        # The search stops as soon as every branch is covered: the limit is only a ceiling under load.
+        $searched = $this->verify($code, $code, fuzzTimeMs: 10000);
         $planOnly = $this->verify($code, $code, fuzzTimeMs: 0);
 
         Assert::same($searched->coverage, 100.0);

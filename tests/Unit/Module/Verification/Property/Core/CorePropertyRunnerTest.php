@@ -24,6 +24,8 @@ use Testo\Test;
 #[Covers(CorePropertyRunner::class)]
 #[Covers(InputArbitrary::class)]
 #[Covers(InputExecutor::class)]
+#[Covers(\Opmin\Module\Verification\Property\PropertyOutcome::class)]
+#[Covers(\Opmin\Module\Verification\Input::class)]
 final class CorePropertyRunnerTest
 {
     private ?Path $dir = null;

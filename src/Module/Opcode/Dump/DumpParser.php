@@ -67,6 +67,7 @@ final class DumpParser
             $name = \explode("\0", \substr($line, 0, -1), 2)[0];
             $ops = (int) $stats[1];
             [$opcodes, $i] = $this->opcodes($lines, $j, $ops, $name, $phase);
+            $listing = \implode("\n", \array_slice($lines, $j, $i - $j));
 
             $blocks[] = new DumpBlock(
                 name: $name,
@@ -79,6 +80,7 @@ final class DumpParser
                 lineStart: \max(0, (int) $location[2]),
                 lineEnd: (int) $location[3],
                 opcodes: $opcodes,
+                listing: $listing,
             );
         }
 

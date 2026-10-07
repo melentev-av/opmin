@@ -5,16 +5,8 @@ declare(strict_types=1);
 namespace Opmin\Command;
 
 use Internal\Path;
-use Opmin\Module\Analysis\ReferenceIndex;
 use Opmin\Module\Analysis\Shadow\ShadowIndex;
-use Opmin\Module\Common\Cpu;
 use Opmin\Module\Config\Schema;
-use Opmin\Module\Opcode\CountCache;
-use Opmin\Module\Opcode\Dump\OpcacheDumper;
-use Opmin\Module\Opcode\OpcodeCounter;
-use Opmin\Module\Optimize\Formatter;
-use Opmin\Module\Optimize\Optimizer;
-use Opmin\Module\Optimize\Rector\RectorRunner;
 use Opmin\Module\Optimize\Rector\RuleCatalog;
 use Opmin\Module\Optimize\Rector\RuleSpec;
 use Opmin\Module\Optimize\RunReport;
@@ -23,10 +15,8 @@ use Opmin\Module\Optimize\Workspace;
 use Opmin\Module\Php\InternalSymbols;
 use Opmin\Module\Php\PhpBinaryException;
 use Opmin\Module\Php\PhpBinaryProbe;
-use Opmin\Module\Project\FileFinder;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Project\Targets;
-use Opmin\Module\Verification\Verifier;
 use Opmin\Rector\Rule\AbstractExtractRepeatedReadRector;
 use Opmin\Rector\Rule\FullyQualifyGlobalCallsRector;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -40,7 +30,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
  * Minimize opcodes: Stage A (Rector) with behavior verification on every step (brief, «Модуль 3»).
- * The LLM stage comes in M4, `--review`, `--resume`, `--guard-perf` in M5, git packages in M7.
+ * Stage B is the Claude Code skill driving `llm:targets` → `apply-candidate` → `llm:finish`; `--review`,
+ * `--resume`, `--guard-perf` come in M5, git packages in M7.
  *
  * In a git working tree (must be clean) every accepted step is a commit; outside git the originals
  * are copied to `runs/<ts>/original/`; `--dry-run` restores everything at the end. Every run writes
@@ -56,7 +47,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
     name: 'optimize',
     description: 'Minimize opcodes: Rector and LLM stages with behavior verification',
 )]
-final class Optimize extends Base
+final class Optimize extends Stage
 {
     /** Options of later stages: [option, stage]. */
     private const LATER = [
@@ -116,10 +107,6 @@ final class Optimize extends Base
         $phpConfig = $this->container->get(Schema\Php::class);
         /** @var Schema\Project $projectConfig */
         $projectConfig = $this->container->get(Schema\Project::class);
-        /** @var Schema\Cache $cacheConfig */
-        $cacheConfig = $this->container->get(Schema\Cache::class);
-        /** @var Schema\Ignore $ignore */
-        $ignore = $this->container->get(Schema\Ignore::class);
         /** @var Schema\Verification $verification */
         $verification = $this->container->get(Schema\Verification::class);
         $input->getOption('allow-unverified') and $verification->allowUnverified = true;
@@ -132,9 +119,9 @@ final class Optimize extends Base
         try {
             $php = (new PhpBinaryProbe())->probe($phpConfig->binary);
             [$project, $paths] = Targets::resolve($arguments, Path::create((string) \getcwd()), $projectConfig);
-            $files = $this->files($project, $paths, $projectConfig, $ignore);
+            $files = $this->files($project, $paths);
             $files === [] and throw new \InvalidArgumentException('No PHP files to optimize.');
-            $phpTarget = $phpConfig->target ?? $project->phpTarget;
+            $phpTarget = $this->phpTarget($project);
             /** @var Schema\Rector $rectorConfig */
             $rectorConfig = $this->container->get(Schema\Rector::class);
             /** @var Schema\RectorStandard $standard */
@@ -148,20 +135,16 @@ final class Optimize extends Base
             return Command::INVALID;
         }
 
-        $cacheDir = Path::create($cacheConfig->dir);
-        $cacheDir->isAbsolute() or $cacheDir = $project->root->join($cacheConfig->dir);
+        $cacheDir = $this->cacheDir($project);
         $runDir = $project->root->join('runs', \date('Ymd-His'));
         $dryRun = (bool) $input->getOption('dry-run');
         try {
-            $workspace = Workspace::create($project, $runDir, $dryRun, \array_values(\array_unique(['runs', $project->relative($cacheDir)])));
+            $workspace = Workspace::create($project, $runDir, $dryRun, $this->ignoredPaths($project));
         } catch (\RuntimeException $e) {
             $style->error($e->getMessage());
             return Command::INVALID;
         }
 
-        $log = static function (string $message) use ($errorOutput): void {
-            $errorOutput->isVerbose() and $errorOutput->writeln("  {$message}");
-        };
         $style->writeln(\sprintf(
             'Optimizing %d file(s) of %s with %d rule(s), PHP %s (target %s), %s.',
             \count($files),
@@ -173,33 +156,7 @@ final class Optimize extends Base
         ));
 
         $rules = $this->withRuntimeOptions($rules, $project, $cacheDir, $runDir, $php);
-        $counter = new OpcodeCounter(new OpcacheDumper($php, Cpu::count()), new CountCache($cacheDir, $php));
-        /** @var Schema\Tests $tests */
-        $tests = $this->container->get(Schema\Tests::class);
-        $verifier = new Verifier($project, $php, $verification, $commands, $tests, $cacheDir, $phpTarget, $log);
-        /** @var Schema\Readability $readability */
-        $readability = $this->container->get(Schema\Readability::class);
-        /** @var Schema\Signatures $signatures */
-        $signatures = $this->container->get(Schema\Signatures::class);
-        $optimizer = new Optimizer(
-            $project,
-            $php,
-            $workspace,
-            $counter,
-            ReferenceIndex::build($project, $cacheDir),
-            new RectorRunner($project, $cacheDir, $phpTarget),
-            Formatter::create($project, $php, $commands->format),
-            $verifier,
-            $rectorConfig,
-            $readability,
-            $signatures,
-            $ignore,
-            $cacheDir->join('tmp'),
-            (bool) $input->getOption('allow-public-signatures'),
-            static function (string $message) use ($errorOutput): void {
-                $errorOutput->writeln("  {$message}", OutputInterface::VERBOSITY_NORMAL);
-            },
-        );
+        $optimizer = $this->optimizer($project, $php, $workspace, $output, (bool) $input->getOption('allow-public-signatures'));
 
         $report = $optimizer->run($files, $rules);
         $patch = $workspace->finish();
@@ -213,30 +170,6 @@ final class Optimize extends Base
         $failed = $report->finalTests === false || \array_filter($report->steps, static fn(StepReport $s): bool => $s->error !== null) !== [];
 
         return $failed ? Command::FAILURE : Command::SUCCESS;
-    }
-
-    /**
-     * The target files without excluded, ignored, vendor and generated ones.
-     *
-     * @param list<Path> $paths
-     * @return list<Path>
-     */
-    private function files(Project $project, array $paths, Schema\Project $config, Schema\Ignore $ignore): array
-    {
-        $exclude = \array_values(\array_unique([...$config->exclude, ...$ignore->paths, 'vendor']));
-        $files = (new FileFinder())->find($project, $paths, $exclude);
-
-        return \array_values(\array_filter($files, static function (Path $file) use ($project, $ignore): bool {
-            $relative = $project->relative($file);
-            foreach ($ignore->paths as $path) {
-                $path = \trim(\str_replace('\\', '/', $path), '/');
-                if ($relative === $path || \str_starts_with($relative, $path . '/')) {
-                    return false;
-                }
-            }
-
-            return !\str_starts_with($relative, 'vendor/') && !Targets::generated($file);
-        }));
     }
 
     /**

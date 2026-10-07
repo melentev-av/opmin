@@ -55,6 +55,21 @@ final class DumpMatcher
     }
 
     /**
+     * The blocks of one phase by unit key, without abstract units.
+     *
+     * @param list<CodeUnit> $units From {@see FunctionLocator::locate()}.
+     * @param list<DumpBlock> $blocks Both phases of one file, from the dump parser.
+     * @return array<non-empty-string, DumpBlock>
+     * @throws MatchException
+     */
+    public function blocks(array $units, array $blocks, Phase $phase): array
+    {
+        $pairs = $this->pair($units, \array_values(\array_filter($blocks, static fn(DumpBlock $b): bool => $b->phase === $phase)));
+
+        return \array_map(static fn(array $pair): DumpBlock => $pair[1], $pairs);
+    }
+
+    /**
      * @param list<CodeUnit> $units
      * @param list<DumpBlock> $blocks One phase.
      * @return array<non-empty-string, array{CodeUnit, DumpBlock}> By unit key, without abstract units.

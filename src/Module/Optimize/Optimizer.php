@@ -95,21 +95,7 @@ final class Optimizer
      */
     public function run(array $files, array $rules): RunReport
     {
-        foreach ($files as $file) {
-            $relative = $this->project->relative($file);
-            $this->paths[$relative] = $file;
-            $this->current[$relative] = (string) \file_get_contents((string) $file);
-            $this->workspace->git() or $this->workspace->backup($file);
-        }
-
-        $baseline = $this->countCurrent();
-        $report = new RunReport(self::total($this->counts), (string) $this->workspace->runDir);
-        $this->writeJson('00-baseline.json', $baseline);
-        foreach ($baseline->errors as $file => $error) {
-            $report->notes[] = "{$file} cannot be counted and is not changed: {$error}";
-        }
-
-        $this->detectUnformatted($report);
+        $report = $this->open($files);
         for ($pass = 1; $pass <= $this->rectorConfig->maxPasses; ++$pass) {
             $improved = false;
             foreach ($rules as $rule) {
@@ -124,13 +110,88 @@ final class Optimizer
             }
         }
 
+        $this->close($report);
+
+        return $report;
+    }
+
+    /**
+     * Starts a run on the given files: reads and counts them, finds the files the formatter must not touch.
+     *
+     * @param list<Path> $files Absolute target files.
+     * @param non-empty-string|null $baseline Name of the file in the run directory for the counts; null — not written.
+     */
+    public function open(array $files, ?string $baseline = '00-baseline.json'): RunReport
+    {
+        foreach ($files as $file) {
+            $relative = $this->project->relative($file);
+            $this->paths[$relative] = $file;
+            $this->current[$relative] = (string) \file_get_contents((string) $file);
+            $this->workspace->git() or $this->workspace->backup($file);
+        }
+
+        $counts = $this->countCurrent();
+        $report = new RunReport(self::total($this->counts), (string) $this->workspace->runDir);
+        $baseline === null or $this->writeJson($baseline, $counts);
+        foreach ($counts->errors as $file => $error) {
+            $report->notes[] = "{$file} cannot be counted and is not changed: {$error}";
+        }
+
+        $this->detectUnformatted($report);
+
+        return $report;
+    }
+
+    /**
+     * Ends a run: the full test run of the project (taking back steps while it fails), the final counts.
+     */
+    public function close(RunReport $report): void
+    {
         \array_push($report->notes, ...\array_keys($this->verifierNotes));
         $this->finalTests($report);
         $final = $this->countCurrent();
         $this->writeJson('99-final.json', $final);
         $report->opsAfter = self::total($this->counts);
+    }
 
-        return $report;
+    /**
+     * Stage B: one rewritten top-level function proposed by the LLM, through the same checks as a
+     * Rector step. Nothing but the function may change: its source (with its docblock, when the
+     * candidate has one) is replaced in the current file.
+     *
+     * @param non-empty-string $relative File of the function, relative to the project root, opened with {@see self::open()}.
+     * @param non-empty-string $top Key of the top-level function.
+     */
+    public function candidate(string $relative, string $top, string $source): StepReport
+    {
+        $rule = new RuleSpec(LlmCandidate::class);
+        $step = new StepReport($rule->class, 1);
+        $current = $this->current[$relative] ?? null;
+        $units = $current === null ? null : Units::of($current, $relative);
+        $content = $units?->withSource($top, $source);
+        if ($units === null || $content === null) {
+            $step->reject($relative, $top, "no function {$top} in {$relative}");
+            return $step;
+        }
+
+        if (\trim($source) === '' || $content === $current) {
+            $step->reject($relative, $top, 'the candidate does not change the function');
+            return $step;
+        }
+
+        $changed = $units->changedTopLevel(Units::of($content, $relative));
+        if ($changed !== [$top]) {
+            $others = \array_values(\array_diff($changed, [$top]));
+            $step->reject($relative, $top, $others === []
+                ? 'the candidate cannot be parsed as the function ' . $top
+                : 'the candidate changes more than ' . $top . ': ' . \implode(', ', $others));
+
+            return $step;
+        }
+
+        $this->apply([$relative => $content], $rule, $step);
+
+        return $step;
     }
 
     /**
@@ -178,10 +239,18 @@ final class Optimizer
             $step->reject('-', '', 'Rector: ' . $error);
         }
 
-        if ($new === []) {
-            return $step;
-        }
+        $new === [] or $this->apply($new, $rule, $step);
 
+        return $step;
+    }
+
+    /**
+     * The common part of a step: format → `php -l` → count → keep what is worth it → verify → write and commit.
+     *
+     * @param non-empty-array<non-empty-string, string> $new Changed files => their new content.
+     */
+    private function apply(array $new, RuleSpec $rule, StepReport $step): void
+    {
         $new = $this->format($new);
         $new = $this->syntax($new, $step);
         $countsNew = $this->countContents($new);
@@ -193,7 +262,7 @@ final class Optimizer
 
         $accepted = $this->verify($plans, $step);
         if ($accepted === []) {
-            return $step;
+            return;
         }
 
         foreach ($accepted as $relative => $plan) {
@@ -219,8 +288,6 @@ final class Optimizer
         } catch (\RuntimeException $e) {
             $step->error = $e->getMessage();
         }
-
-        return $step;
     }
 
     /**
@@ -318,7 +385,7 @@ final class Optimizer
 
         $unit = $before->units[$top];
         $names = \array_values(\array_filter([$rule->alias(), \strtolower($rule->shortName())]));
-        if ($this->ignoredByConfig($top) || ($unit->node !== null && IgnoreMarks::ignored($unit->node, $names))
+        if (IgnoreMarks::byConfig($this->ignore->functions, $top) || ($unit->node !== null && IgnoreMarks::ignored($unit->node, $names))
             || ($unit->class !== null && IgnoreMarks::ignored($unit->class, $names))
         ) {
             return [$gain, 'excluded by the user (ignore)'];
@@ -462,10 +529,15 @@ final class Optimizer
         foreach ($pending as $relative => $plan) {
             $units = Units::of($plan->candidate, $relative);
             $reject = [];
+            $proofs = [];
             foreach ($report->functions as $function) {
                 if (!$function->accepted()) {
                     $top = $units->topLevel($function->key) ?? $function->key;
-                    isset($plan->accepted[$top]) and $reject[$top] = $function->reason;
+                    if (isset($plan->accepted[$top])) {
+                        $reject[$top] = $function->reason;
+                        $counterexample = $function->verdict?->counterexample;
+                        $counterexample === null or $proofs[$top] = ['test' => $function->counterexampleTest] + $counterexample->toArray();
+                    }
                 }
             }
 
@@ -484,14 +556,14 @@ final class Optimizer
 
             $taken = true;
             if ($plan->atomic || isset($reject['*'])) {
-                $step->reject($relative, \implode(', ', \array_keys($plan->accepted)), \reset($reject));
+                $step->reject($relative, \implode(', ', \array_keys($plan->accepted)), \reset($reject), \reset($proofs) ?: null);
                 $plan->candidate = $plan->current;
                 $plan->accepted = [];
                 continue;
             }
 
             foreach ($reject as $top => $reason) {
-                $step->reject($relative, $top, $reason);
+                $step->reject($relative, $top, $reason, $proofs[$top] ?? null);
                 unset($plan->accepted[$top]);
             }
 
@@ -736,24 +808,17 @@ final class Optimizer
         $title = $rule->executedGain && $step->gain() === 0
             ? \sprintf('opmin: %s, fewer executed opcodes in %d function(s)', $rule->shortName(), \count($step->accepted))
             : \sprintf('opmin: %s, -%d opcodes in %d function(s)', $rule->shortName(), $step->gain(), \count($step->accepted));
+        $rule->class === LlmCandidate::class and $title = \sprintf(
+            'opmin: LLM rewrite of %s, -%d opcodes',
+            \implode(', ', \array_column($step->accepted, 'function')),
+            $step->gain(),
+        );
         $lines = [$title, '', 'Rule: ' . $rule->class];
         foreach ($step->accepted as $change) {
             $lines[] = \sprintf('%s  -%d (%s)', $change['function'], $change['gain'], $change['status']);
         }
 
         return \implode("\n", $lines);
-    }
-
-    private function ignoredByConfig(string $key): bool
-    {
-        foreach ($this->ignore->functions as $pattern) {
-            $regex = '~^' . \str_replace('\*', '.*', \preg_quote(\ltrim(\str_replace('\\\\', '\\', $pattern), '\\'), '~')) . '$~i';
-            if (\preg_match($regex, $key) === 1) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private function writeJson(string $name, CountResult $result): void

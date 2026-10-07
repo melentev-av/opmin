@@ -87,6 +87,34 @@ final class UnitsTest
         Assert::same($after->docComment('App\Svc::add'), '/** Adds two numbers. */');
     }
 
+    public function replacesTheSourceOfOneUnit(): void
+    {
+        $before = Units::of(self::BEFORE, 'src/Svc.php');
+        $indented = "    public function same(): int\n    {\n        return 2;\n    }";
+        $flush = "public function same(): int\n{\n    return 2;\n}";
+        $withDoc = "/** Two. */\n    public function add(int \$a, int \$b): int\n    {\n        return \$a + \$b;\n    }";
+
+        Assert::same($before->withSource('App\Svc::same', $indented), \str_replace("return 1;\n    }\n}", "return 2;\n    }\n}", self::BEFORE));
+        # A source written from the line start gets the indentation of the unit.
+        Assert::same($before->withSource('App\Svc::same', $flush), $before->withSource('App\Svc::same', $indented));
+        # Without a docblock the original one stays; with one it is replaced.
+        Assert::string((string) $before->withSource('App\Svc::add', "public function add(int \$a, int \$b): int\n{\n    return \$a + \$b;\n}"))
+            ->contains("/** Adds. */\n    public function add(int \$a, int \$b): int\n    {\n        return \$a + \$b;\n    }");
+        Assert::string((string) $before->withSource('App\Svc::add', $withDoc))
+            ->contains("    /** Two. */\n    public function add(")
+            ->notContains('Adds.');
+        Assert::same($before->withSource('App\Svc::missing', $indented), null);
+        Assert::same($before->indent('App\Svc::add'), '    ');
+    }
+
+    public function aHeredocIsNeverReindented(): void
+    {
+        $before = Units::of(self::BEFORE, 'src/Svc.php');
+        $heredoc = "public function same(): string\n{\n    return <<<TXT\n    a\n    TXT;\n}";
+
+        Assert::string((string) $before->withSource('App\Svc::same', $heredoc))->contains("    public function same(): string\n{\n    return <<<TXT\n    a\n    TXT;\n}");
+    }
+
     public function brokenCodeHasNoUnits(): void
     {
         Assert::same(Units::of('<?php function (', 'x.php')->units, []);

@@ -76,4 +76,26 @@ enum Restriction: string
      * Do not optimize the function at all.
      */
     case Skip = 'skip';
+
+    /**
+     * The rule a rewrite must follow, for the prompt of the LLM stage.
+     */
+    public function instruction(): string
+    {
+        return match ($this) {
+            self::Variables => 'Do not remove, rename or inline local variables.',
+            self::VariableSet => 'Do not change the set of local variables at all, not even with a new temporary.',
+            self::Signature => 'Do not change the signature: parameters, their names, types and defaults, the return type.',
+            self::ReassignParams => 'Do not assign to parameters.',
+            self::Docblock => 'Do not change the docblock.',
+            self::Inline => 'Do not inline calls or move code across function boundaries.',
+            self::LineSensitive => 'Never changed: the result depends on line numbers.',
+            self::IssetCompare => 'Do not swap `isset()`/`??` on object members for comparisons or back.',
+            self::StaticChain => 'Keep the order in which `static` variables are initialized and updated.',
+            self::Globals => 'Keep every read and write of global state, in the same order.',
+            self::SideEffecting => 'Keep every external effect, in the same order and number; only the project\'s tests verify it.',
+            self::Nondeterministic => 'Keep every call to time, randomness and environment functions, in the same order and number.',
+            self::Skip => 'Never changed: `eval` or `include` sees the local scope.',
+        };
+    }
 }

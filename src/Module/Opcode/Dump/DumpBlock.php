@@ -27,6 +27,7 @@ final readonly class DumpBlock
      * @param int<0, max> $ops `lines=N`: the number of opcodes.
      * @param int<0, max> $lineStart First line (the `function`/`fn` keyword, not attributes).
      * @param array<non-empty-string, positive-int> $opcodes Opcode name => count, sorted by name.
+     * @param string $listing The opcode lines as dumped (for the prompt of the LLM stage).
      */
     public function __construct(
         public string $name,
@@ -39,6 +40,7 @@ final readonly class DumpBlock
         public int $lineStart,
         public int $lineEnd,
         public array $opcodes,
+        public string $listing = '',
     ) {}
 
     public function isMain(): bool

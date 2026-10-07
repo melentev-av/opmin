@@ -14,7 +14,7 @@ final class StepReport
     /** @var list<array{file: non-empty-string, function: non-empty-string, gain: int, status: string}> */
     public array $accepted = [];
 
-    /** @var list<array{file: non-empty-string, function: string, reason: string}> */
+    /** @var list<array{file: non-empty-string, function: string, reason: string, counterexample?: array<string, mixed>}> */
     public array $rejected = [];
 
     /** @var array<non-empty-string, string> Files the step wrote => their content before it. */
@@ -38,10 +38,12 @@ final class StepReport
 
     /**
      * @param non-empty-string $file
+     * @param array<string, mixed>|null $counterexample The shrunk input on which the versions differ.
      */
-    public function reject(string $file, string $function, string $reason): void
+    public function reject(string $file, string $function, string $reason, ?array $counterexample = null): void
     {
-        $this->rejected[] = ['file' => $file, 'function' => $function, 'reason' => $reason];
+        $this->rejected[] = ['file' => $file, 'function' => $function, 'reason' => $reason]
+            + ($counterexample === null ? [] : ['counterexample' => $counterexample]);
     }
 
     /**

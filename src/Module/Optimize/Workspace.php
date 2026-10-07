@@ -54,6 +54,7 @@ final class Workspace
         # A dry run commits nothing and restores every file: the tree may be dirty.
         $gitRoot === null || $dryRun or $workspace->ensureClean($ignored);
         FS::mkdir((string) $runDir);
+        $workspace->loadOriginals();
 
         return $workspace;
     }
@@ -160,6 +161,25 @@ final class Workspace
         \file_put_contents((string) $file, $patch);
 
         return $file;
+    }
+
+    /**
+     * A run continued by another process (the calls of the LLM stage) keeps the originals backed up
+     * by the earlier ones.
+     */
+    private function loadOriginals(): void
+    {
+        $dir = $this->runDir->join('original');
+        if (!\is_dir((string) $dir)) {
+            return;
+        }
+
+        $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator((string) $dir, \FilesystemIterator::SKIP_DOTS));
+        /** @var \SplFileInfo $file */
+        foreach ($files as $file) {
+            $relative = \str_replace('\\', '/', \substr($file->getPathname(), \strlen((string) $dir) + 1));
+            $relative === '' or $this->originals[$relative] = (string) \file_get_contents($file->getPathname());
+        }
     }
 
     /**

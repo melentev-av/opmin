@@ -53,6 +53,23 @@ final class IgnoreMarks
     }
 
     /**
+     * Whether a function key matches one of the `ignore.functions` patterns (`App\Utils\*`).
+     *
+     * @param list<string> $patterns
+     */
+    public static function byConfig(array $patterns, string $key): bool
+    {
+        foreach ($patterns as $pattern) {
+            $regex = '~^' . \str_replace('\*', '.*', \preg_quote(\ltrim(\str_replace('\\\\', '\\', $pattern), '\\'), '~')) . '$~i';
+            if (\preg_match($regex, $key) === 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * @return list<string>|null null — every rule.
      */
     private static function attributeRules(Node\Attribute $attribute): ?array

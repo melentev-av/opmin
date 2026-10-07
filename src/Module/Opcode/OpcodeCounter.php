@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Opmin\Module\Opcode;
 
 use Internal\Path;
+use Opmin\Module\Opcode\Dump\DumpBlock;
 use Opmin\Module\Opcode\Dump\DumpParseException;
 use Opmin\Module\Opcode\Dump\DumpParser;
 use Opmin\Module\Opcode\Dump\FileDump;
 use Opmin\Module\Opcode\Dump\OpcacheDumper;
+use Opmin\Module\Opcode\Dump\Phase;
 use Opmin\Module\Opcode\Locate\DumpMatcher;
 use Opmin\Module\Opcode\Locate\FunctionLocator;
 use Opmin\Module\Opcode\Locate\LocateException;
@@ -99,5 +101,32 @@ final class OpcodeCounter
             files: \count($counted),
             cached: $cached,
         );
+    }
+
+    /**
+     * The optimized opcode listing of every function of one file, as OPcache dumps it (never cached:
+     * only the LLM stage needs it, for one function at a time).
+     *
+     * @return array<non-empty-string, string> Key => listing.
+     * @throws \RuntimeException When the file cannot be compiled or attributed.
+     */
+    public function listings(Project $project, Path $file): array
+    {
+        $relative = $project->relative($file);
+        $content = (string) @\file_get_contents((string) $file);
+        $result = null;
+        $this->dumper->dump([(string) $file], static function (FileDump $dump) use (&$result): void {
+            $result = $dump;
+        });
+        /** @var FileDump|null $result */
+        $result === null || $result->error !== null and throw new \RuntimeException($result?->error ?? 'Compilation failed');
+
+        try {
+            $blocks = $this->matcher->blocks($this->locator->locate($content, $relative . '::<main>'), $this->parser->parse($result->dump), Phase::Opt);
+        } catch (DumpParseException|LocateException|MatchException $e) {
+            throw new \RuntimeException('Cannot attribute opcodes to functions: ' . $e->getMessage(), previous: $e);
+        }
+
+        return \array_map(static fn(DumpBlock $block): string => $block->listing, $blocks);
     }
 }

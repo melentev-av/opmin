@@ -177,4 +177,31 @@ enum Flag: string
             self::Time, self::Random, self::Environment => [Restriction::Nondeterministic],
         };
     }
+
+    /**
+     * What the flag means, for the prompt of the LLM stage.
+     */
+    public function describe(): string
+    {
+        return match ($this) {
+            self::Compact => '`compact()` reads local variables by name',
+            self::Extract => '`extract()` creates local variables by name',
+            self::VariableVariable => 'variable variables (`$$name`) reach locals by name',
+            self::DefinedVars => '`get_defined_vars()` returns the set of local variables',
+            self::FuncArgs => '`func_get_args()` and friends see the passed arguments',
+            self::Backtrace => 'a backtrace is taken: frames and line numbers are visible',
+            self::MagicConstant => '`__LINE__`, `__FUNCTION__` or `__METHOD__` is used',
+            self::Eval => '`eval()` sees the local scope',
+            self::Include => '`include`/`require` inside the function sees the local scope',
+            self::StaticVar => '`static` variables keep state between calls',
+            self::Global => 'global state is read or written (`global`, `$GLOBALS`)',
+            self::CalledDynamically => 'the function is called by name somewhere',
+            self::Magic => 'magic members are involved (`__get`, `__call`, `ArrayAccess`, `isset` on members)',
+            self::Reflection => 'the function or its class is inspected through reflection',
+            self::Io => 'I/O, processes, network, sessions or headers',
+            self::Time => 'the current time is read',
+            self::Random => 'randomness is used',
+            self::Environment => 'the process environment is read (`getenv()`, memory, object ids)',
+        };
+    }
 }

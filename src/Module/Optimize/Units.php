@@ -129,6 +129,49 @@ final readonly class Units
     }
 
     /**
+     * This version with the source of one top-level unit replaced by `$source`: from its docblock when
+     * `$source` starts with one, from its attributes otherwise (the docblock stays). An unindented
+     * `$source` gets the indentation of the unit, unless it has a heredoc, whose content depends on it.
+     *
+     * @param non-empty-string $key
+     * @return string|null Null when there is no such unit.
+     */
+    public function withSource(string $key, string $source): ?string
+    {
+        $node = ($this->units[$key] ?? null)?->node;
+        if ($node === null) {
+            return null;
+        }
+
+        $source = \trim(\str_replace("\r\n", "\n", $source));
+        $from = \str_starts_with($source, '/**') ? self::start($node) : $node->getStartFilePos();
+        $indent = $this->indentAt($from);
+        $lines = \explode("\n", $source);
+        # The closing brace of an unindented source is at the line start.
+        $unindented = \count($lines) > 1 && \strspn((string) \end($lines), " \t") === 0;
+        if ($indent !== '' && \trim($indent) === '' && $unindented && !\str_contains($source, '<<<')) {
+            $source = \implode("\n", \array_map(
+                static fn(string $l, int $i): string => $i === 0 || \trim($l) === '' ? $l : $indent . $l,
+                $lines,
+                \array_keys($lines),
+            ));
+        }
+
+        return \substr($this->code, 0, $from) . $source . \substr($this->code, $node->getEndFilePos() + 1);
+    }
+
+    /**
+     * Whitespace before a unit (its docblock) on its first line: what the source of the unit lacks
+     * to be shown as it is in the file.
+     */
+    public function indent(string $key): string
+    {
+        $node = ($this->units[$key] ?? null)?->node;
+
+        return $node === null ? '' : $this->indentAt(self::start($node));
+    }
+
+    /**
      * Keys of every unit inside a top-level unit, itself included.
      *
      * @return list<non-empty-string>
@@ -149,5 +192,14 @@ final readonly class Units
         $doc = $node->getDocComment();
 
         return $doc === null ? $node->getStartFilePos() : \min($doc->getStartFilePos(), $node->getStartFilePos());
+    }
+
+    private function indentAt(int $offset): string
+    {
+        $lineStart = \strrpos(\substr($this->code, 0, $offset), "\n");
+        $lineStart = $lineStart === false ? 0 : $lineStart + 1;
+        $indent = \substr($this->code, $lineStart, $offset - $lineStart);
+
+        return \trim($indent) === '' ? $indent : '';
     }
 }

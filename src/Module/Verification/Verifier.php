@@ -31,8 +31,12 @@ use Opmin\Module\Verification\Target\UnsupportedTarget;
  * test proves it, or when it is unverified but executed by passing project tests, or with
  * `verification.allow_unverified`.
  *
- * Levels 1–2 read the files on disk: the candidate is written in place for them and the original
- * is restored afterwards (a backup is kept in the cache until then).
+ * Levels 1–2 read the files on disk: the candidates are written in place for them and the
+ * originals are restored afterwards (backups are kept in the cache until then).
+ *
+ * One instance serves a whole optimization run: the project's tests run on the original code and
+ * the coverage map is collected once, at the first check with tests; later checks look up the
+ * tests of a function by its key in the file as it was then (keys survive line shifts).
  *
  * @internal
  */
@@ -40,6 +44,22 @@ final class Verifier
 {
     /** @var \Closure(string): void */
     private \Closure $log;
+
+    private bool $baselineDone = false;
+
+    /** Tests on the original code when they are red. */
+    private ?TestResult $red = null;
+
+    private ?CoverageMap $coverage = null;
+
+    /** @var array<non-empty-string, string> File => its content when the coverage map was collected. */
+    private array $coverageBase = [];
+
+    /** @var list<string> Notes of the baseline, repeated in every report. */
+    private array $baselineNotes = [];
+
+    private ?TestRunnerAdapter $runner = null;
+    private bool $runnerResolved = false;
 
     /**
      * @param non-empty-string|null $phpTarget
@@ -66,25 +86,42 @@ final class Verifier
      */
     public function verify(Path $file, string $candidate, ?array $keys = null, bool $withTests = false, ?Path $counterexamples = null): CandidateReport
     {
-        $original = (string) \file_get_contents((string) $file);
-        $relative = $this->project->relative($file);
+        return $this->verifyAll([[$file, $candidate]], $keys === null ? null : [(string) $file => $keys], $withTests, $counterexamples);
+    }
+
+    /**
+     * Verifies several changed files of one step together: one PHPStan run, one run of the tests,
+     * and the differential test of a function sees the other changed files in their changed version.
+     *
+     * @param list<array{Path, string}> $changes [absolute file whose content on disk is the original, candidate].
+     * @param array<string, list<non-empty-string>>|null $keys File => functions to verify; null — every changed one.
+     */
+    public function verifyAll(array $changes, ?array $keys = null, bool $withTests = false, ?Path $counterexamples = null): CandidateReport
+    {
         $work = $this->cacheDir->join('tmp');
         FS::mkdir((string) $work);
         $notes = [];
+        /** @var list<array{Path, non-empty-string, string, string, list<non-empty-string>}> $files */
+        $files = [];
+        foreach ($changes as [$file, $candidate]) {
+            $original = (string) \file_get_contents((string) $file);
+            $relative = $this->project->relative($file);
+            $syntax = (new SyntaxChecker($this->php, $work))->check($candidate);
+            if ($syntax !== null) {
+                return new CandidateReport([], \count($changes) > 1 ? "{$relative}: {$syntax}" : $syntax);
+            }
 
-        $syntax = (new SyntaxChecker($this->php, $work))->check($candidate);
-        if ($syntax !== null) {
-            return new CandidateReport([], $syntax);
+            $changed = $keys === null ? $this->changedFunctions($original, $candidate, $relative, $notes) : ($keys[(string) $file] ?? []);
+            $files[] = [$file, $relative, $original, $candidate, $changed];
         }
 
-        $changed = $keys ?? $this->changedFunctions($original, $candidate, $relative, $notes);
-        $runner = $withTests ? TestRunnerFactory::create($this->project, $this->tests, $this->php, $work) : null;
+        $runner = $withTests ? $this->runner($work) : null;
         $phpstan = [];
         $staticErrors = [];
         $testResult = null;
-        $coverage = null;
+        $testsOf = [];
         if ($withTests) {
-            [$phpstan, $testResult, $coverage, $red, $staticErrors] = $this->levelsOneAndTwo($file, $original, $candidate, $runner, $work, $notes, $changed, $relative);
+            [$phpstan, $testResult, $red, $staticErrors, $testsOf] = $this->levelsOneAndTwo($files, $runner, $work, $notes);
             if ($red !== null) {
                 # Tests red on the original code prove nothing about a change.
                 return new CandidateReport([], null, [], $runner?->name(), $red, $notes);
@@ -94,19 +131,51 @@ final class Verifier
         $autoload = $this->project->root->join('vendor/autoload.php');
         $tester = new DiffTester($this->php, $this->verification, $work, $this->cacheDir->join('corpus'));
         $results = [];
-        foreach ($changed as $key) {
-            ($this->log)("Differential test of {$key}");
-            $verdict = $tester->verify(new DiffTask($key, $file, $relative, $original, $candidate, $autoload->isFile() ? $autoload : null, staticErrors: $staticErrors));
-            $tests = [];
-            if ($coverage !== null) {
-                [$from, $to] = $this->lines($original, $key, $relative);
-                $tests = $coverage->tests((string) $file, $from, $to);
+        foreach ($files as [$file, $relative, $original, $candidate, $changed]) {
+            $others = [];
+            foreach ($files as [$otherFile, , $otherOriginal, $otherCandidate]) {
+                (string) $otherFile === (string) $file or $others[(string) $otherFile] = [$otherOriginal, $otherCandidate];
             }
 
-            $results[] = $this->decide($key, $verdict, $tests, $testResult?->success ?? false, $runner, $original, $relative, $counterexamples);
+            foreach ($changed as $key) {
+                ($this->log)("Differential test of {$key}");
+                $verdict = $tester->verify(new DiffTask(
+                    $key,
+                    $file,
+                    $relative,
+                    $original,
+                    $candidate,
+                    $autoload->isFile() ? $autoload : null,
+                    $others,
+                    $staticErrors[(string) $file] ?? [],
+                ));
+                $results[] = $this->decide($key, $verdict, $testsOf[(string) $file][$key] ?? [], $testResult?->success ?? false, $runner, $original, $relative, $counterexamples);
+            }
         }
 
         return new CandidateReport($results, null, $phpstan, $runner?->name(), $testResult, $notes);
+    }
+
+    /**
+     * The project's tests on the code as it is on disk now (the final check of a run); null without a runner.
+     */
+    public function runAllTests(): ?TestResult
+    {
+        $work = $this->cacheDir->join('tmp');
+        FS::mkdir((string) $work);
+
+        return $this->runner($work)?->runAll();
+    }
+
+    /**
+     * Name of the project's test runner; null without one.
+     */
+    public function runnerName(): ?string
+    {
+        $work = $this->cacheDir->join('tmp');
+        FS::mkdir((string) $work);
+
+        return $this->runner($work)?->name();
     }
 
     private static function source(string $code, CodeUnit $unit): string
@@ -120,59 +189,75 @@ final class Verifier
     }
 
     /**
+     * @param list<array{Path, non-empty-string, string, string, list<non-empty-string>}> $files
      * @param list<string> $notes
-     * @param list<non-empty-string> $changed
-     * @param non-empty-string $relative
-     * @return array{list<array{file: string, message: string, identifier: string, line: int}>, ?TestResult, ?CoverageMap, ?TestResult, list<array{file: string, message: string, identifier: string, line: int}>} New
-     *         PHPStan errors, tests on the candidate, coverage map, tests on the original when they are red,
-     *         PHPStan errors of the original file (they mark dead branches).
+     * @return array{list<array{file: string, message: string, identifier: string, line: int}>, ?TestResult, ?TestResult, array<string, list<array{file: string, message: string, identifier: string, line: int}>>, array<string, array<string, list<non-empty-string>>>}
+     *         New PHPStan errors, tests on the candidates, tests on the original when they are red,
+     *         PHPStan errors of each original file (they mark dead branches), tests of each function.
      */
-    private function levelsOneAndTwo(Path $file, string $original, string $candidate, ?TestRunnerAdapter $runner, Path $work, array &$notes, array $changed, string $relative): array
+    private function levelsOneAndTwo(array $files, ?TestRunnerAdapter $runner, Path $work, array &$notes): array
     {
         $phpstan = new PhpStanRunner($this->project, $this->php, $this->commands->phpstan, $this->phpTarget, $work);
         $phpstan->available() or $notes[] = 'PHPStan is not installed (commands.phpstan): the static check is skipped.';
         $runner === null and $notes[] = 'No test runner found (tests.runner): the project\'s tests are not run.';
 
-        $before = $phpstan->available() ? $phpstan->analyse([$file]) : null;
-        $real = \realpath((string) $file);
-        $own = \array_values(\array_filter(
-            $before->errors ?? [],
-            static fn(array $e): bool => $e['file'] === (string) $file || ($real !== false && \realpath($e['file']) === $real),
-        ));
-        $baseline = null;
-        $coverage = null;
-        if ($runner !== null) {
-            ($this->log)("Project tests on the original code ({$runner->name()})");
-            $baseline = $runner->runAll();
-            if (!$baseline->success) {
-                $notes[] = 'The project\'s tests fail on the original code: fix them first. Failed: ' . \implode(', ', \array_slice($baseline->failed, 0, 10));
-
-                return [[], null, null, $baseline, $own];
-            }
-
-            $coverage = $runner->collectCoverageMap();
-            $coverage === null and $notes[] = 'No coverage map of the project\'s tests (Xdebug or pcov in php.binary): all tests are run.';
+        $paths = \array_map(static fn(array $f): Path => $f[0], $files);
+        $before = $phpstan->available() ? $phpstan->analyse($paths) : null;
+        $own = [];
+        foreach ($paths as $file) {
+            $real = \realpath((string) $file);
+            $own[(string) $file] = \array_values(\array_filter(
+                $before->errors ?? [],
+                static fn(array $e): bool => $e['file'] === (string) $file || ($real !== false && \realpath($e['file']) === $real),
+            ));
         }
 
-        $backup = $work->join('backup-' . \bin2hex(\random_bytes(4)) . '.php');
-        \file_put_contents((string) $backup, $original);
+        if ($runner !== null) {
+            $this->baseline($runner);
+            if ($this->red !== null) {
+                \array_push($notes, ...$this->baselineNotes);
+
+                return [[], null, $this->red, $own, []];
+            }
+
+            \array_push($notes, ...$this->baselineNotes);
+        }
+
+        # Tests of every changed function, looked up in the file as it was when the map was made.
+        $testsOf = [];
+        $selected = [];
+        foreach ($files as [$file, $relative, $original, , $changed]) {
+            $this->coverage === null || isset($this->coverageBase[(string) $file]) or $this->coverageBase[(string) $file] = $original;
+            foreach ($changed as $key) {
+                $tests = [];
+                if ($this->coverage !== null) {
+                    [$from, $to] = $this->lines($this->coverageBase[(string) $file] ?? $original, $key, $relative);
+                    $tests = $this->coverage->tests((string) $file, $from, $to);
+                }
+
+                $testsOf[(string) $file][$key] = $tests;
+                \array_push($selected, ...$tests);
+            }
+        }
+
+        $backups = [];
         try {
-            \file_put_contents((string) $file, $candidate);
+            foreach ($files as [$file, , $original, $candidate]) {
+                $backup = $work->join('backup-' . \bin2hex(\random_bytes(4)) . '.php');
+                \file_put_contents((string) $backup, $original);
+                $backups[] = [$file, $original, $backup];
+                \file_put_contents((string) $file, $candidate);
+            }
+
             $new = [];
             if ($before !== null) {
                 ($this->log)('PHPStan on the changed code');
-                $new = PhpStanResult::newErrors($before, $phpstan->analyse([$file]));
+                $new = PhpStanResult::newErrors($before, $phpstan->analyse($paths));
             }
 
             $after = null;
-            if ($runner !== null && $coverage !== null) {
+            if ($runner !== null && $this->coverage !== null) {
                 # Only the tests that execute a changed function can see the change.
-                $selected = [];
-                foreach ($changed as $key) {
-                    [$from, $to] = $this->lines($original, $key, $relative);
-                    \array_push($selected, ...$coverage->tests((string) $file, $from, $to));
-                }
-
                 $selected = \array_values(\array_unique($selected));
                 ($this->log)('Project tests on the changed code: ' . \count($selected) . ' that execute the changed functions');
                 $after = $runner->runFiltered($selected);
@@ -181,11 +266,46 @@ final class Verifier
                 $after = $runner->runAll();
             }
 
-            return [$new, $after, $coverage, null, $own];
+            return [$new, $after, null, $own, $testsOf];
         } finally {
-            \file_put_contents((string) $file, $original);
-            FS::removeFile($backup);
+            foreach ($backups as [$file, $original, $backup]) {
+                \file_put_contents((string) $file, $original);
+                FS::removeFile($backup);
+            }
         }
+    }
+
+    /**
+     * The project's tests on the original code and the coverage map, once per instance.
+     */
+    private function baseline(TestRunnerAdapter $runner): void
+    {
+        if ($this->baselineDone) {
+            return;
+        }
+
+        $this->baselineDone = true;
+        ($this->log)("Project tests on the original code ({$runner->name()})");
+        $baseline = $runner->runAll();
+        if (!$baseline->success) {
+            $this->red = $baseline;
+            $this->baselineNotes[] = 'The project\'s tests fail on the original code: fix them first. Failed: ' . \implode(', ', \array_slice($baseline->failed, 0, 10));
+
+            return;
+        }
+
+        $this->coverage = $runner->collectCoverageMap();
+        $this->coverage === null and $this->baselineNotes[] = 'No coverage map of the project\'s tests (Xdebug or pcov in php.binary): all tests are run.';
+    }
+
+    private function runner(Path $work): ?TestRunnerAdapter
+    {
+        if (!$this->runnerResolved) {
+            $this->runnerResolved = true;
+            $this->runner = TestRunnerFactory::create($this->project, $this->tests, $this->php, $work);
+        }
+
+        return $this->runner;
     }
 
     /**

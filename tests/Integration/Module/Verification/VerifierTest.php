@@ -181,6 +181,49 @@ final class VerifierTest
         Assert::string($withoutPhpstan->functions[0]->reason)->contains('min_branch_coverage');
     }
 
+    public function filesOfOneStepAreVerifiedTogether(): void
+    {
+        # `App\twice()` in B.php calls `App\keep()` of A.php: its changed version runs with the changed A.
+        \file_put_contents($this->dir . '/src/B.php', "<?php\nnamespace App;\nfunction twice(int \$a) { \$r = keep(\$a, \$a); return \$r; }\n");
+        $original = (string) \file_get_contents($this->dir . '/src/B.php');
+        $equivalentB = \str_replace('$r = keep($a, $a); return $r;', 'return keep($a, $a);', $original);
+        $brokenA = \str_replace('$s = $a + $b; return $s;', 'return $a - $b;', self::ORIGINAL);
+        $b = Path::create($this->dir)->join('src/B.php');
+        \mkdir($this->dir . '/vendor');
+        \file_put_contents($this->dir . '/vendor/autoload.php', "<?php\nrequire_once __DIR__ . '/../src/A.php';\n");
+
+        $both = $this->verifier()->verifyAll([[$this->file(), $brokenA], [$b, $equivalentB]], [(string) $this->file() => ['App\keep'], (string) $b => ['App\twice']]);
+        $alone = $this->verifier()->verifyAll([[$b, $equivalentB]]);
+
+        $statuses = [];
+        foreach ($both->functions as $function) {
+            $statuses[$function->key] = $function->status;
+        }
+        Assert::same($statuses, ['App\keep' => 'rejected', 'App\twice' => 'rejected']);
+        Assert::true($alone->accepted());
+        Assert::same(\file_get_contents($this->dir . '/src/B.php'), $original);
+    }
+
+    public function baselineTestsRunOncePerVerifier(): void
+    {
+        $candidate = \str_replace('$s = $a + $b; return $s;', 'return $a + $b;', self::ORIGINAL);
+        \file_put_contents($this->dir . '/check.php', "<?php\nrequire __DIR__ . '/src/A.php';\nexit(\\App\\keep(1, 1) === 2 ? 0 : 1);\n");
+        $tests = new Schema\Tests();
+        $tests->runner = Schema\TestRunner::Command;
+        $tests->command = \escapeshellarg(\PHP_BINARY) . ' check.php';
+        $verifier = $this->verifier(tests: $tests);
+
+        $first = $verifier->verify($this->file(), $candidate, ['App\keep'], withTests: true);
+        $second = $verifier->verify($this->file(), $candidate, ['App\keep'], withTests: true);
+
+        Assert::true($first->accepted());
+        Assert::true($second->accepted());
+        Assert::count(\array_keys($this->log, 'Project tests on the original code (command)', true), 1);
+        Assert::count(\array_keys($this->log, 'Project tests on the changed code', true), 2);
+        Assert::same($verifier->runnerName(), 'command');
+        Assert::same($verifier->runAllTests()?->success, true);
+    }
+
     private function file(): Path
     {
         return Path::create($this->dir)->join('src/A.php');

@@ -224,10 +224,10 @@ final class ReadEventCollector
             $expr instanceof Expr\BinaryOp\LogicalAnd, $expr instanceof Expr\BinaryOp\LogicalOr => $this->shortCircuit($expr),
             $expr instanceof Expr\BinaryOp => $this->binary($expr),
             $expr instanceof Expr\BooleanNot => $this->expr($expr->expr),
-            $expr instanceof Expr\UnaryMinus, $expr instanceof Expr\UnaryPlus,
-            $expr instanceof Expr\BitwiseNot => $this->typed($expr->expr),
-            $expr instanceof Expr\Cast\Bool_, $expr instanceof Expr\Cast\Int_,
-            $expr instanceof Expr\Cast\Double, $expr instanceof Expr\Cast\String_ => $this->typed($expr->expr),
+            # Like arithmetic: no user code; a cast to int/float/bool of an object only warns.
+            $expr instanceof Expr\UnaryMinus, $expr instanceof Expr\UnaryPlus, $expr instanceof Expr\BitwiseNot,
+            $expr instanceof Expr\Cast\Bool_, $expr instanceof Expr\Cast\Int_, $expr instanceof Expr\Cast\Double => $this->expr($expr->expr),
+            $expr instanceof Expr\Cast\String_ => $this->typed($expr->expr),
             $expr instanceof Expr\Cast\Array_ => $this->expr($expr->expr),
             $expr instanceof Expr\Instanceof_ => $this->instanceOf($expr),
             $expr instanceof Expr\Ternary => $this->ternary($expr),
@@ -362,9 +362,17 @@ final class ReadEventCollector
     {
         $this->expr($expr->left);
         $this->expr($expr->right);
-        # Strict comparisons never call user code; every other operator may on an object.
-        $strict = $expr instanceof Expr\BinaryOp\Identical || $expr instanceof Expr\BinaryOp\NotIdentical;
-        $strict || (($this->neverObject)($expr->left) && ($this->neverObject)($expr->right)) or $this->emit(ReadEvent::IMPURE);
+        # Arithmetic and strict comparisons never run user code: on a user object they throw, only
+        # internal classes (GMP, BCMath) overload them. Concatenation and loose comparisons may call
+        # `__toString()`.
+        $safe = $expr instanceof Expr\BinaryOp\Identical || $expr instanceof Expr\BinaryOp\NotIdentical
+            || $expr instanceof Expr\BinaryOp\Plus || $expr instanceof Expr\BinaryOp\Minus
+            || $expr instanceof Expr\BinaryOp\Mul || $expr instanceof Expr\BinaryOp\Div
+            || $expr instanceof Expr\BinaryOp\Mod || $expr instanceof Expr\BinaryOp\Pow
+            || $expr instanceof Expr\BinaryOp\BitwiseAnd || $expr instanceof Expr\BinaryOp\BitwiseOr
+            || $expr instanceof Expr\BinaryOp\BitwiseXor || $expr instanceof Expr\BinaryOp\ShiftLeft
+            || $expr instanceof Expr\BinaryOp\ShiftRight || $expr instanceof Expr\BinaryOp\LogicalXor;
+        $safe || (($this->neverObject)($expr->left) && ($this->neverObject)($expr->right)) or $this->emit(ReadEvent::IMPURE);
     }
 
     private function typed(Expr $operand): void

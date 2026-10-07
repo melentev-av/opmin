@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Opmin\Tests\Integration\Command;
 
 use Opmin\Command\Init;
-use Opmin\Command\NotImplemented;
 use Opmin\Command\SkillInstall;
 use Opmin\Command\SkillUpdate;
 use Opmin\Info;
@@ -21,7 +20,6 @@ use Testo\Test;
  */
 #[Test]
 #[Covers(Init::class)]
-#[Covers(NotImplemented::class)]
 #[Covers(SkillInstall::class)]
 #[Covers(SkillUpdate::class)]
 final class CliTest
@@ -166,14 +164,6 @@ final class CliTest
         Assert::string($updatedOut)->contains('0.0.1 → ' . Info::version());
         Assert::string((string) \file_get_contents($local))->contains('opmin-skill-version: ' . Info::version());
         Assert::true(\is_file($global));
-    }
-
-    public function notImplementedCommandFails(): void
-    {
-        [$code, $out] = $this->opmin('doctor');
-
-        Assert::same($code, 1);
-        Assert::string($out)->contains('not implemented yet (planned for M7)');
     }
 
     /**

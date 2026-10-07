@@ -7,6 +7,7 @@ namespace Opmin\Command;
 use Internal\Path;
 use Opmin\Info;
 use Opmin\Module\Config\ConfigWriter;
+use Opmin\Module\Project\InitDetector;
 use Opmin\Module\Skill\Skill;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -16,10 +17,13 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Symfony\Component\Console\Style\StyleInterface;
+use Symfony\Component\Yaml\Yaml;
 
 /**
- * Creates `opmin.yaml` with every key, its default value and a comment, and puts the Claude Code
- * skill `opcode-minimize` into `.claude/skills/` next to it (unless `--no-skill`).
+ * Creates `opmin.yaml` with every key, its value and a comment, and puts the Claude Code skill
+ * `opcode-minimize` into `.claude/skills/` next to it (unless `--no-skill`). The PHP target, code
+ * directories, test runner, formatter and PHPStan of the project are detected and written instead of the
+ * defaults; the rest keeps the defaults.
  *
  * ```bash
  * opmin init
@@ -62,8 +66,12 @@ final class Init extends Base
             return Command::FAILURE;
         }
 
-        \file_put_contents((string) $configPath, ConfigWriter::render());
+        $detected = InitDetector::detect($configPath->parent());
+        \file_put_contents((string) $configPath, ConfigWriter::render(\array_map(static fn(array $found): mixed => $found[0], $detected)));
         $style->success("Configuration file created: {$configPath}");
+        foreach ($detected as $key => $found) {
+            $style->text(\sprintf('  %s: %s  <fg=gray>(%s)</>', $key, Yaml::dump($found[0], 0), $found[1]));
+        }
 
         $this->ignoreCacheDirectory($configPath->parent(), $style);
         $input->getOption('no-skill') or $this->installSkill($configPath->parent(), $style);

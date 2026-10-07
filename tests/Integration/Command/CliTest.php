@@ -9,6 +9,7 @@ use Opmin\Command\SkillInstall;
 use Opmin\Command\SkillUpdate;
 use Opmin\Info;
 use Opmin\Module\Config\ConfigLoader;
+use Opmin\Module\Config\Schema\TestRunner;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Lifecycle\AfterTest;
@@ -60,6 +61,25 @@ final class CliTest
             ->startsWith('# yaml-language-server: $schema=');
         Assert::array(ConfigLoader::loadFile($this->dir . '/opmin.yaml'))->hasKeys('verification.seed', 'cache.dir');
         Assert::same(\file_get_contents($this->dir . '/.gitignore'), "/.opmin-cache/\n");
+    }
+
+    public function initWritesWhatItDetectsInTheProject(): void
+    {
+        \mkdir($this->dir . '/app');
+        \file_put_contents($this->dir . '/composer.json', '{"require": {"php": "^8.2 || ^8.3"}, "require-dev": {"phpunit/phpunit": "^11"}}');
+        \file_put_contents($this->dir . '/phpunit.xml', '<phpunit/>');
+        \file_put_contents($this->dir . '/pint.json', '{}');
+
+        [$code, $out] = $this->opmin('init', '--no-interaction', '--no-skill');
+
+        Assert::same($code, 0);
+        Assert::string($out)->contains("php.target: '8.2'")->contains('paths: [app]')->contains('tests.runner: phpunit');
+        $values = ConfigLoader::loadFile($this->dir . '/opmin.yaml');
+        Assert::same($values['php.target'] ?? null, '8.2');
+        Assert::same($values['paths'] ?? null, ['app']);
+        Assert::same($values['tests.runner'] ?? null, TestRunner::PhpUnit);
+        Assert::same($values['commands.format'] ?? null, 'vendor/bin/pint {files}');
+        Assert::same(\array_key_exists('commands.phpstan', $values) ? $values['commands.phpstan'] : 'missing', null);
     }
 
     public function initKeepsExistingGitignoreEntry(): void

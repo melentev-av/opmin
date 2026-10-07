@@ -20,6 +20,8 @@ final readonly class Verdict
      * @param non-negative-int $inputs Inputs checked.
      * @param list<Flag> $flags
      * @param non-negative-int $dead Branches (or lines) of dead code left out of the coverage.
+     * @param array{original_ns: float, changed_ns: float, change_percent: float, inputs: int, rounds: int, opcache: bool}|null $perf
+     *        Time of both versions ({@see Benchmark}, `--guard-perf`); null — not measured.
      */
     public function __construct(
         public string $key,
@@ -32,6 +34,7 @@ final readonly class Verdict
         public array $flags = [],
         public float $seconds = 0.0,
         public int $dead = 0,
+        public ?array $perf = null,
     ) {}
 
     public function accepted(): bool
@@ -55,6 +58,7 @@ final readonly class Verdict
             'flags' => Flag::values($this->flags),
             'seconds' => \round($this->seconds, 3),
             'counterexample' => $this->counterexample?->toArray(),
+            'perf' => $this->perf,
         ];
     }
 }

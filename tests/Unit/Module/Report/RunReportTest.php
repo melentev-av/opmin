@@ -94,7 +94,7 @@ final class RunReportTest
         $hoist->executedGain = true;
         $hoist->commit = 'bbbbbbbb22222222';
         $hoist->accepted[] = ['file' => 'src/Cart.php', 'function' => 'App\Cart::sum', 'gain' => 0, 'status' => 'diff-tested', 'checks' => [
-            ['key' => 'App\Cart::sum', 'status' => 'diff-tested', 'coverage' => 92.5, 'inputs' => 180, 'tests' => []],
+            ['key' => 'App\Cart::sum', 'status' => 'diff-tested', 'coverage' => 92.5, 'inputs' => 180, 'tests' => [], 'time_change_percent' => -12.5],
         ]];
         $report->steps[] = $hoist;
 

@@ -224,12 +224,36 @@ final class VerifierTest
         Assert::same($verifier->runAllTests()?->success, true);
     }
 
+    public function guardPerfRejectsAnEquivalentButSlowerChange(): void
+    {
+        $slower = \str_replace(
+            'function keep(int $a, int $b) { $s = $a + $b; return $s; }',
+            'function keep(int $a, int $b) { for ($i = 0; $i < 3000; ++$i) { $a ^= 0; } return $a + $b; }',
+            self::ORIGINAL,
+        );
+        $faster = \str_replace('function keep(int $a, int $b) { $s = $a + $b; return $s; }', 'function keep(int $a, int $b) { return $a + $b; }', self::ORIGINAL);
+        $guard = new Schema\GuardPerf();
+        $guard->enabled = true;
+
+        $slow = $this->verifier(guardPerf: $guard)->verify($this->file(), $slower);
+        $fast = $this->verifier(guardPerf: $guard)->verify($this->file(), $faster);
+        $unguarded = $this->verifier()->verify($this->file(), $slower);
+
+        Assert::same($slow->functions[0]->status, 'rejected');
+        Assert::string($slow->functions[0]->reason)->contains('slower by')->contains('guard_perf.max_regression_percent 5');
+        Assert::true(($slow->functions[0]->verdict?->perf['change_percent'] ?? 0) > 100);
+        Assert::same($fast->functions[0]->status, 'diff-tested');
+        Assert::true(($fast->functions[0]->verdict?->perf['change_percent'] ?? 100) < 5);
+        Assert::same($unguarded->functions[0]->status, 'diff-tested');
+        Assert::null($unguarded->functions[0]->verdict?->perf);
+    }
+
     private function file(): Path
     {
         return Path::create($this->dir)->join('src/A.php');
     }
 
-    private function verifier(?Schema\Tests $tests = null, bool $allowUnverified = false, ?Schema\Commands $commands = null, int $minCoverage = 90): Verifier
+    private function verifier(?Schema\Tests $tests = null, bool $allowUnverified = false, ?Schema\Commands $commands = null, int $minCoverage = 90, ?Schema\GuardPerf $guardPerf = null): Verifier
     {
         $verification = new Schema\Verification();
         $verification->fuzzTimeMs = 200;
@@ -248,6 +272,7 @@ final class VerifierTest
             function (string $message): void {
                 $this->log[] = $message;
             },
+            $guardPerf,
         );
     }
 }

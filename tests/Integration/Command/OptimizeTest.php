@@ -291,26 +291,37 @@ final class OptimizeTest
         Assert::string((string) \file_get_contents($this->dir . '/src/Text.php'))->contains('return \strlen($s) * 2;');
     }
 
+    public function guardPerfMeasuresTheKeptChanges(): void
+    {
+        [$code, $out, $err] = $this->opmin('optimize', '--format=none', '--guard-perf');
+
+        Assert::same($code, 0, $out . $err);
+        $report = $this->report();
+        /** @var array<string, array<string, mixed>> $functions */
+        $functions = $report['functions'];
+        Assert::true(\is_float($functions['App\Text::size']['time_change_percent'] ?? null) || \is_int($functions['App\Text::size']['time_change_percent'] ?? null));
+    }
+
     public function laterStagesAreNotImplementedYet(): void
     {
-        [$code, , $err] = $this->opmin('optimize', '--guard-perf');
+        [$code, , $err] = $this->opmin('optimize', '--mutation-check');
         [$gitCode, , $gitErr] = $this->opmin('optimize', 'git@github.com:vendor/pkg.git');
 
         Assert::same($code, 2);
-        Assert::string($err)->contains('--guard-perf is not implemented yet (stage M5)');
+        Assert::string($err)->contains('--mutation-check is not implemented yet (after the MVP)');
         Assert::same($gitCode, 2);
         Assert::string($gitErr)->contains('stage M7');
     }
 
     /**
-     * @return array{totals: array{ops_before: int, ops_after: int}, patch: ?string, interrupted: bool, rejected: list<array<string, mixed>>, steps: list<array{rejected: list<array{function: string, reason: string}>}>}
+     * @return array{totals: array{ops_before: int, ops_after: int}, patch: ?string, interrupted: bool, rejected: list<array<string, mixed>>, functions: array<string, mixed>, steps: list<array{rejected: list<array{function: string, reason: string}>}>}
      */
     private function report(): array
     {
         $files = \glob($this->dir . '/runs/*/report.json') ?: [];
         Assert::count($files, 1);
 
-        /** @var array{totals: array{ops_before: int, ops_after: int}, patch: ?string, interrupted: bool, rejected: list<array<string, mixed>>, steps: list<array{rejected: list<array{function: string, reason: string}>}>} */
+        /** @var array{totals: array{ops_before: int, ops_after: int}, patch: ?string, interrupted: bool, rejected: list<array<string, mixed>>, functions: array<string, mixed>, steps: list<array{rejected: list<array{function: string, reason: string}>}>} */
         return \json_decode((string) \file_get_contents($files[0]), true, flags: \JSON_THROW_ON_ERROR);
     }
 

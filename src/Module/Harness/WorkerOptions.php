@@ -18,6 +18,8 @@ final readonly class WorkerOptions
      * @param non-empty-string|null $coverage Coverage driver to load (`xdebug` enables `xdebug.mode=coverage`).
      * @param non-empty-string|null $cwd Working directory of the worker: relative paths the called code touches
      *        resolve there, not in the project.
+     * @param bool $opcache Compile with OPcache and the optimizer as in production, JIT off (time
+     *        measurements); otherwise OPcache is off.
      */
     public function __construct(
         public string $memoryLimit = '256M',
@@ -25,5 +27,6 @@ final readonly class WorkerOptions
         public int $loadTimeoutMs = 30000,
         public ?string $coverage = null,
         public ?string $cwd = null,
+        public bool $opcache = false,
     ) {}
 }

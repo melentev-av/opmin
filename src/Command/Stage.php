@@ -153,6 +153,8 @@ abstract class Stage extends Base
         $signatures = $this->container->get(Schema\Signatures::class);
         /** @var Schema\Ignore $ignore */
         $ignore = $this->container->get(Schema\Ignore::class);
+        /** @var Schema\GuardPerf $guardPerf */
+        $guardPerf = $this->container->get(Schema\GuardPerf::class);
 
         try {
             $declined = Declined::load($project->root);
@@ -168,7 +170,7 @@ abstract class Stage extends Base
             ReferenceIndex::build($project, $cacheDir),
             new RectorRunner($project, $cacheDir, $phpTarget),
             Formatter::create($project, $php, $commands->format),
-            new Verifier($project, $php, $verification, $commands, $tests, $cacheDir, $phpTarget, $verbose),
+            new Verifier($project, $php, $verification, $commands, $tests, $cacheDir, $phpTarget, $verbose, $guardPerf),
             $rectorConfig,
             $readability,
             $signatures,

@@ -74,6 +74,7 @@ final class Verifier
         private readonly Path $cacheDir,
         private readonly ?string $phpTarget,
         ?\Closure $log = null,
+        private readonly ?Schema\GuardPerf $guardPerf = null,
     ) {
         $this->log = $log ?? static function (string $message): void {};
     }
@@ -129,7 +130,7 @@ final class Verifier
         }
 
         $autoload = $this->project->root->join('vendor/autoload.php');
-        $tester = new DiffTester($this->php, $this->verification, $work, $this->cacheDir->join('corpus'));
+        $tester = new DiffTester($this->php, $this->verification, $work, $this->cacheDir->join('corpus'), measure: $this->guardPerf?->enabled ?? false);
         $results = [];
         foreach ($files as [$file, $relative, $original, $candidate, $changed]) {
             $others = [];
@@ -325,6 +326,16 @@ final class Verifier
         }
 
         if ($verdict->accepted()) {
+            $slower = $verdict->perf['change_percent'] ?? null;
+            if ($this->guardPerf !== null && $this->guardPerf->enabled && $slower !== null && $slower > $this->guardPerf->maxRegressionPercent) {
+                return new FunctionResult($key, 'rejected', $verdict, \sprintf(
+                    'slower by %s%% on %d inputs (guard_perf.max_regression_percent %d)',
+                    $slower,
+                    $verdict->perf['inputs'] ?? 0,
+                    $this->guardPerf->maxRegressionPercent,
+                ), $tests);
+            }
+
             return new FunctionResult($key, 'diff-tested', $verdict, '', $tests);
         }
 

@@ -88,6 +88,77 @@ final class Calls
     }
 
     /**
+     * The `bench` command: the time of `iterations` calls on one input, in nanoseconds. Arguments are
+     * built before each call and the target is resolved once, so only the calls are measured; output,
+     * warnings and exceptions are swallowed (their equivalence is proven already).
+     *
+     * @param array<array-key, mixed> $request
+     * @return array<string, mixed>
+     */
+    public static function bench(array $request): array
+    {
+        /** @var array<array-key, mixed> $target */
+        $target = (array) ($request['target'] ?? []);
+        /** @var array{args?: list<array<array-key, mixed>>, this?: array<array-key, mixed>|null, uses?: array<string, array<array-key, mixed>>, strict?: bool} $input */
+        $input = (array) ($request['input'] ?? []);
+        $iterations = \max(1, (int) ($request['iterations'] ?? 100));
+
+        $describer = new Describer();
+        $journal = new Journal($describer);
+        $builder = new Builder($journal);
+        Fakes::reset();
+        Mocks::begin($journal, $builder);
+        $snapshot = Isolation::snapshot();
+        $level = \ob_get_level();
+        \set_error_handler(static fn(): bool => true);
+        try {
+            try {
+                $receiver = isset($input['this']) ? $builder->build($input['this']) : null;
+                $receiver === null || \is_object($receiver) or throw new \InvalidArgumentException('`this` must be an object');
+                $uses = [];
+                foreach ($input['uses'] ?? [] as $name => $use) {
+                    /** @psalm-suppress MixedAssignment */
+                    $uses[(string) $name] = $builder->build($use);
+                }
+
+                /** @var object|null $receiver */
+                $call = Invoker::prepare($target, $receiver, $uses, (bool) ($input['strict'] ?? false));
+            } catch (\Throwable $e) {
+                return ['ok' => true, 'status' => 'unbuildable', 'exception' => $describer->exception($e)];
+            }
+
+            $ns = 0;
+            \ob_start();
+            for ($i = 0; $i < $iterations; ++$i) {
+                $args = $builder->buildList($input['args'] ?? []);
+                $start = \hrtime(true);
+                try {
+                    $call($args);
+                } catch (\Throwable) {
+                }
+
+                $ns += \hrtime(true) - $start;
+                \ob_get_length() > 1 << 20 and \ob_clean();
+            }
+
+            # Whether the timed code was compiled by OPcache with its optimizer, as in production.
+            $status = \function_exists('opcache_get_status') ? @\opcache_get_status(false) : false;
+            $opcache = \is_array($status) && ($status['opcache_enabled'] ?? false) === true
+                && \function_exists('opcache_is_script_cached') && \opcache_is_script_cached((string) Invoker::location($target)[0]);
+
+            return ['ok' => true, 'status' => 'done', 'ns' => $ns, 'iterations' => $iterations, 'opcache' => $opcache];
+        } finally {
+            while (\ob_get_level() > $level) {
+                \ob_end_clean();
+            }
+
+            \restore_error_handler();
+            Mocks::end();
+            Isolation::restore($snapshot);
+        }
+    }
+
+    /**
      * Output of the buffers from the given level up, which are closed.
      */
     public static function output(int $level): string

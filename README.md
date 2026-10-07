@@ -74,6 +74,7 @@ opmin optimize src/Cart.php 'src/**/*Service.php' --dry-run
 opmin optimize --with-standard-rector  # also the standard Rector rules (off by default)
 opmin optimize --review                # confirm every change: y / n / a (all of this rule) / q
 opmin optimize --resume                # continue the latest interrupted run (or --resume=runs/<ts>)
+opmin optimize --guard-perf            # also roll back changes that make a function slower
 opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
 ```
 
@@ -90,6 +91,10 @@ opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
   and the rest of the rule), `q` (roll back and end the run). Declined changes go to `opmin.baseline.yaml`
   (`rejected: [{function, rule}]`, committed at the end of the run; remove an entry to allow it again) and are
   skipped by both stages. Without an interactive session (`-n`, CI, an agent) every change that passes is applied.
+- `--guard-perf` (or `guard_perf.enabled`) times every diff-tested change: both versions on up to 20 of the inputs
+  of its differential test, compiled by OPcache as in production, in alternating order over 7 rounds; the median
+  change of the time goes to the report, and a change slower by more than `guard_perf.max_regression_percent`
+  (5) is rolled back even with fewer opcodes. Changes proven only by the project's tests are not timed.
 - Ctrl+C (SIGINT, SIGTERM) stops a run: the step under way is dropped — its tools got the signal too — and the
   report says the run was interrupted. Every step is saved to `runs/<ts>/state.json`; `--resume` puts the files
   back to the last accepted step (also after a crash or `kill -9`, dropping an opmin commit the state missed) and

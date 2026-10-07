@@ -51,7 +51,8 @@ final readonly class Change
                 'diff-tested' => \sprintf('diff-tested %s%%%s ✓', \is_float($coverage) || \is_int($coverage) ? (string) \round((float) $coverage, 1) : '?', \is_int($inputs) ? " ({$inputs} inputs)" : ''),
                 'tests' => "tests {$tests} ✓",
                 default => $status . ' !',
-            } . ($status === 'diff-tested' && $tests > 0 ? ", tests {$tests} ✓" : '');
+            } . ($status === 'diff-tested' && $tests > 0 ? ", tests {$tests} ✓" : '')
+                . (\is_float($check['time_change_percent'] ?? null) ? \sprintf(', time %+.1f%%', (float) $check['time_change_percent']) : '');
         }
 
         $gain = $this->executedGain && $this->gain === 0 ? 'fewer executed opcodes' : "−{$this->gain} opcodes";

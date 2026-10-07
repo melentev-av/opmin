@@ -54,8 +54,8 @@ final class Optimize extends Stage
 {
     /** Options of later stages: [option, stage]. */
     private const LATER = [
-        'guard-perf' => 'M5', 'mutation-check' => 'M5',
-        'ref' => 'M7', 'no-docker' => 'M7', 'allow-scripts' => 'M7', 'force-public-api' => 'M7', 'yes' => 'M7',
+        'mutation-check' => 'after the MVP',
+        'ref' => 'stage M7', 'no-docker' => 'stage M7', 'allow-scripts' => 'stage M7', 'force-public-api' => 'stage M7', 'yes' => 'stage M7',
     ];
 
     public function configure(): void
@@ -87,7 +87,7 @@ final class Optimize extends Stage
         $style = new SymfonyStyle($input, $errorOutput);
         foreach (self::LATER as $option => $stage) {
             if ($input->getOption($option) !== false && $input->getOption($option) !== null) {
-                $style->error("--{$option} is not implemented yet (stage {$stage}).");
+                $style->error("--{$option} is not implemented yet ({$stage}).");
                 return Command::INVALID;
             }
         }
@@ -125,14 +125,21 @@ final class Optimize extends Stage
             $php = (new PhpBinaryProbe())->probe($phpConfig->binary);
             [$project, $paths] = Targets::resolve($arguments, Path::create((string) \getcwd()), $projectConfig);
             $state = $resume ? $this->resumed($project, $input) : null;
-            /** @var array{dry_run?: bool, allow_unverified?: bool, allow_public_signatures?: bool, format?: string|null} $options */
+            /** @var array{dry_run?: bool, allow_unverified?: bool, allow_public_signatures?: bool, guard_perf?: bool, format?: string|null} $options */
             $options = $state?->options ?? [
                 'dry_run' => (bool) $input->getOption('dry-run'),
                 'allow_unverified' => (bool) $input->getOption('allow-unverified'),
                 'allow_public_signatures' => (bool) $input->getOption('allow-public-signatures'),
+                'guard_perf' => (bool) $input->getOption('guard-perf'),
                 'format' => \is_string($input->getOption('format')) && $input->getOption('format') !== '' ? $input->getOption('format') : null,
             ];
             ($options['allow_unverified'] ?? false) and $verification->allowUnverified = true;
+            if ($options['guard_perf'] ?? false) {
+                /** @var Schema\GuardPerf $guardPerf */
+                $guardPerf = $this->container->get(Schema\GuardPerf::class);
+                $guardPerf->enabled = true;
+            }
+
             $format = $options['format'] ?? null;
             \is_string($format) && $format !== '' and $commands->format = $format;
             $phpTarget = $this->phpTarget($project);

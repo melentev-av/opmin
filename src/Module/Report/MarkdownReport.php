@@ -107,7 +107,7 @@ final class MarkdownReport
                 \sprintf('%s → %s', (string) ($function['ops_before'] ?? '?'), (string) ($function['ops_after'] ?? '?'))
                     . (($function['executed_gain'] ?? false) === true && (int) ($function['saved'] ?? 0) === 0 ? ' (executed: fewer)' : ''),
                 self::cell(\implode(', ', \array_unique($by))),
-                self::cell((string) ($function['status'] ?? '')),
+                self::cell((string) ($function['status'] ?? '')) . self::time($function['time_change_percent'] ?? null),
                 $coverage !== null ? self::number($coverage) . '%' . (\is_int($function['inputs'] ?? null) ? ", {$function['inputs']} inputs" : '') : '—',
                 $runner ? (string) \count(self::strings($function['tests'] ?? null)) : '—',
                 self::cell(\implode(', ', self::strings($function['flags'] ?? null))),
@@ -255,6 +255,14 @@ final class MarkdownReport
         }
 
         $out[] = '';
+    }
+
+    /**
+     * ", time +3.1%" when `--guard-perf` measured the change.
+     */
+    private static function time(mixed $percent): string
+    {
+        return \is_float($percent) || \is_int($percent) ? \sprintf(', time %+.1f%%', (float) $percent) : '';
     }
 
     /**

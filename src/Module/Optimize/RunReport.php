@@ -138,6 +138,7 @@ final class RunReport
                     'tests' => [],
                     'flags' => $this->functions[$top]['flags'] ?? [],
                     'executed_gain' => false,
+                    'time_change_percent' => null,
                     'gains' => [],
                 ];
                 $entry['saved'] += $change['gain'];
@@ -146,6 +147,9 @@ final class RunReport
                 foreach ($change['checks'] ?? [] as $check) {
                     $coverage = \is_float($check['coverage'] ?? null) || \is_int($check['coverage'] ?? null) ? (float) $check['coverage'] : null;
                     $coverage === null or $entry['diff_coverage'] = $entry['diff_coverage'] === null ? $coverage : \min($entry['diff_coverage'], $coverage);
+                    /** @var mixed $time */
+                    $time = $check['time_change_percent'] ?? null;
+                    \is_float($time) || \is_int($time) and $entry['time_change_percent'] = \max($entry['time_change_percent'] ?? -100.0, (float) $time);
                     /** @var mixed $inputs */
                     $inputs = $check['inputs'] ?? null;
                     \is_int($inputs) and $entry['inputs'] = \max($entry['inputs'] ?? 0, $inputs);

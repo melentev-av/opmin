@@ -37,6 +37,7 @@
             "tests": [],
             "flags": [],
             "executed_gain": true,
+            "time_change_percent": -12.5,
             "gains": [
                 {
                     "rule": "Opmin\\Rector\\Rule\\HoistLoopInvariantCountRector",
@@ -64,6 +65,7 @@
                 "io"
             ],
             "executed_gain": false,
+            "time_change_percent": null,
             "gains": [
                 {
                     "rule": "Opmin\\Rector\\Rule\\FullyQualifyGlobalCallsRector",
@@ -195,7 +197,8 @@
                             "status": "diff-tested",
                             "coverage": 92.5,
                             "inputs": 180,
-                            "tests": []
+                            "tests": [],
+                            "time_change_percent": -12.5
                         }
                     ]
                 }

@@ -213,6 +213,7 @@ final class Worker
                 'describe' => ['ok' => true, 'function' => Reflector::target((array) ($request['target'] ?? []))],
                 'class' => ['ok' => true, 'class' => Reflector::class((string) ($request['name'] ?? ''))],
                 'call' => ($request['isolate'] ?? null) === 'fork' && self::canFork() ? $this->forked($request) : Calls::call($request),
+                'bench' => Calls::bench($request),
                 'shutdown' => ['ok' => true],
                 default => ['ok' => false, 'error' => "Unknown command `{$this->command}`"],
             };

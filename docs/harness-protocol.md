@@ -171,3 +171,20 @@ The same scalar shapes as recipes, plus:
 - `{"type": "generator", "id", "items": [[<key>, <value>]...], "return": <value>}` or `"exception"` — a returned
   generator is iterated (up to 1000 items) while errors and output are still captured.
 - An object that is a `Throwable`: `{"type": "object", "class", "id", "exception": <exception>}`.
+
+### `bench`
+
+```json
+{"cmd": "bench", "target": <target>, "input": <input as in call>, "iterations": 2000}
+```
+
+Time of `iterations` calls on one input, for `opmin optimize --guard-perf`. The input is built like in `call`;
+`this` and `uses` once, the arguments before every call (outside the measured time). The target is resolved once
+(reflection and `Closure::bind` stay out of the loop); property hooks fall back to the call path of `call`. Output,
+warnings and exceptions are swallowed: the differential test proved them equal already. Globals and statics are
+restored afterwards.
+
+Response: `{"ok": true, "status": "done", "ns": 1234567, "iterations": 2000, "opcache": true}` — `opcache`: the
+file of the target was compiled by OPcache. The orchestrator starts bench workers with OPcache and the optimizer
+as in production (`opcache.optimization_level` of the counts, JIT off); the files of a version are served by the
+stream wrapper, and OPcache caches and optimizes them like plain files.

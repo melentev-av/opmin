@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Opmin\Module\Harness;
 
+use Opmin\Module\Opcode\OptimizerSettings;
 use Opmin\Module\Php\PhpBinary;
 
 /**
@@ -51,9 +52,15 @@ final class Worker
         $this->token = \bin2hex(\random_bytes(8));
         $this->buffer = $this->stderr = '';
         $this->requests = 0;
+        $opcache = $this->options->opcache ? [
+            ...$this->php->loadArgs,
+            '-d', 'opcache.enable=1', '-d', 'opcache.enable_cli=1', '-d', 'opcache.jit=disable', '-d', 'opcache.file_cache=',
+            '-d', 'opcache.preload=', '-d', 'opcache.file_update_protection=0',
+            '-d', 'opcache.optimization_level=' . OptimizerSettings::INI['opcache.optimization_level'],
+        ] : ['-d', 'opcache.enable_cli=0'];
         $command = [
             $this->php->path,
-            '-d', 'opcache.enable_cli=0',
+            ...$opcache,
             '-d', 'memory_limit=' . $this->options->memoryLimit,
             '-d', 'display_errors=0',
             '-d', 'log_errors=0',

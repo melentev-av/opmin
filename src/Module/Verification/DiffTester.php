@@ -55,6 +55,9 @@ final class DiffTester
     /** Inputs per round of the coverage-guided search. */
     private const FUZZ_ROUND = 25;
 
+    /** @var list<Input> Inputs both versions took in the last test: the inputs of the benchmark. */
+    private array $checkedInputs = [];
+
     public function __construct(
         private readonly PhpBinary $php,
         private readonly Config $config,
@@ -63,6 +66,7 @@ final class DiffTester
         private readonly PropertyRunner $runner = new CorePropertyRunner(),
         private readonly TargetLocator $locator = new TargetLocator(),
         private readonly Instrumenter $instrumenter = new Instrumenter(),
+        private readonly bool $measure = false,
     ) {}
 
     public function verify(DiffTask $task): Verdict
@@ -81,6 +85,7 @@ final class DiffTester
             $verdict->flags,
             (float) (\hrtime(true) - $start) / 1e9,
             $verdict->dead,
+            $verdict->perf,
         );
     }
 
@@ -208,7 +213,14 @@ final class DiffTester
         ), fresh: $static);
 
         try {
-            return $this->test($task, $probed, $changed, $originalSession, $changedSession, $probes, $lines, $static, $deadProbes, $deadLines);
+            $verdict = $this->test($task, $probed, $changed, $originalSession, $changedSession, $probes, $lines, $static, $deadProbes, $deadLines);
+            if ($this->measure && $verdict->accepted()) {
+                $originalSession->close();
+                $changedSession->close();
+                $verdict = $this->withPerf($verdict, $task, $original, $changed, $dir);
+            }
+
+            return $verdict;
         } catch (HarnessException $e) {
             return new Verdict($task->key, VerdictStatus::Unverified, 'the harness cannot run the function: ' . $e->getMessage(), flags: $flags);
         } finally {
@@ -253,9 +265,10 @@ final class DiffTester
         $shrinker = new RecipeShrinker($signature->required());
         $comparator = new ResultComparator(new ComparisonPolicy($this->config->warnings, $this->config->floatTolerance));
         $checked = 0;
+        $inputs = [];
         $range = [(int) ($describedOriginal['line'] ?? 0), (int) ($describedOriginal['end_line'] ?? 0)];
         $file = (string) $task->file;
-        $check = static function (Input $input) use ($original, $changed, $originalSession, $changedSession, $comparator, $feedback, $static, $lines, $range, $file, $deadLines, &$checked): void {
+        $check = static function (Input $input) use ($original, $changed, $originalSession, $changedSession, $comparator, $feedback, $static, $lines, $range, $file, $deadLines, &$checked, &$inputs): void {
             $repeat = $static ? 3 : 1;
             $requests = [
                 ['target' => $original->call, 'input' => $input->toArray(), 'errors' => 'record', 'repeat' => $repeat],
@@ -286,6 +299,7 @@ final class DiffTester
 
             $difference === null or throw new Mismatch($difference, $o1, $changedResult);
             ++$checked;
+            \count($inputs) < 1000 and $inputs[] = $input;
         };
 
         $id = $task->relative . '::' . $task->key;
@@ -309,7 +323,41 @@ final class DiffTester
             );
         }
 
+        $this->checkedInputs = $inputs;
+
         return $this->verdict($task, $original, $outcome, $feedback, $checked, $lines);
+    }
+
+    /**
+     * The verdict with the time of both versions: uninstrumented code, OPcache on, the checked inputs.
+     */
+    private function withPerf(Verdict $verdict, DiffTask $task, Target $original, Target $changed, Path $dir): Verdict
+    {
+        $options = new WorkerOptions(memoryLimit: $this->config->memoryLimit, timeoutMs: $this->config->callTimeoutMs, cwd: (string) $dir, opcache: true);
+        $originalSession = new Session($this->php, $this->load($task, $original, $task->original, $dir, 'bench-original', false), $options);
+        $changedSession = new Session($this->php, $this->load($task, $changed, $task->changed, $dir, 'bench-changed', false), $options);
+        try {
+            $perf = (new Benchmark())->measure($originalSession, $changedSession, $original->call, $changed->call, $this->checkedInputs);
+        } catch (HarnessException) {
+            $perf = null;
+        } finally {
+            $originalSession->close();
+            $changedSession->close();
+        }
+
+        return new Verdict(
+            $verdict->key,
+            $verdict->status,
+            $verdict->reason,
+            $verdict->coverage,
+            $verdict->inputs,
+            $verdict->probes,
+            $verdict->counterexample,
+            $verdict->flags,
+            $verdict->seconds,
+            $verdict->dead,
+            $perf,
+        );
     }
 
     private function verdict(DiffTask $task, Target $original, PropertyOutcome $outcome, Feedback $feedback, int $checked, bool $lines): Verdict

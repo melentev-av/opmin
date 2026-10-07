@@ -50,6 +50,28 @@ final class Invoker
         {
             \Closure::bind(function (array &$a) use ($property): void { $this->$property = $a[0] ?? null; }, $object, $scope)($args);
         }
+
+        function bound(?object $object, string $scope, string $name): \Closure
+        {
+            return $object === null
+                ? \Closure::bind(static fn(array &$a): mixed => $scope::$name(...$a), null, $scope)
+                : \Closure::bind(fn(array &$a): mixed => $this->$name(...$a), $object, $scope);
+        }
+
+        function maker(string $class): \Closure
+        {
+            return \Closure::bind(static fn(array &$a): object => new $class(...$a), null, $class);
+        }
+
+        function named(string $name): \Closure
+        {
+            return static fn(array &$a): mixed => $name(...$a);
+        }
+
+        function wrapped(\Closure $closure): \Closure
+        {
+            return static fn(array &$a): mixed => $closure(...$a);
+        }
         PHP;
 
     private static bool $compiled = false;
@@ -95,6 +117,52 @@ final class Invoker
         }
 
         throw new \InvalidArgumentException("Unknown target kind `{$kind}`");
+    }
+
+    /**
+     * The call of the target as a closure resolved once (`bench`): reflection and binding stay out
+     * of the measured calls. Property hooks fall back to {@see self::invoke()}.
+     *
+     * @param array<array-key, mixed> $target
+     * @param array<string, mixed> $uses
+     * @return \Closure(list<mixed>): mixed
+     */
+    public static function prepare(array $target, ?object $receiver, array $uses, bool $strict): \Closure
+    {
+        self::compile();
+        $ns = $strict ? 'Opmin\Harness\Call\Strict\\' : 'Opmin\Harness\Call\Weak\\';
+        $kind = (string) ($target['kind'] ?? '');
+        if ($kind === 'function') {
+            /** @var \Closure(list<mixed>): mixed */
+            return ($ns . 'named')((string) $target['name']);
+        }
+
+        if ($kind === 'closure') {
+            /** @var \Closure(list<mixed>): mixed */
+            return ($ns . 'wrapped')(self::closure($target, $uses, $receiver));
+        }
+
+        if ($kind === 'method') {
+            $method = new \ReflectionMethod((string) $target['class'], (string) $target['name']);
+            if ($method->isConstructor()) {
+                /** @var \Closure(list<mixed>): mixed */
+                return ($ns . 'maker')((string) $target['class']);
+            }
+
+            if (!$method->isStatic() && $receiver === null) {
+                throw new \LogicException("Instance method {$method->class}::{$method->getName()} needs `this`");
+            }
+
+            $scope = $method->isStatic() ? (string) $target['class'] : $method->getDeclaringClass()->getName();
+
+            /** @var \Closure(list<mixed>): mixed */
+            return ($ns . 'bound')($method->isStatic() ? null : $receiver, $scope, $method->getName());
+        }
+
+        return static function (array $args) use ($target, $receiver, $uses, $strict): mixed {
+            /** @var list<mixed> $args */
+            return self::invoke($target, $args, $receiver, $uses, $strict);
+        };
     }
 
     /**

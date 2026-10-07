@@ -205,4 +205,98 @@ final class ShadowIndexTest
         Assert::false($copy->canQualifyConstant('App', 'X'));
         Assert::false($copy->canQualifyFunction('Lib', 'time'));
     }
+
+    public function cacheNoticesASizeChangeWithTheSameMtime(): void
+    {
+        $file = $this->dir . '/a.php';
+        \file_put_contents($file, '<?php namespace App; function strlen() {}');
+        \touch($file, 1_700_000_000);
+        $project = new Project(Path::create($this->dir), true, null);
+        $cache = Path::create($this->dir . '/.cache');
+        ShadowIndex::build($project, $cache);
+
+        \file_put_contents($file, '<?php namespace App; function strlen2() {}');
+        \touch($file, 1_700_000_000);
+        $index = ShadowIndex::build($project, $cache);
+
+        Assert::true($index->canQualifyFunction('App', 'strlen'));
+        Assert::false($index->canQualifyFunction('App', 'strlen2'));
+    }
+
+    public function cacheOfAnotherFormatIsIgnoredAndTheCacheDirIsNotScanned(): void
+    {
+        \mkdir($this->dir . '/.cache');
+        \file_put_contents($this->dir . '/.cache/stale.php', '<?php namespace App; function count() {}');
+        \file_put_contents($this->dir . '/a.php', '<?php namespace App; function strlen() {}');
+        $stamp = \filesize($this->dir . '/a.php') . ':' . \filemtime($this->dir . '/a.php');
+        \file_put_contents($this->dir . '/.cache/shadows.json', \json_encode([
+            'format' => 'old',
+            'files' => ['a.php' => [$stamp, ['functions' => ['app\time'], 'constants' => [], 'mocks' => []]]],
+        ]));
+
+        $index = ShadowIndex::build(new Project(Path::create($this->dir), true, null), Path::create($this->dir . '/.cache'));
+        /** @var array{format: string, files: array<string, array{string, mixed}>} $cache */
+        $cache = \json_decode((string) \file_get_contents($this->dir . '/.cache/shadows.json'), true);
+
+        Assert::true($index->canQualifyFunction('App', 'time'));
+        Assert::false($index->canQualifyFunction('App', 'strlen'));
+        Assert::true($index->canQualifyFunction('App', 'count'));
+        Assert::same(\array_keys($cache['files']), ['a.php']);
+        Assert::same($cache['files']['a.php'][0], $stamp);
+        Assert::string($cache['format'])->startsWith('1:');
+    }
+
+    public function aValidCacheEntryIsTrusted(): void
+    {
+        \file_put_contents($this->dir . '/a.php', '<?php echo 1;');
+        $project = new Project(Path::create($this->dir), true, null);
+        $cache = Path::create($this->dir . '/.cache');
+        ShadowIndex::build($project, $cache);
+        /** @var array{format: string, files: array<string, array{string, mixed}>} $data */
+        $data = \json_decode((string) \file_get_contents($this->dir . '/.cache/shadows.json'), true);
+        $data['files']['a.php'][1] = ['functions' => ['app\time'], 'constants' => [], 'mocks' => []];
+        \file_put_contents($this->dir . '/.cache/shadows.json', \json_encode($data));
+
+        $index = ShadowIndex::build($project, $cache);
+
+        Assert::false($index->canQualifyFunction('App', 'time'));
+    }
+
+    public function nestedVendorDirectoriesOnlyDeclare(): void
+    {
+        \mkdir($this->dir . '/packages/lib/vendor/x', 0777, true);
+        \file_put_contents($this->dir . '/packages/lib/vendor/x/mock.php', '<?php PHPMock::defineFunctionMock("App", "time"); namespace\f();');
+
+        $index = ShadowIndex::build(new Project(Path::create($this->dir), true, null), null);
+
+        Assert::true($index->canQualifyFunction('App', 'time'));
+    }
+
+    public function phpunitXmlWithoutDistCounts(): void
+    {
+        \file_put_contents($this->dir . '/phpunit.xml', '<phpunit><element key="dns-sensitive"/></phpunit>');
+
+        $index = ShadowIndex::build(new Project(Path::create($this->dir), true, null), null);
+
+        Assert::false($index->canQualifyFunction('Any', 'checkdnsrr'));
+        Assert::true($index->canQualifyFunction('Any', 'time'));
+        Assert::same($index->toArray()['mocks'][0], [null, 'checkdnsrr']);
+    }
+
+    public function namesAreNormalized(): void
+    {
+        $index = new ShadowIndex();
+        $index->add(new FileShadows(['app\strlen', 'helper'], ['app\X', 'GLOBAL_C'], [['app', 'time'], [null, 'rand']]));
+
+        Assert::false($index->canQualifyFunction('\App\\', 'strlen'));
+        Assert::false($index->canQualifyConstant('\APP\\', 'X'));
+        Assert::true($index->hasGlobalConstant('\GLOBAL_C'));
+        Assert::true($index->canQualifyFunction('', 'rand'));
+        Assert::false($index->canQualifyFunction('Other', 'rand'));
+        Assert::same($index->toArray(), [
+            'functions' => ['app\strlen', 'helper'],
+            'constants' => ['GLOBAL_C', 'app\X'],
+            'mocks' => [[null, 'rand'], ['app', 'time']],
+        ]);
+    }
 }

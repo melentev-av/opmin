@@ -49,7 +49,7 @@ final class ShadowCollector extends NodeVisitorAbstract
     ];
 
     /** Cheap test for a file worth parsing: everything the collector looks for has one of these. */
-    private const PREFILTER = '/(?:^|[;{}])\s*function\s+&?\s*[A-Za-z_\x80-\xff]|(?:^|[;{}])\s*const\s|\bdefine\s*\(|\beval\s*\(|Mock|setNamespace|-sensitive/im';
+    private const PREFILTER = '/(?:^|[;{}]|<\?php)\s*function\s+&?\s*[A-Za-z_\x80-\xff]|(?:^|[;{}]|<\?php)\s*const\s|\bdefine\s*\(|\beval\s*\(|Mock|setNamespace|-sensitive/im';
 
     /** @var array<lowercase-string, true> */
     private array $functions = [];

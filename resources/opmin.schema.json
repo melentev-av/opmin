@@ -101,7 +101,7 @@
                     "default": "vendor/bin/phpstan analyse --no-progress --error-format=json"
                 },
                 "format": {
-                    "description": "Formatter run on changed files ({files} is replaced); null — format-preserving printing only",
+                    "description": "Formatter run on changed files ({files} is replaced); null — detect (Pint, PHP-CS-Fixer, ECS, PHPCBF), none — no formatter",
                     "anyOf": [
                         {
                             "type": "string",

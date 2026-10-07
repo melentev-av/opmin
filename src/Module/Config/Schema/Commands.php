@@ -20,6 +20,6 @@ final class Commands
     public ?string $phpstan = 'vendor/bin/phpstan analyse --no-progress --error-format=json';
 
     /** @var non-empty-string|null */
-    #[ConfigKey('commands.format', 'Formatter run on changed files ({files} is replaced); null — format-preserving printing only')]
+    #[ConfigKey('commands.format', 'Formatter run on changed files ({files} is replaced); null — detect (Pint, PHP-CS-Fixer, ECS, PHPCBF), none — no formatter')]
     public ?string $format = null;
 }

@@ -53,6 +53,26 @@ final class StepReport
         ];
     }
 
+    /**
+     * A step saved with {@see self::toArray()} and the contents before it ({@see self::$before}).
+     *
+     * @param array<string, mixed> $data
+     * @param array<non-empty-string, string> $before
+     */
+    public static function fromArray(array $data, array $before = []): self
+    {
+        /** @var array{rule: non-empty-string, pass: int, commit?: string|null, error?: string|null, executed_gain?: bool, accepted?: list<array{file: non-empty-string, function: non-empty-string, gain: int, status: string, checks?: list<array<string, mixed>>}>, rejected?: list<array{file: non-empty-string, function: string, reason: string, counterexample?: array<string, mixed>}>} $data */
+        $step = new self($data['rule'], $data['pass']);
+        $step->commit = $data['commit'] ?? null;
+        $step->error = $data['error'] ?? null;
+        $step->executedGain = $data['executed_gain'] ?? false;
+        $step->accepted = $data['accepted'] ?? [];
+        $step->rejected = $data['rejected'] ?? [];
+        $step->before = $before;
+
+        return $step;
+    }
+
     public function gain(): int
     {
         return \array_sum(\array_column($this->accepted, 'gain'));

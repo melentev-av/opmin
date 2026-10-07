@@ -30,6 +30,21 @@ final readonly class RuleSpec
     ) {}
 
     /**
+     * @param array{class: class-string, options?: array<string, mixed>|null, set?: non-empty-string|null, skip?: list<class-string>, custom?: bool, executed_gain?: bool} $data
+     */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            $data['class'],
+            $data['options'] ?? null,
+            $data['set'] ?? null,
+            $data['skip'] ?? [],
+            $data['custom'] ?? false,
+            $data['executed_gain'] ?? false,
+        );
+    }
+
+    /**
      * @return non-empty-string
      */
     public function shortName(): string
@@ -53,6 +68,21 @@ final readonly class RuleSpec
         $alias = \call_user_func([$this->class, 'alias']);
 
         return \is_string($alias) ? $alias : null;
+    }
+
+    /**
+     * @return array{class: class-string, options: array<string, mixed>|null, set: non-empty-string|null, skip: list<class-string>, custom: bool, executed_gain: bool}
+     */
+    public function toArray(): array
+    {
+        return [
+            'class' => $this->class,
+            'options' => $this->options,
+            'set' => $this->set,
+            'skip' => $this->skip,
+            'custom' => $this->custom,
+            'executed_gain' => $this->executedGain,
+        ];
     }
 
     /**

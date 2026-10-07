@@ -80,6 +80,11 @@ final class Optimizer
     /** The run ends after the current step (`q` in the review, a signal). */
     private bool $stopped = false;
 
+    /** A signal reached the tools of the run: what they answer now is not trusted. */
+    private bool $interrupted = false;
+
+    private ?RunState $state = null;
+
     /** @var \Closure(string): void */
     private readonly \Closure $log;
 
@@ -113,31 +118,97 @@ final class Optimizer
     /**
      * @param list<Path> $files Absolute target files.
      * @param list<RuleSpec> $rules In the order of application.
+     * @param RunState|null $state Saved after every step; a state with steps or a position continues
+     *        that run (`--resume`): the files on disk must be its accepted ones ({@see RunState::restore()}).
      */
-    public function run(array $files, array $rules): RunReport
+    public function run(array $files, array $rules, ?RunState $state = null): RunReport
     {
-        $report = $this->open($files);
-        for ($pass = 1; $pass <= $this->rectorConfig->maxPasses && !$this->stopped(); ++$pass) {
-            $improved = false;
-            foreach ($rules as $rule) {
-                ($this->log)("Pass {$pass}: {$rule->shortName()}");
-                $step = $this->step($rule, $pass);
-                $step->accepted === [] && $step->rejected === [] && $step->error === null or $report->steps[] = $step;
-                $improved = $improved || $step->accepted !== [];
-                if ($this->stopped()) {
-                    break;
-                }
-            }
-
-            if (!$improved) {
-                break;
-            }
+        $resumed = $state !== null && ($state->steps !== [] || $state->pass > 1 || $state->rule > 0 || $state->phase !== 'steps');
+        $report = $this->open($files, $resumed ? null : '00-baseline.json', detect: !$resumed);
+        $this->state = $state;
+        if ($state !== null && $resumed) {
+            $report->opsBefore = $state->opsBefore;
+            $report->steps = $state->steps;
+            $report->notes = $state->notes;
+            $this->remember($state->memory);
+        } elseif ($state !== null) {
+            $state->opsBefore = $report->opsBefore;
+            $state->notes = $report->notes;
+            $this->checkpoint($report, 1, 0, false);
         }
 
-        $report->interrupted = $this->stopped();
+        $pass = $state?->pass ?? 1;
+        $next = $state?->rule ?? 0;
+        $improved = $state?->improved ?? false;
+        for (; ($state?->phase ?? 'steps') === 'steps' && $pass <= $this->rectorConfig->maxPasses && !$this->stopped(); ++$pass) {
+            for ($i = $next; $i < \count($rules) && !$this->stopped(); ++$i) {
+                $rule = $rules[$i];
+                ($this->log)("Pass {$pass}: {$rule->shortName()}");
+                $step = $this->step($rule, $pass);
+                if ($this->signalled() && $step->accepted === []) {
+                    # A signal killed the tools of the step: its verdicts are not real; the step runs again on resume.
+                    break 2;
+                }
+
+                $step->accepted === [] && $step->rejected === [] && $step->error === null or $report->steps[] = $step;
+                $improved = $improved || $step->accepted !== [];
+                $this->checkpoint($report, $pass, $i + 1, $improved, $step);
+            }
+
+            $next = 0;
+            if ($this->stopped() || !$improved) {
+                break;
+            }
+
+            $improved = false;
+            $this->checkpoint($report, $pass + 1, 0, false);
+        }
+
+        if ($this->stopped()) {
+            $report->interrupted = true;
+            $this->close($report, finalTests: false);
+
+            return $report;
+        }
+
+        if ($state !== null) {
+            $state->phase = 'closing';
+            $state->save();
+        }
+
         $this->close($report);
+        $report->interrupted = $this->signalled();
+        if ($state !== null && !$this->signalled()) {
+            $state->phase = 'finished';
+            $this->checkpoint($report, $state->pass, $state->rule, $state->improved);
+        }
 
         return $report;
+    }
+
+    /**
+     * Ends the run as soon as possible: the tools the signal reached are not trusted, the current
+     * step is dropped unless it was verified already (`--resume` runs it again).
+     */
+    public function interrupt(): void
+    {
+        $this->interrupted = true;
+        $this->stopped = true;
+    }
+
+    /**
+     * What the optimizer learned in a run and a resumed run must know.
+     *
+     * @return array<string, mixed>
+     */
+    public function memory(): array
+    {
+        return [
+            'rolled_back' => $this->rolledBack,
+            'approved_rules' => \array_keys($this->approvedRules),
+            'verifier_notes' => \array_keys($this->verifierNotes),
+            'unformatted' => \array_keys($this->unformatted),
+        ];
     }
 
     /**
@@ -162,19 +233,29 @@ final class Optimizer
     }
 
     /**
+     * Whether a signal reached the run (its tools may have died with it).
+     */
+    public function signalled(): bool
+    {
+        return $this->interrupted;
+    }
+
+    /**
      * Starts a run on the given files: reads and counts them, finds the files the formatter must not touch.
      *
      * @param list<Path> $files Absolute target files.
      * @param non-empty-string|null $baseline Name of the file in the run directory for the counts; null — not written.
      * @param 'optimize'|'llm' $kind
+     * @param bool $detect Find the files the formatter must not touch (a resumed run knows them).
      */
-    public function open(array $files, ?string $baseline = '00-baseline.json', string $kind = 'optimize'): RunReport
+    public function open(array $files, ?string $baseline = '00-baseline.json', string $kind = 'optimize', bool $detect = true): RunReport
     {
         foreach ($files as $file) {
             $relative = $this->project->relative($file);
             $this->paths[$relative] = $file;
             $this->current[$relative] = (string) \file_get_contents((string) $file);
-            $this->workspace->git() or $this->workspace->backup($file);
+            # Every original is kept, also under git: a crash may leave any target file half-way.
+            $this->workspace->backup($file);
         }
 
         $counts = $this->countCurrent();
@@ -184,15 +265,17 @@ final class Optimizer
             $report->notes[] = "{$file} cannot be counted and is not changed: {$error}";
         }
 
-        $this->detectUnformatted($report);
+        $detect and $this->detectUnformatted($report);
 
         return $report;
     }
 
     /**
      * Ends a run: the full test run of the project (taking back steps while it fails), the final counts.
+     *
+     * @param bool $finalTests False for an interrupted run: the full test run is left for `--resume`.
      */
-    public function close(RunReport $report): void
+    public function close(RunReport $report, bool $finalTests = true): void
     {
         \array_push($report->notes, ...\array_keys($this->verifierNotes));
         if ($this->declinedFile !== null) {
@@ -203,7 +286,9 @@ final class Optimizer
             }
         }
 
-        $this->finalTests($report);
+        $finalTests
+            ? $this->finalTests($report)
+            : $report->notes[] = 'The run was interrupted before the full run of the project\'s tests: `opmin optimize --resume` continues it.';
         $final = $this->countCurrent();
         $this->writeJson('99-final.json', $final);
         $report->opsAfter = self::total($this->counts);
@@ -298,6 +383,41 @@ final class Optimizer
     }
 
     /**
+     * @param array<array-key, mixed> $memory {@see self::memory()}
+     */
+    private function remember(array $memory): void
+    {
+        /** @var array{rolled_back?: array<string, string>, approved_rules?: list<class-string>, verifier_notes?: list<string>, unformatted?: list<non-empty-string>} $memory */
+        $this->rolledBack = $memory['rolled_back'] ?? [];
+        $this->approvedRules = \array_fill_keys($memory['approved_rules'] ?? [], true);
+        $this->verifierNotes = \array_fill_keys($memory['verifier_notes'] ?? [], true);
+        $this->unformatted = \array_fill_keys($memory['unformatted'] ?? [], true);
+    }
+
+    /**
+     * Saves the position after a step: the files it changed, the steps, the memory, HEAD.
+     */
+    private function checkpoint(RunReport $report, int $pass, int $rule, bool $improved, ?StepReport $step = null): void
+    {
+        $state = $this->state;
+        if ($state === null) {
+            return;
+        }
+
+        foreach (\array_keys($step?->before ?? []) as $relative) {
+            $state->keep($relative, $this->current[$relative]);
+        }
+
+        $state->pass = $pass;
+        $state->rule = $rule;
+        $state->improved = $improved;
+        $state->steps = $report->steps;
+        $state->memory = $this->memory();
+        $state->head = $this->workspace->head();
+        $state->save();
+    }
+
+    /**
      * Opcodes and flags of a top-level function with its closures as it is now.
      *
      * @param non-empty-string $relative
@@ -339,7 +459,7 @@ final class Optimizer
         }
 
         $new === [] or $this->apply($new, $rule, $step);
-        $this->rememberDeclined($rule, $step);
+        $this->signalled() or $this->rememberDeclined($rule, $step);
 
         return $step;
     }
@@ -1000,7 +1120,8 @@ final class Optimizer
 
         ($this->log)('Final run of the project\'s tests');
         $result = $this->verifier->runAllTests();
-        if ($result === null) {
+        if ($result === null || $this->signalled()) {
+            # A test run stopped by a signal says nothing: `--resume` runs it again.
             return;
         }
 
@@ -1018,7 +1139,13 @@ final class Optimizer
 
             # The later steps are taken back already: the files are as this step left them.
             $this->revertStep($step);
+            $this->checkpoint($report, $this->state?->pass ?? 1, $this->state?->rule ?? 0, $this->state?->improved ?? false, $step);
             $result = $this->verifier->runAllTests();
+            /** @psalm-suppress TypeDoesNotContainType A signal can come during the test run. */
+            if ($this->signalled()) {
+                return;
+            }
+
             if ($result !== null && $result->success) {
                 $report->finalTests = true;
 

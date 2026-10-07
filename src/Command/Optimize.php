@@ -10,7 +10,9 @@ use Opmin\Module\Config\Schema;
 use Opmin\Module\Optimize\Rector\RuleCatalog;
 use Opmin\Module\Optimize\Rector\RuleSpec;
 use Opmin\Module\Optimize\Review\ConsoleReviewer;
+use Opmin\Module\Optimize\Optimizer;
 use Opmin\Module\Optimize\RunReport;
+use Opmin\Module\Optimize\RunState;
 use Opmin\Module\Optimize\StepReport;
 use Opmin\Module\Optimize\Workspace;
 use Opmin\Module\Php\InternalSymbols;
@@ -52,7 +54,7 @@ final class Optimize extends Stage
 {
     /** Options of later stages: [option, stage]. */
     private const LATER = [
-        'resume' => 'M5', 'guard-perf' => 'M5', 'mutation-check' => 'M5',
+        'guard-perf' => 'M5', 'mutation-check' => 'M5',
         'ref' => 'M7', 'no-docker' => 'M7', 'allow-scripts' => 'M7', 'force-public-api' => 'M7', 'yes' => 'M7',
     ];
 
@@ -63,7 +65,7 @@ final class Optimize extends Stage
         $this->addOption('ref', null, InputOption::VALUE_REQUIRED, 'Git ref (tag, branch) when the path is a git URL');
         $this->addOption('dry-run', null, InputOption::VALUE_NONE, 'Change nothing, only write the report and the patch');
         $this->addOption('review', null, InputOption::VALUE_NONE, 'Confirm every change interactively');
-        $this->addOption('resume', null, InputOption::VALUE_NONE, 'Continue an interrupted run');
+        $this->addOption('resume', null, InputOption::VALUE_OPTIONAL, 'Continue an interrupted run: the latest one or the given run directory');
         $this->addOption('guard-perf', null, InputOption::VALUE_NONE, 'Roll back changes that make code slower');
         $this->addOption('with-standard-rector', null, InputOption::VALUE_NONE, 'Enable the standard Rector rules for this run');
         $this->addOption('without-standard-rector', null, InputOption::VALUE_NONE, 'Disable the standard Rector rules for this run');
@@ -104,42 +106,66 @@ final class Optimize extends Stage
             return Command::INVALID;
         }
 
+        $resume = $input->hasParameterOption('--resume');
+        if ($resume && $arguments !== []) {
+            $style->error('--resume continues the files of the interrupted run: do not pass paths.');
+            return Command::INVALID;
+        }
+
         /** @var Schema\Php $phpConfig */
         $phpConfig = $this->container->get(Schema\Php::class);
         /** @var Schema\Project $projectConfig */
         $projectConfig = $this->container->get(Schema\Project::class);
         /** @var Schema\Verification $verification */
         $verification = $this->container->get(Schema\Verification::class);
-        $input->getOption('allow-unverified') and $verification->allowUnverified = true;
         /** @var Schema\Commands $commands */
         $commands = $this->container->get(Schema\Commands::class);
-        /** @var mixed $format */
-        $format = $input->getOption('format');
-        \is_string($format) && $format !== '' and $commands->format = $format;
 
         try {
             $php = (new PhpBinaryProbe())->probe($phpConfig->binary);
             [$project, $paths] = Targets::resolve($arguments, Path::create((string) \getcwd()), $projectConfig);
-            $files = $this->files($project, $paths);
-            $files === [] and throw new \InvalidArgumentException('No PHP files to optimize.');
+            $state = $resume ? $this->resumed($project, $input) : null;
+            /** @var array{dry_run?: bool, allow_unverified?: bool, allow_public_signatures?: bool, format?: string|null} $options */
+            $options = $state?->options ?? [
+                'dry_run' => (bool) $input->getOption('dry-run'),
+                'allow_unverified' => (bool) $input->getOption('allow-unverified'),
+                'allow_public_signatures' => (bool) $input->getOption('allow-public-signatures'),
+                'format' => \is_string($input->getOption('format')) && $input->getOption('format') !== '' ? $input->getOption('format') : null,
+            ];
+            ($options['allow_unverified'] ?? false) and $verification->allowUnverified = true;
+            $format = $options['format'] ?? null;
+            \is_string($format) && $format !== '' and $commands->format = $format;
             $phpTarget = $this->phpTarget($project);
-            /** @var Schema\Rector $rectorConfig */
-            $rectorConfig = $this->container->get(Schema\Rector::class);
-            /** @var Schema\RectorStandard $standard */
-            $standard = $this->container->get(Schema\RectorStandard::class);
-            /** @var list<string> $only */
-            $only = (array) $input->getOption('rector-rule');
-            $withStandard = $input->getOption('with-standard-rector') ? true : ($input->getOption('without-standard-rector') ? false : null);
-            $rules = RuleCatalog::build($rectorConfig, $standard, $withStandard, $only, $phpTarget);
-        } catch (PhpBinaryException|\InvalidArgumentException $e) {
+            if ($state !== null) {
+                $files = \array_map(static fn(string $f): Path => $project->root->join($f), $state->files);
+                $rules = $state->rules;
+            } else {
+                $files = $this->files($project, $paths);
+                $files === [] and throw new \InvalidArgumentException('No PHP files to optimize.');
+                /** @var Schema\Rector $rectorConfig */
+                $rectorConfig = $this->container->get(Schema\Rector::class);
+                /** @var Schema\RectorStandard $standard */
+                $standard = $this->container->get(Schema\RectorStandard::class);
+                /** @var list<string> $only */
+                $only = (array) $input->getOption('rector-rule');
+                $withStandard = $input->getOption('with-standard-rector') ? true : ($input->getOption('without-standard-rector') ? false : null);
+                $rules = RuleCatalog::build($rectorConfig, $standard, $withStandard, $only, $phpTarget);
+            }
+        } catch (PhpBinaryException|\InvalidArgumentException|\RuntimeException $e) {
             $style->error($e->getMessage());
             return Command::INVALID;
         }
 
         $cacheDir = $this->cacheDir($project);
-        $runDir = $this->newRunDir($project);
-        $dryRun = (bool) $input->getOption('dry-run');
+        $runDir = $state?->runDir ?? $this->newRunDir($project);
+        $dryRun = (bool) ($options['dry_run'] ?? false);
         try {
+            if ($state !== null) {
+                $rewritten = $state->restore($project->root);
+                $rewritten === [] or $style->note('Restored to the last accepted step: ' . \implode(', ', \array_slice($rewritten, 0, 10)));
+                $dryRun || $state->head === null or Workspace::rewind($project, $state->head, $state->files, $this->ignoredPaths($project));
+            }
+
             $workspace = Workspace::create($project, $runDir, $dryRun, $this->ignoredPaths($project));
         } catch (\RuntimeException $e) {
             $style->error($e->getMessage());
@@ -147,7 +173,8 @@ final class Optimize extends Stage
         }
 
         $style->writeln(\sprintf(
-            'Optimizing %d file(s) of %s with %d rule(s), PHP %s (target %s), %s.',
+            '%s %d file(s) of %s with %d rule(s), PHP %s (target %s), %s.',
+            $state === null ? 'Optimizing' : 'Resuming ' . $project->relative($runDir) . ':',
             \count($files),
             (string) $project->root,
             \count($rules),
@@ -156,8 +183,12 @@ final class Optimize extends Stage
             $workspace->mode(),
         ));
 
-        $rules = $this->withRuntimeOptions($rules, $project, $cacheDir, $runDir, $php);
-        $optimizer = $this->optimizer($project, $php, $workspace, $output, (bool) $input->getOption('allow-public-signatures'));
+        if ($state === null) {
+            $rules = $this->withRuntimeOptions($rules, $project, $cacheDir, $runDir, $php);
+            $state = RunState::start($runDir, \array_map($project->relative(...), $files), $rules, $options);
+        }
+
+        $optimizer = $this->optimizer($project, $php, $workspace, $output, (bool) ($options['allow_public_signatures'] ?? false));
         [$environment, $warnings] = $this->environment($project, $php, $optimizer, $runDir);
         $warnings === [] or $style->warning($warnings);
         if ($input->getOption('review')) {
@@ -167,17 +198,74 @@ final class Optimize extends Stage
                 : $style->warning('--review needs an interactive session: every change that passes the checks is applied.');
         }
 
-        $report = $optimizer->run($files, $rules);
+        $signalled = $this->onSignals($optimizer, $errorOutput);
+        $report = $optimizer->run($files, $rules, $state);
         $report->environment = $environment;
         $report->warnings = $warnings;
         $patch = $workspace->finish();
         $report->patch = $patch === null ? null : $project->relative($patch);
         $report->write();
         $this->summary(new SymfonyStyle($input, $output), $report, $project, $runDir, $dryRun);
+        if ($signalled()) {
+            return 130;
+        }
 
         $failed = $report->finalTests === false || \array_filter($report->steps, static fn(StepReport $s): bool => $s->error !== null) !== [];
 
         return $failed ? Command::FAILURE : Command::SUCCESS;
+    }
+
+    /**
+     * The run to continue: `--resume=<run directory>` or the latest one that did not finish.
+     *
+     * @throws \RuntimeException
+     */
+    private function resumed(Project $project, InputInterface $input): RunState
+    {
+        /** @var mixed $value */
+        $value = $input->getOption('resume');
+        if (\is_string($value) && $value !== '') {
+            $dir = Path::create($value);
+            $dir->isAbsolute() or $dir = $project->root->join($value);
+        } else {
+            $dir = RunState::latest($project->root->join('runs'))
+                ?? throw new \RuntimeException('No interrupted run in runs/: nothing to resume.');
+        }
+
+        $state = RunState::load($dir);
+        $state->phase === 'finished' and throw new \RuntimeException("The run {$project->relative($dir)} is finished: nothing to resume.");
+
+        return $state;
+    }
+
+    /**
+     * Ctrl+C or SIGTERM stops the run: the step under way is dropped (its tools got the signal too),
+     * the state stays at the last accepted step for `--resume`. A second signal aborts at once.
+     *
+     * @return \Closure(): bool Whether a signal came.
+     */
+    private function onSignals(Optimizer $optimizer, OutputInterface $output): \Closure
+    {
+        $count = 0;
+        if (\function_exists('pcntl_async_signals') && \function_exists('pcntl_signal')) {
+            \pcntl_async_signals(true);
+            $handler = static function () use ($optimizer, $output, &$count): void {
+                if (++$count > 1) {
+                    $output->writeln('Aborted: `opmin optimize --resume` restores the files and continues.');
+                    /** @psalm-suppress ForbiddenCode The user asked twice: no step can be finished cleanly. */
+                    exit(130);
+                }
+
+                $optimizer->interrupt();
+                $output->writeln('<comment>Stopping: the current step is dropped, `opmin optimize --resume` continues. Again to abort at once.</comment>');
+            };
+            \pcntl_signal(\SIGINT, $handler);
+            \pcntl_signal(\SIGTERM, $handler);
+        }
+
+        return static function () use (&$count): bool {
+            return $count > 0;
+        };
     }
 
     /**

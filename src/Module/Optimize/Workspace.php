@@ -59,6 +59,55 @@ final class Workspace
         return $workspace;
     }
 
+    /**
+     * Brings a resumed run's git tree back to the commit of its last saved step. Only commits of
+     * opmin made after it are dropped (a crash between a commit and the save of the state); anything
+     * else that moved HEAD stops the resume.
+     *
+     * @param list<non-empty-string> $files Target files of the run: their changes are expected.
+     * @param list<non-empty-string> $ignored Relative paths whose changes do not count.
+     * @throws \RuntimeException When HEAD moved otherwise or other files are changed.
+     */
+    public static function rewind(Project $project, string $head, array $files, array $ignored): void
+    {
+        $git = static function (array $args) use ($project): Process {
+            $process = new Process(['git', ...$args], (string) $project->root);
+            $process->run();
+
+            return $process;
+        };
+        $current = \trim($git(['rev-parse', 'HEAD'])->getOutput());
+        if ($current === $head) {
+            return;
+        }
+
+        $moved = "HEAD moved since the run was interrupted (it was {$head}, now {$current}): check that commit out or start a new run.";
+        $git(['merge-base', '--is-ancestor', $head, $current])->isSuccessful() or throw new \RuntimeException($moved);
+        foreach (\explode("\n", \trim($git(['log', '--format=%s', "{$head}..{$current}"])->getOutput())) as $subject) {
+            \str_starts_with($subject, 'opmin: ') or throw new \RuntimeException($moved);
+        }
+
+        $others = [];
+        foreach (\explode("\n", \rtrim($git(['status', '--porcelain', '--untracked-files=all', '--', '.'])->getOutput())) as $line) {
+            $path = \trim(\substr($line, 3), '"');
+            if ($line === '' || \in_array($path, $files, true)) {
+                continue;
+            }
+
+            foreach ($ignored as $skip) {
+                if ($path === $skip || \str_starts_with($path, \rtrim($skip, '/') . '/')) {
+                    continue 2;
+                }
+            }
+
+            $others[] = $path;
+        }
+
+        $others === [] or throw new \RuntimeException("Other files are changed, the run cannot be rewound to {$head}:\n" . \implode("\n", \array_slice($others, 0, 10)));
+        $reset = $git(['reset', '--hard', '--quiet', $head]);
+        $reset->isSuccessful() or throw new \RuntimeException('git reset failed: ' . \trim($reset->getErrorOutput()));
+    }
+
     public function git(): bool
     {
         return $this->gitRoot !== null;
@@ -117,6 +166,20 @@ final class Workspace
         # The project's hooks (linters, commit message rules) are for people, not for each step.
         $this->runGit(['commit', '--no-verify', '--quiet', '-m', $message, '--', ...$paths]);
         return \trim($this->runGit(['rev-parse', 'HEAD']));
+    }
+
+    /**
+     * The commit the working tree is on; null outside git.
+     */
+    public function head(): ?string
+    {
+        if ($this->gitRoot === null) {
+            return null;
+        }
+
+        $head = \trim($this->runGit(['rev-parse', 'HEAD']));
+
+        return $head === '' ? null : $head;
     }
 
     /**

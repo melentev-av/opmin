@@ -73,6 +73,7 @@ opmin optimize                         # the config `paths` (src/ or app/)
 opmin optimize src/Cart.php 'src/**/*Service.php' --dry-run
 opmin optimize --with-standard-rector  # also the standard Rector rules (off by default)
 opmin optimize --review                # confirm every change: y / n / a (all of this rule) / q
+opmin optimize --resume                # continue the latest interrupted run (or --resume=runs/<ts>)
 opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
 ```
 
@@ -89,6 +90,10 @@ opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
   and the rest of the rule), `q` (roll back and end the run). Declined changes go to `opmin.baseline.yaml`
   (`rejected: [{function, rule}]`, committed at the end of the run; remove an entry to allow it again) and are
   skipped by both stages. Without an interactive session (`-n`, CI, an agent) every change that passes is applied.
+- Ctrl+C (SIGINT, SIGTERM) stops a run: the step under way is dropped — its tools got the signal too — and the
+  report says the run was interrupted. Every step is saved to `runs/<ts>/state.json`; `--resume` puts the files
+  back to the last accepted step (also after a crash or `kill -9`, dropping an opmin commit the state missed) and
+  continues with the same files, rules and options, ending as an uninterrupted run would.
 - A change rolled back for a reason of its own (no gain, a difference, not proven…) is not tried again in later
   passes while the function stays the same.
 - opmin's own rules, on by default, prove their safety conditions themselves (native types through PHPStan):

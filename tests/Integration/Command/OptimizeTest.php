@@ -293,11 +293,11 @@ final class OptimizeTest
 
     public function laterStagesAreNotImplementedYet(): void
     {
-        [$code, , $err] = $this->opmin('optimize', '--resume');
+        [$code, , $err] = $this->opmin('optimize', '--guard-perf');
         [$gitCode, , $gitErr] = $this->opmin('optimize', 'git@github.com:vendor/pkg.git');
 
         Assert::same($code, 2);
-        Assert::string($err)->contains('--resume is not implemented yet (stage M5)');
+        Assert::string($err)->contains('--guard-perf is not implemented yet (stage M5)');
         Assert::same($gitCode, 2);
         Assert::string($gitErr)->contains('stage M7');
     }

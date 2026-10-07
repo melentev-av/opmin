@@ -20,6 +20,7 @@ use Opmin\Module\Common\FileSystem\FS;
  */
 final class HarnessFiles
 {
+    /** @var non-empty-string */
     public const SOURCE = Info::ROOT_DIR . '/harness';
 
     /**
@@ -33,16 +34,17 @@ final class HarnessFiles
         return $worker ??= self::locate();
     }
 
-    private static function locate(): Path
+    /**
+     * Copies the harness out of the PHAR.
+     *
+     * @param non-empty-string $source The harness directory, a `phar://` URL. A plain string, never a
+     *        {@see Path}: Path collapses `phar://` into `phar:/`, which no stream wrapper opens.
+     */
+    public static function extract(string $source): Path
     {
-        $source = Path::create(self::SOURCE);
-        if (\Phar::running(false) === '') {
-            return $source->join('worker.php');
-        }
-
         $files = self::files($source);
         $hash = \hash('sha256', \implode("\0", \array_map(
-            static fn(string $relative): string => $relative . "\0" . (string) \hash_file('sha256', (string) $source->join($relative)),
+            static fn(string $relative): string => $relative . "\0" . (string) \hash_file('sha256', "{$source}/{$relative}"),
             $files,
         )));
         $env = \getenv('OPMIN_HARNESS_DIR');
@@ -53,7 +55,7 @@ final class HarnessFiles
             $tmp = Path::create((string) $target . '.' . \bin2hex(\random_bytes(4)));
             foreach ($files as $relative) {
                 FS::mkdir((string) $tmp->join($relative)->parent());
-                \copy((string) $source->join($relative), (string) $tmp->join($relative));
+                \copy("{$source}/{$relative}", (string) $tmp->join($relative));
             }
 
             @\rename((string) $tmp, (string) $target) or FS::remove($tmp);
@@ -62,17 +64,29 @@ final class HarnessFiles
         return $target->join('worker.php');
     }
 
+    private static function locate(): Path
+    {
+        if (\Phar::running(false) === '') {
+            return Path::create(self::SOURCE)->join('worker.php');
+        }
+
+        /** @var non-empty-string $source */
+        $source = self::SOURCE;
+
+        return self::extract($source);
+    }
+
     /**
      * @return list<non-empty-string> Paths relative to the harness directory, sorted.
      */
-    private static function files(Path $source): array
+    private static function files(string $source): array
     {
         $files = [];
-        $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator((string) $source, \FilesystemIterator::SKIP_DOTS));
+        $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($source, \FilesystemIterator::SKIP_DOTS));
         /** @var \SplFileInfo $file */
         foreach ($iterator as $file) {
             if ($file->isFile() && $file->getExtension() === 'php') {
-                $relative = \substr($file->getPathname(), \strlen((string) $source) + 1);
+                $relative = \substr($file->getPathname(), \strlen($source) + 1);
                 $relative = \str_replace('\\', '/', $relative);
                 $relative === '' or $files[] = $relative;
             }

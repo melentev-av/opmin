@@ -162,10 +162,10 @@ final class CliTest
 
     public function notImplementedCommandFails(): void
     {
-        [$code, $out] = $this->opmin('baseline');
+        [$code, $out] = $this->opmin('doctor');
 
         Assert::same($code, 1);
-        Assert::string($out)->contains('not implemented yet (planned for M6)');
+        Assert::string($out)->contains('not implemented yet (planned for M7)');
     }
 
     /**

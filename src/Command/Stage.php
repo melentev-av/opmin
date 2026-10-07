@@ -10,7 +10,10 @@ use Opmin\Module\Common\Cpu;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Opcode\CountCache;
 use Opmin\Module\Opcode\Dump\OpcacheDumper;
+use Opmin\Info;
 use Opmin\Module\Opcode\OpcodeCounter;
+use Opmin\Module\Opcode\OptimizerSettings;
+use Opmin\Module\Opcode\Report\CountReport;
 use Opmin\Module\Optimize\Formatter;
 use Opmin\Module\Optimize\Optimizer;
 use Opmin\Module\Optimize\Review\Declined;
@@ -27,8 +30,8 @@ use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /**
- * What the commands that change code share (`optimize`, the LLM stage): the target files, the cache,
- * the counter and the optimizer with its checks.
+ * What the commands that change or guard code share (`optimize`, the LLM stage, `baseline`, `check`):
+ * the target files, the cache, the counter and the optimizer with its checks.
  *
  * @internal
  */
@@ -124,6 +127,25 @@ abstract class Stage extends Base
     protected function counter(PhpBinary $php, Path $cacheDir): OpcodeCounter
     {
         return new OpcodeCounter(new OpcacheDumper($php, Cpu::count()), new CountCache($cacheDir, $php));
+    }
+
+    /**
+     * Opcode counts of the given files as a count report (keys deduplicated like in `count`).
+     *
+     * @param list<Path> $files
+     */
+    protected function countReport(Project $project, PhpBinary $php, array $files): CountReport
+    {
+        $result = $files === [] ? null : $this->counter($php, $this->cacheDir($project))->count($project, $files);
+
+        return CountReport::create(
+            opmin: Info::version(),
+            php: $php->version,
+            phpTarget: $this->phpTarget($project),
+            optimizerHash: OptimizerSettings::hash($php),
+            functions: $result?->functions ?? [],
+            errors: $result?->errors ?? [],
+        );
     }
 
     protected function optimizer(

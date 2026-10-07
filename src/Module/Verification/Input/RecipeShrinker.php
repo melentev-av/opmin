@@ -120,8 +120,9 @@ final readonly class RecipeShrinker implements InputShrinker
         $length = \strlen($value);
         $length > 1 and yield Recipes::string(\substr($value, 0, \intdiv($length, 2)));
         $length > 1 and yield Recipes::string(\substr($value, 0, -1));
+        # Every byte outside printable ASCII becomes `a`.
         $plain = (string) \preg_replace('/[^\x20-\x7e]/', 'a', $value);
-        $plain === $value || \strlen($plain) >= $length && \preg_match('/[^\x20-\x7e]/', $value) !== 1 or yield Recipes::string($plain);
+        $plain === $value or yield Recipes::string($plain);
     }
 
     /**

@@ -7,6 +7,10 @@ namespace Opmin\Module\Optimize\Rector;
 use Opmin\Module\Config\Schema;
 use Rector\Contract\Rector\ConfigurableRectorInterface;
 use Rector\Contract\Rector\RectorInterface;
+use Opmin\Module\Release\Installation;
+use Rector\Config\RectorConfig;
+use Rector\Configuration\Option;
+use Rector\Configuration\Parameter\SimpleParameterProvider;
 use Symfony\Component\Process\Process;
 
 /**
@@ -90,18 +94,8 @@ final class RuleCatalog
      */
     public static function expand(array $sets): array
     {
-        $autoload = \dirname((string) (new \ReflectionClass(\Composer\Autoload\ClassLoader::class))->getFileName(), 2) . '/autoload.php';
-        $script = <<<'PHP'
-            require $argv[1];
-            $result = [];
-            foreach (array_slice($argv, 2) as $set) {
-                Rector\Configuration\Parameter\SimpleParameterProvider::setParameter(Rector\Configuration\Option::REGISTERED_RECTOR_RULES, []);
-                (new Rector\Config\RectorConfig())->import($set);
-                $result[$set] = array_values(array_unique(Rector\Configuration\Parameter\SimpleParameterProvider::provideArrayParameter(Rector\Configuration\Option::REGISTERED_RECTOR_RULES)));
-            }
-            echo json_encode($result);
-            PHP;
-        $process = new Process([\PHP_BINARY, '-r', $script, $autoload, ...$sets], timeout: 120);
+        $installation = Installation::current();
+        $process = new Process([...$installation->command(), ...$sets], env: ['OPMIN_INTERNAL' => 'expand-sets', 'OPMIN_NO_DELEGATE' => '1'], timeout: 120);
         $process->run();
         /** @var mixed $data */
         $data = \json_decode($process->getOutput(), true);
@@ -109,6 +103,26 @@ final class RuleCatalog
 
         /** @var array<non-empty-string, list<class-string>> $data */
         return $data;
+    }
+
+    /**
+     * {@see self::expand()} inside the fresh process (`OPMIN_INTERNAL=expand-sets`).
+     *
+     * @param list<string> $sets
+     * @return array<string, list<string>>
+     */
+    public static function expandHere(array $sets): array
+    {
+        $result = [];
+        foreach ($sets as $set) {
+            SimpleParameterProvider::setParameter(Option::REGISTERED_RECTOR_RULES, []);
+            (new RectorConfig())->import($set);
+            /** @var list<string> $rules */
+            $rules = SimpleParameterProvider::provideArrayParameter(Option::REGISTERED_RECTOR_RULES);
+            $result[$set] = \array_values(\array_unique($rules));
+        }
+
+        return $result;
     }
 
     /**

@@ -43,6 +43,20 @@ use Symfony\Component\Console\CommandLoader\FactoryCommandLoader;
 
     require_once $autoloadPath;
 
+    # Internal entry points run in subprocesses of opmin itself (see Installation::command()): the static
+    # binary cannot run any other script, so Rector and the set expansion go through it.
+    # PHPStan (for Rector) is a PHAR inside the PHAR: it is used from an extracted copy.
+    Opmin\Module\Optimize\Rector\PhpStanPhar::register();
+
+    switch (\getenv('OPMIN_INTERNAL')) {
+        case 'rector':
+            require Opmin\Module\Optimize\Rector\RectorRunner::binary();
+            exit(0);
+        case 'expand-sets':
+            echo \json_encode(Opmin\Module\Optimize\Rector\RuleCatalog::expandHere(\array_slice($_SERVER['argv'] ?? [], 1)));
+            exit(0);
+    }
+
     # A global opmin inside a project with its own opmin runs the project's one (the pinned version).
     $local = Opmin\Module\Release\Delegation::target(Opmin\Module\Release\Installation::current(), Internal\Path::create((string) $cwd), \getenv());
     $local === null or exit(Opmin\Module\Release\Delegation::run($local, \array_slice($_SERVER['argv'] ?? [], 1), \getenv()));

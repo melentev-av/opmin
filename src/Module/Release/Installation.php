@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Opmin\Module\Release;
 
 use Internal\Path;
+use Opmin\Info;
 
 /**
  * How the running opmin is installed: the static binary, the PHAR, or sources (a git checkout or a
@@ -38,6 +39,21 @@ final readonly class Installation
         return \PHP_SAPI === 'micro'
             ? new self(self::BINARY, Path::create(\PHP_BINARY !== '' ? \PHP_BINARY : $phar))
             : new self(self::PHAR, Path::create($phar));
+    }
+
+    /**
+     * The command line that starts this opmin again: what runs Rector and other internal entry points in a
+     * subprocess (micro cannot run any script but its own, so the PHAR and the binary run themselves).
+     *
+     * @return non-empty-list<string>
+     */
+    public function command(): array
+    {
+        return match ($this->kind) {
+            self::BINARY => [(string) $this->file],
+            self::PHAR => [\PHP_BINARY, (string) $this->file],
+            default => [\PHP_BINARY, Info::ROOT_DIR . '/bin/opmin'],
+        };
     }
 
     /**

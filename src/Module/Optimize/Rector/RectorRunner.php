@@ -8,6 +8,7 @@ use Internal\Path;
 use Opmin\Module\Common\Cpu;
 use Opmin\Module\Common\FileSystem\FS;
 use Opmin\Module\Project\Project;
+use Opmin\Module\Release\Installation;
 use Symfony\Component\Process\Process;
 
 /**
@@ -68,11 +69,12 @@ final readonly class RectorRunner
         $cache = $dir->join('cache', \hash('xxh128', \serialize([$rule->class, $rule->options, $this->phpTarget])));
         \file_put_contents((string) $config, $this->config($rule, $files, $cache));
 
-        $process = new Process(
-            [\PHP_BINARY, '-d', 'memory_limit=-1', self::binary(), 'process', '--config=' . (string) $config, '--output-format=json', '--no-progress-bar', '--no-diffs'],
-            (string) $this->project->root,
-            timeout: $this->timeout,
-        );
+        $args = ['process', '--config=' . (string) $config, '--output-format=json', '--no-progress-bar', '--no-diffs'];
+        $installation = Installation::current();
+        $process = $installation->kind === Installation::SOURCES
+            ? new Process([\PHP_BINARY, '-d', 'memory_limit=-1', self::binary(), ...$args], (string) $this->project->root, timeout: $this->timeout)
+            # The PHAR and the static binary run Rector inside themselves.
+            : new Process([...$installation->command(), ...$args], (string) $this->project->root, ['OPMIN_INTERNAL' => 'rector', 'OPMIN_NO_DELEGATE' => '1'], timeout: $this->timeout);
         $process->run();
 
         /** @var mixed $result */
@@ -126,7 +128,8 @@ final readonly class RectorRunner
             'return static function (Rector\Config\RectorConfig $config): void {',
             "    \$config->paths({$paths});",
             '    $config->cacheDirectory(' . \var_export((string) $cache, true) . ');',
-            \count($files) >= self::PARALLEL_FROM
+            # Rector's workers restart `PHP_BINARY <its script>`, which the PHAR and the static binary cannot be.
+            \count($files) >= self::PARALLEL_FROM && Installation::current()->kind === Installation::SOURCES
                 ? '    $config->parallel(processTimeout: 600, maxNumberOfProcess: ' . Cpu::count() . ', jobSize: 8);'
                 : '    $config->disableParallel();',
         ];

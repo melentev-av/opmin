@@ -12,8 +12,9 @@ As a CI guard, `opmin check` fails a pull request when functions grow in opcodes
 
 > **Status: early development.** The CLI skeleton, configuration and build (M0), opcode counting — `count` and
 > `diff` (M1), behavior verification — `verify` (M2), the Rector stage of `optimize` (M3) and the LLM stage — a
-> Claude Code skill with `apply-candidate` (M4) work; `check` and the rest are being implemented stage by stage. Commands and options that are not implemented yet
-> fail with a message naming the stage.
+> Claude Code skill with `apply-candidate` (M4), the report and `--review` (M5) and the CI guard — `baseline` and
+> `check` (M6) work; delivery (binary, Docker image, `doctor`) is being implemented. Commands and options that are
+> not implemented yet fail with a message naming the stage.
 
 ## Quick start (planned flow)
 
@@ -23,6 +24,7 @@ opmin doctor      # checks php.binary, OPcache, git, tests, PHPStan
 opmin count src   # opcodes per function
 opmin optimize .  # Rector stage, every accepted step is a separate commit
 # then, in Claude Code: "minimize opcodes with opmin" — the skill opcode-minimize (LLM stage)
+opmin baseline    # commit opmin.baseline.json, then `opmin check` in CI keeps opcodes from growing
 ```
 
 ## Counting opcodes
@@ -149,6 +151,83 @@ Every run (`optimize`, `llm:finish`) writes `runs/<ts>/report.md` for people and
   versions or targets.
 
 `report.json` has `"schema": 1`; its fields change only in a major release (new fields may be added).
+
+## CI guard: `baseline` and `check`
+
+```bash
+opmin baseline                              # writes opmin.baseline.json — commit it
+opmin check                                 # functions of files changed since check.base_ref (origin/main)
+opmin check --base=origin/develop --format=github
+opmin check --all                           # the whole project
+opmin check --update-baseline               # write decreased, new and removed functions to the baseline
+opmin check --suggest                       # for grown functions: which Rector rule would take the opcodes back
+```
+
+- `opmin.baseline.json` holds `ops_opt` per function key (`App\Foo::bar`, `App\Foo::bar::{closure:2}` — ordinals,
+  not lines) with its file, plus `php` and `optimizer_hash`. Keys are sorted and there are no lines, so its diff
+  in a PR shows only functions whose counts changed. Code outside functions (`<main>`) is not guarded. Not to be
+  confused with `opmin.baseline.yaml` — the changes you declined in `optimize --review`.
+- The changed files are `git diff --name-only <base>` (committed and uncommitted) plus untracked files; a rename
+  is a removal and an addition, so a function moved to another file keeps its key and a renamed one is reported
+  as removed + new.
+- A function that grew by more than `check.tolerance` fails the check; a decrease, a new function and a removed
+  one ask you to update the baseline (`--update-baseline` does it, keeping grown functions at their old counts —
+  accepting growth is an explicit `opmin baseline`); a new function above `check.max_ops_new_function` is a
+  warning. `--suggest` applies every Stage A rule alone to temporary copies (the project is not touched) and
+  names the one that saves the most — unverified: `opmin optimize` proves the change.
+- Exit codes: `0` — nothing grew; `1` — opcodes grew (or a checked file cannot be compiled); `2` — no baseline,
+  a baseline taken with another PHP minor version or optimizer settings (nothing is compared: rebuild it with
+  `opmin baseline` on the PHP of the check), an unknown base ref, or invalid config.
+- Formats: `table` (default), `json` (every finding, totals), `github` (workflow annotations on the PR lines),
+  `gitlab` (Code Quality report), `checkstyle`. The report goes to stdout, messages to stderr.
+
+```yaml
+check:
+  tolerance: 0                 # by how many opcodes a function may grow
+  max_ops_new_function: null   # limit for new functions, null — no limit
+  base_ref: origin/main        # base of the changed-files mode (--base=)
+```
+
+The baseline must be taken with the same PHP minor version as the check: in CI use the image with the PHP of
+your production, and create the baseline with the same image
+(`docker run --rm -v "$PWD:/app" -w /app ghcr.io/melentev-av/opmin:<version>-php8.3 opmin baseline`).
+The images arrive with the first release (M7); `<version>` is the opmin release.
+
+GitHub Actions (`.github/workflows/opcodes.yml`):
+
+```yaml
+name: Opcodes
+on: pull_request
+jobs:
+  opmin:
+    runs-on: ubuntu-latest
+    container: ghcr.io/melentev-av/opmin:<version>-php8.3   # the PHP of your production
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0            # the base branch is needed for the changed-files mode
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: opmin check --base="origin/${{ github.base_ref }}" --format=github
+```
+
+GitLab CI (`.gitlab-ci.yml`):
+
+```yaml
+opcodes:
+  stage: test
+  image: ghcr.io/melentev-av/opmin:<version>-php8.3       # the PHP of your production
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - git fetch origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+    - opmin check --base="origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" --format=gitlab > gl-code-quality.json
+  artifacts:
+    when: always
+    reports:
+      codequality: gl-code-quality.json
+```
 
 ## Excluding code
 

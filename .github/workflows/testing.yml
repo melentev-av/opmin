@@ -137,7 +137,7 @@ jobs:
     # A cheap check that the scoped PHAR still builds and starts; release assets are built
     # only when a version is released (see build-release.yml).
     name: 📦 PHAR builds and runs
-    timeout-minutes: 10
+    timeout-minutes: 20
     runs-on: ubuntu-24.04
     steps:
       - name: 📦 Check out the codebase
@@ -168,5 +168,9 @@ jobs:
           .build/phar/opmin.phar list
           mkdir -p /tmp/phar-smoke && cd /tmp/phar-smoke && "$GITHUB_WORKSPACE/.build/phar/opmin.phar" init --no-interaction
           test -s /tmp/phar-smoke/opmin.yaml
+
+      # The harness, Rector and PHPStan from inside the PHAR, next to the project's own php-parser and Rector.
+      - name: 📦 PHAR as a composer package in a project with other php-parser and Rector
+        run: tests/Phar/composer-project.sh .build/phar/opmin.phar
 
 ...

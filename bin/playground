@@ -241,6 +241,8 @@ function buildTraps(): void
         only: ['Traps.php', 'MagicBag.php'],
         testsFrom: SEEDS . '/traps/tests-phpunit',
     );
+    # Traps of opmin's own rules: one class per file for PSR-4.
+    copySeeds(SEEDS . '/traps/code', scenarioDir('traps') . '/src', 'Acme');
     \copy(SEEDS . '/traps/README.md', scenarioDir('traps') . '/README.md');
 }
 
@@ -256,6 +258,8 @@ function buildLaravel(): void
     sh('cp -R ' . \escapeshellarg($skeleton) . ' ' . \escapeshellarg($dir), ROOT);
     copySeeds(SEEDS . '/code', $dir . '/app/Services', 'App\\Services');
     copySeeds(SEEDS . '/tests-phpunit', $dir . '/tests/Unit/Services', 'App\\Services', 'Tests\\Unit\\Services');
+    # A Laravel project follows Pint: the seeds too, so optimize formats its steps instead of skipping.
+    sh('vendor/bin/pint --quiet app/Services tests/Unit/Services', $dir);
 
     $composer = readJson($dir . '/composer.json');
     $composer['autoload']['files'] = \array_values(\array_unique([...($composer['autoload']['files'] ?? []), 'app/Services/functions.php']));
@@ -385,6 +389,8 @@ function run(array $args): int
             : [];
 
         $row = ['scenario' => $name];
+        # Prepared rewrites match the seeds: verified before optimize changes the code.
+        $verify = verifyScenario($name, $dir);
         foreach (['doctor' => [], 'count' => [], 'optimize' => $target, 'check' => []] as $command => $extra) {
             if ($name === 'git-package' && $command !== 'optimize') {
                 $row[$command] = 'n/a';
@@ -401,16 +407,56 @@ function run(array $args): int
         }
 
         $row['ops'] = ($row['count'] ?? '') === 'ok' ? countTotal($dir) : '';
-        $row['verify'] = verifyScenario($name, $dir);
+        $row['optimized'] = optimizeResult($dir);
+        $row['verify'] = $verify . ($name === 'traps' ? '; ' . ruleTraps($dir) : '');
         $row['tests'] = $name === 'git-package' ? 'n/a' : (testScenario($name) ? 'green' : 'RED');
         $rows[] = $row;
     }
 
     summary($rows);
 
-    $bad = \array_filter($rows, static fn(array $r): bool => $r['tests'] === 'RED' || \str_contains($r['verify'], 'REJECTED') || \str_contains($r['verify'], 'MISSED'));
+    $bad = \array_filter($rows, static fn(array $r): bool => $r['tests'] === 'RED' || \str_contains($r['verify'], 'REJECTED')
+        || \str_contains($r['verify'], 'MISSED') || \str_contains($r['verify'], 'CHANGED'));
 
     return $bad === [] ? 0 : 1;
+}
+
+/**
+ * Opcodes before → after of the last `opmin optimize` run, kept/rolled-back functions.
+ */
+function optimizeResult(string $dir): string
+{
+    $reports = \glob($dir . '/runs/*/report.json') ?: [];
+    \sort($reports);
+    $file = \end($reports);
+    /** @var mixed $report */
+    $report = $file === false ? null : \json_decode((string) \file_get_contents($file), true);
+    if (!\is_array($report)) {
+        return '';
+    }
+
+    $kept = $rolledBack = 0;
+    foreach ($report['steps'] ?? [] as $step) {
+        $kept += \count($step['accepted'] ?? []);
+        $rolledBack += \count($step['rejected'] ?? []);
+    }
+
+    return \sprintf('%d→%d (%d/%d)', $report['ops_before'] ?? 0, $report['ops_after'] ?? 0, $kept, $rolledBack);
+}
+
+/**
+ * The traps of opmin's own rules must leave `optimize` untouched: no rule fires on them, or the
+ * verifier rolls the change back.
+ */
+function ruleTraps(string $dir): string
+{
+    $changed = [];
+    foreach (\glob(SEEDS . '/traps/code/*.php') ?: [] as $seed) {
+        $expected = \strtr((string) \file_get_contents($seed), ['PlaygroundSeeds' => 'Acme']);
+        (string) @\file_get_contents($dir . '/src/' . \basename($seed)) === $expected or $changed[] = \basename($seed, '.php');
+    }
+
+    return $changed === [] ? 'rule traps untouched' : 'RULE TRAPS CHANGED: ' . \implode(', ', $changed);
 }
 
 /**
@@ -507,6 +553,11 @@ function rewrite(string $source, array $replacements, string $dir): ?string
     $code = (string) \file_get_contents($source);
     foreach ($replacements as [$search, $replace]) {
         if (!\str_contains($code, $search)) {
+            # The Laravel seeds are formatted by Pint: no spaces around the concatenation.
+            [$search, $replace] = [\str_replace(' . ', '.', $search), \str_replace(' . ', '.', $replace)];
+        }
+
+        if (!\str_contains($code, $search)) {
             return null;
         }
 
@@ -583,17 +634,18 @@ function testScenario(string $name): bool
  */
 function summary(array $rows): void
 {
-    $columns = ['scenario', 'doctor', 'count', 'ops', 'optimize', 'check', 'tests', 'verify'];
+    $columns = ['scenario', 'doctor', 'count', 'ops', 'optimize', 'optimized', 'check', 'tests', 'verify'];
     echo "\n";
-    \printf("  %-18s %-10s %-10s %-12s %-10s %-10s %-6s %s\n", ...$columns);
-    echo '  ' . \str_repeat('-', 110) . "\n";
+    \printf("  %-18s %-10s %-10s %-12s %-10s %-18s %-10s %-6s %s\n", ...$columns);
+    echo '  ' . \str_repeat('-', 130) . "\n";
     foreach ($rows as $row) {
-        \printf("  %-18s %-10s %-10s %-12s %-10s %-10s %-6s %s\n", ...\array_map(static fn(string $c): string => $row[$c] ?? '', $columns));
+        \printf("  %-18s %-10s %-10s %-12s %-10s %-18s %-10s %-6s %s\n", ...\array_map(static fn(string $c): string => $row[$c] ?? '', $columns));
     }
-    echo "\n  ops: opcodes after the optimizer / functions (from `count`). verify: traps/ — wrong rewrites\n"
-        . "  rejected although weak tests pass; elsewhere — correct rewrites accepted (FileJournal writes a file:\n"
-        . "  proven by the project's tests only with a coverage map — Xdebug or pcov in php.binary).\n"
-        . "  Before/after of optimize appear here once `optimize` (M3) exists.\n\n";
+    echo "\n  ops: opcodes after the optimizer / functions (from `count`, after optimize). optimized: opcodes\n"
+        . "  before→after of the last optimize run (kept/rolled-back functions). verify: traps/ — wrong rewrites\n"
+        . "  rejected although weak tests pass, the traps of opmin's rules untouched by optimize; elsewhere —\n"
+        . "  correct rewrites accepted (FileJournal writes a file: proven by the project's tests only with a\n"
+        . "  coverage map — Xdebug or pcov in php.binary).\n\n";
 }
 
 /**

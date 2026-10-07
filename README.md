@@ -10,22 +10,93 @@ object state, calls to collaborators).
 
 As a CI guard, `opmin check` fails a pull request when functions grow in opcodes compared to a committed baseline.
 
-> **Status: early development.** The CLI skeleton, configuration and build (M0), opcode counting — `count` and
-> `diff` (M1), behavior verification — `verify` (M2), the Rector stage of `optimize` (M3) and the LLM stage — a
-> Claude Code skill with `apply-candidate` (M4), the report and `--review` (M5) and the CI guard — `baseline` and
-> `check` (M6) work; delivery (binary, Docker image, `doctor`) is being implemented. Commands and options that are
-> not implemented yet fail with a message naming the stage.
+> **Status: 0.x.** Counting, verification, both optimization stages, the report, the CI guard and delivery
+> (static binary, PHAR, Docker image, `doctor`, `self-update`, git packages) work. Formats and options may still
+> change before 1.0.
 
-## Quick start (planned flow)
+## Installation
+
+opmin needs **two PHPs**, and the binary brings one of them:
+
+- the PHP that *runs* opmin — embedded in the static binary (or your PHP 8.3+ for the PHAR);
+- `php.binary` — **the PHP of your production** (8.1–8.5, with OPcache). It compiles the code for counting, runs
+  the differential tests and your tests, so its version must be the one you deploy. `opmin doctor` checks it first.
+
+**1. Static binary (recommended)** — Linux x86_64/aarch64 (static, any distribution), macOS x86_64/arm64:
 
 ```bash
-opmin init        # writes opmin.yaml with every key, its default and a comment
-opmin doctor      # checks php.binary, OPcache, git, tests, PHPStan
-opmin count src   # opcodes per function
-opmin optimize .  # Rector stage, every accepted step is a separate commit
+curl -fsSL https://raw.githubusercontent.com/melentev-av/opmin/master/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/melentev-av/opmin/master/install.sh | sh -s -- --dir=/usr/local/bin --version=0.2.0
+opmin self-update            # the latest release; --check only tells; --to=<version> installs that one
+```
+
+`install.sh` puts `opmin` into `~/.local/bin` (or `--dir`), checks the SHA-256 against `sha256sum.txt` of the
+release and, with `openssl`, the signature of `sha256sum.txt`. `self-update` always checks both and starts the new
+binary once before replacing the old one. Archives are also on
+[GitHub Releases](https://github.com/melentev-av/opmin/releases) — see «Verifying a download» below.
+
+**2. PHAR** — the same scoped build for your own PHP 8.3+: `opmin.phar` on the release page, or as a composer
+package without dependencies (`composer require --dev melentev-av/opmin`, the PHAR inside, never conflicting
+with your `vendor/`).
+
+**3. Docker** — `ghcr.io/melentev-av/opmin:<version>-php<8.1…8.5>`: the binary plus the PHP of production with
+OPcache (JIT off), pcov, git and composer. Pick the tag of your production PHP; the images are meant for CI and
+for git packages.
+
+```bash
+docker run --rm -v "$PWD:/app" ghcr.io/melentev-av/opmin:0.2.0-php8.3 opmin doctor
+```
+
+**Pinning the version per project.** Commit a `.opmin-version` (`0.2.3`, or a constraint like `^0.2`) or set
+`requires: '^0.2'` in `opmin.yaml`: another opmin stops with exit code 2 and the `opmin self-update --to=` command
+to run. A global `opmin` started inside a project that has its own — `vendor/bin/opmin` (the composer package) or
+an `opmin` binary in the project root (e.g. downloaded by [dload](https://github.com/php-internal/dload)) — runs
+that one instead (`OPMIN_NO_DELEGATE=1` keeps the global one).
+
+**From sources** (development): `git clone git@github.com:melentev-av/opmin.git && cd opmin && composer install &&
+bin/opmin list`.
+
+### Verifying a download
+
+Every release has `sha256sum.txt`, its ECDSA P-256 signature `sha256sum.txt.sig` and GitHub build provenance
+attestations. The public keys are [resources/release-keys](resources/release-keys) (a primary one and a reserve
+one kept offline):
+
+```bash
+sha256sum --check --ignore-missing sha256sum.txt
+openssl dgst -sha256 -verify primary.pub.pem -signature sha256sum.txt.sig sha256sum.txt
+gh attestation verify opmin-0.2.0-linux-x86_64.tar.gz --repo melentev-av/opmin
+```
+
+## Quick start
+
+```bash
+opmin init        # opmin.yaml: every key with a comment; detects php.target, paths, test runner, formatter, PHPStan
+opmin doctor      # php.binary first, then OPcache, the harness, syntax, tests, PHPStan, coverage, git — with fixes
+opmin count       # opcodes per function
+opmin optimize    # Rector stage, every accepted step is a separate commit
 # then, in Claude Code: "minimize opcodes with opmin" — the skill opcode-minimize (LLM stage)
 opmin baseline    # commit opmin.baseline.json, then `opmin check` in CI keeps opcodes from growing
 ```
+
+A run ends with a summary like this, and `runs/<ts>/report.md` with every function:
+
+```text
+ ------ ------------------------------------ ------ ------------- --------- ----------------
+  Pass   Rule                                 Kept   Rolled back   Opcodes   Commit / error
+ ------ ------------------------------------ ------ ------------- --------- ----------------
+  1      FullyQualifyGlobalCallsRector        14     2             -85       039d2f6a
+  1      ExtractRepeatedPropertyFetchRector   2      1             -6        bc951c85
+  1      ExtractRepeatedArrayDimFetchRector   1      1             -2        4d3f2f4b
+ ------ ------------------------------------ ------ ------------- --------- ----------------
+
+The full run of the project's tests passes on the result.
+
+ [OK] 442 → 349 opcodes (-93). Report: runs/20261007-192240/report.md, patch: runs/20261007-192240/opmin.patch
+```
+
+`opmin doctor` exits with 1 when something blocks `count`/`optimize` (warnings — e.g. no pcov, so every step
+runs the whole test suite — do not); `--with-tests` also runs your test suite once.
 
 ## Counting opcodes
 
@@ -190,8 +261,8 @@ check:
 
 The baseline must be taken with the same PHP minor version as the check: in CI use the image with the PHP of
 your production, and create the baseline with the same image
-(`docker run --rm -v "$PWD:/app" -w /app ghcr.io/melentev-av/opmin:<version>-php8.3 opmin baseline`).
-The images arrive with the first release (M7); `<version>` is the opmin release.
+(`docker run --rm -v "$PWD:/app" ghcr.io/melentev-av/opmin:<version>-php8.3 opmin baseline`), `<version>` being
+the opmin release.
 
 GitHub Actions (`.github/workflows/opcodes.yml`):
 
@@ -206,7 +277,6 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0            # the base branch is needed for the changed-files mode
-      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: opmin check --base="origin/${{ github.base_ref }}" --format=github
 ```
 
@@ -258,16 +328,29 @@ ignore:
   | `llm` | Stage B: rewrites proposed by the model |
   | `simplifyifreturnboolrector`, … | a standard Rector rule by its short class name |
 
-## Installation
-
-Planned: a static binary for Linux and macOS (no PHP needed to *run* opmin — but analyzing code always uses
-your production PHP, `php.binary`), a scoped PHAR, and a Docker image with the PHP version of your production.
-Until the first release, run from sources:
+## Optimizing a git package
 
 ```bash
-git clone git@github.com:melentev-av/opmin.git && cd opmin && composer install
-bin/opmin list
+opmin optimize https://github.com/vendor/package.git --ref=v2.1.0
+opmin optimize git@github.com:vendor/package.git src/Parser --ref=main --dry-run
 ```
+
+`composer install` and the tests of a package are foreign code, so by default:
+
+- the package is cloned on your machine (your git credentials) into a temporary workspace — with Docker under
+  `~/.cache/opmin/packages` (the directory Docker Desktop, colima and OrbStack share), `package.workspace`
+  changes it — on a branch `opmin/<timestamp>`, and removed afterwards (links inside are never followed);
+- `composer install --no-scripts --no-plugins`; `--allow-scripts` runs them when the package needs them;
+- opmin then optimizes the clone **inside Docker** — the image of the newest PHP the package's `require.php`
+  allows (or `php.target`): no network, a read-only root file system except the workspace, the memory limit
+  `package.memory` (4g) and `package.cpus`, your user. `--no-docker` runs on this machine after a confirmation
+  (`--yes` in scripts), and only if `php.binary` satisfies `require.php` and has the `ext-*` the package needs;
+- the public API is never changed (`signatures.public_api` is forced off): a package is called from code nobody
+  can see. `--force-public-api` lifts it;
+- `runs/<ts>/` with the report and `opmin-<package>-<ref>.patch` land in the current directory: apply the patch in
+  your fork with `git apply`.
+
+`package.docker_image` (`ghcr.io/melentev-av/opmin:{version}-php{php}`) selects another image.
 
 ## Configuration
 

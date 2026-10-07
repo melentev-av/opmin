@@ -150,6 +150,25 @@ final class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedRe
   and function, `--suggest` on copies (the project is not touched). Opcode numbers are never asserted: they
   differ between the PHP versions of the matrix, the direction does not.
 
+## Delivery (`self-update`, `install.sh`, `doctor`, git packages, the PHAR)
+
+- `tests/Unit/Module/Release/`: platforms, `sha256sum.txt`, the signature (fixed test keys in
+  `tests/Fixtures/Release/` — `openssl_pkey_new()` needs an `openssl.cnf` static PHP builds lack), the updater
+  replacing a PHAR and a binary from a fake release source, refusing a wrong signature, checksum or a file that
+  does not start; version constraints of `.opmin-version`; the hand-over to a local opmin.
+- `tests/Integration/Release/InstallScriptTest.php`: `install.sh` against a release in a directory
+  (`OPMIN_DOWNLOAD_BASE=file://…`). A release signed with the real keys cannot be made in tests: the test proves
+  the refusals and that the script trusts exactly `resources/release-keys/`.
+- `tests/Integration/Command/DoctorTest.php`: `opmin doctor` on a small project under the php.binary of the run.
+- `tests/Integration/Command/OptimizePackageTest.php`: `optimize <git-url> --no-docker` on a package in a local
+  bare repository (composer install without dependencies needs no network). Docker mode is checked by the
+  playground (`bin/playground run git-package`) and by the smoke tests of the release images.
+- `tests/Unit/Module/Harness/HarnessFilesTest.php` extracts the harness from a `phar://` URL: `Internal\Path`
+  collapses `phar://` into `phar:/`, which broke every PHAR run of the differential tester until M7.
+- `tests/Phar/composer-project.sh <phar>` (CI job «PHAR builds and runs»): the PHAR as a composer package in a
+  project with nikic/php-parser 4 and Rector 1 — count, verify and optimize from `vendor/bin/opmin`. Run it
+  locally after `make phar` whenever the scoper config, `box.json.dist` or the internal entry points change.
+
 ## Property tests (`rasuvaeff/property-testing-testo`)
 
 ```php

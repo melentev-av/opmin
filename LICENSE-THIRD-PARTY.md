@@ -24,3 +24,25 @@ Packages bundled into the opmin PHAR and binary (`composer licenses --no-dev`). 
 | symfony/string | v7.4.19 | MIT |
 | symfony/yaml | v7.4.20 | MIT |
 | yiisoft/injector | 1.2.1 | BSD-3-Clause |
+
+## The static binary
+
+The binary is the PHAR above glued to a static PHP built by [static-php-cli](https://static-php.dev)
+(`SPC_EXTENSIONS` in `.github/workflows/build-release.yml`). Besides the packages above it contains:
+
+| Component | License |
+|---|---|
+| PHP (the `micro` SAPI and the extensions ctype, filter, mbstring, openssl, pcntl, phar, posix, tokenizer, zlib) | PHP License 3.01 |
+| OpenSSL | Apache-2.0 |
+| zlib | Zlib |
+| musl libc (Linux binaries) | MIT |
+
+All are compatible with MIT. No LGPL or GPL library is linked: the `iconv` extension (GNU libiconv) is left out
+on purpose.
+
+## The Docker image
+
+`ghcr.io/melentev-av/opmin` is the official `php:<version>-cli` image (Debian) with the binary above, pcov
+(PHP License 3.01), git and composer (MIT) added; the licenses of the Debian packages are in the image under
+`/usr/share/doc/*/copyright`.
+

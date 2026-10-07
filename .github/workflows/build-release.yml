@@ -26,7 +26,9 @@ env:
   SPC_PHP_VERSION: '8.4'
   # zlib: the PHAR is GZ-compressed and self-update unpacks .tar.gz; openssl: HTTPS downloads and the
   # release signature of self-update; pcntl/posix: process pool; the rest: Symfony and opmin itself.
-  SPC_EXTENSIONS: 'ctype,filter,iconv,mbstring,openssl,pcntl,phar,posix,tokenizer,zlib'
+  # No iconv: symfony/string only uses it when present, and GNU libiconv (LGPL) would be linked statically.
+  # Each library linked into the binary is listed in LICENSE-THIRD-PARTY.md.
+  SPC_EXTENSIONS: 'ctype,filter,mbstring,openssl,pcntl,phar,posix,tokenizer,zlib'
 
 jobs:
   # The PHAR is the same for every platform: build it once, on Linux.

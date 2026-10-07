@@ -103,6 +103,20 @@ final class CliTest
         Assert::string((string) \file_get_contents($this->dir . '/opmin.yaml'))->contains('paths: [src]');
     }
 
+    public function aPinnedVersionStopsAnotherOpminButNotSelfUpdate(): void
+    {
+        \file_put_contents($this->dir . '/.opmin-version', "9.9.9\n");
+
+        [$code, , $err] = $this->opmin('count');
+        [$updateCode, $updateOut] = $this->opminWithEnv(['HTTPS_PROXY' => 'http://127.0.0.1:9'], 'self-update');
+
+        Assert::same($code, 2);
+        Assert::string($err)->ignoringWhitespace(lineBreaks: true)
+            ->contains('This project expects opmin 9.9.9')->contains('opmin self-update --to=9.9.9');
+        Assert::same($updateCode, 1);
+        Assert::string($updateOut)->ignoringWhitespace(lineBreaks: true)->contains('This opmin runs from sources');
+    }
+
     public function selfUpdateRefusesToReplaceSourcesWithoutGoingToTheNetwork(): void
     {
         [$code, $out] = $this->opminWithEnv(['HTTPS_PROXY' => 'http://127.0.0.1:9'], 'self-update');

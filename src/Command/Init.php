@@ -39,6 +39,7 @@ use Symfony\Component\Yaml\Yaml;
 )]
 final class Init extends Base
 {
+    protected const bool CHECK_VERSION = false;
     private const DEFAULT_CONFIG_PATH = 'opmin.yaml';
     private const CACHE_IGNORE_LINE = '/.opmin-cache/';
 

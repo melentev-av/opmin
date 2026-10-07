@@ -34,6 +34,8 @@ use Symfony\Component\Console\Style\StyleInterface;
 )]
 final class SkillInstall extends Base
 {
+    protected const bool CHECK_VERSION = false;
+
     /**
      * The skills directory a skill command works on.
      */

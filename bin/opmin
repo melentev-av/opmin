@@ -43,6 +43,10 @@ use Symfony\Component\Console\CommandLoader\FactoryCommandLoader;
 
     require_once $autoloadPath;
 
+    # A global opmin inside a project with its own opmin runs the project's one (the pinned version).
+    $local = Opmin\Module\Release\Delegation::target(Opmin\Module\Release\Installation::current(), Internal\Path::create((string) $cwd), \getenv());
+    $local === null or exit(Opmin\Module\Release\Delegation::run($local, \array_slice($_SERVER['argv'] ?? [], 1), \getenv()));
+
     $application = new Application(Info::NAME, Info::version());
     $application->setCommandLoader(
         new FactoryCommandLoader([

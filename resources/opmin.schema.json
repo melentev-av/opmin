@@ -28,6 +28,19 @@
                 "tests"
             ]
         },
+        "requires": {
+            "description": "opmin version the project expects (e.g. \"^1.2\"; .opmin-version works too); null — any",
+            "anyOf": [
+                {
+                    "type": "string",
+                    "minLength": 1
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null
+        },
         "php": {
             "type": "object",
             "additionalProperties": false,

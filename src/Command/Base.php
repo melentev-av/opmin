@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace Opmin\Command;
 
 use Internal\Container\Container;
+use Internal\Path;
 use Opmin\Bootstrap;
+use Opmin\Info;
 use Opmin\Module\Config\ConfigLoader;
 use Opmin\Module\Config\ConfigSchema;
 use Opmin\Module\Config\Exception\ConfigException;
+use Opmin\Module\Config\Schema;
+use Opmin\Module\Release\ProjectVersion;
 use Opmin\Service\Logger;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -41,6 +45,9 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  */
 abstract class Base extends Command
 {
+    /** @var bool Whether the command refuses to run when the project pins another opmin version. */
+    protected const bool CHECK_VERSION = true;
+
     /** @var Logger Service for logging command execution */
     protected Logger $logger;
 
@@ -121,6 +128,13 @@ abstract class Base extends Command
         # must fail the run before any work starts, not when the section is first used.
         foreach (ConfigSchema::SECTIONS as $section) {
             $container->get($section);
+        }
+
+        if (static::CHECK_VERSION) {
+            /** @var Schema\Project $project */
+            $project = $container->get(Schema\Project::class);
+            $config = $this->getConfigFile($input);
+            ProjectVersion::check(Info::version(), $project->requires, Path::create($config === null ? (string) \getcwd() : \dirname($config)));
         }
 
         return Command::SUCCESS;

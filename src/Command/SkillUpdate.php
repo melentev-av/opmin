@@ -26,6 +26,8 @@ use Symfony\Component\Console\Style\StyleInterface;
 )]
 final class SkillUpdate extends Base
 {
+    protected const bool CHECK_VERSION = false;
+
     public function configure(): void
     {
         parent::configure();

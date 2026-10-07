@@ -39,6 +39,8 @@ use Symfony\Component\Console\Style\StyleInterface;
 )]
 final class SelfUpdate extends Base
 {
+    protected const bool CHECK_VERSION = false;
+
     public function configure(): void
     {
         parent::configure();

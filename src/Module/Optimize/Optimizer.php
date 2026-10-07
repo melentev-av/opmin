@@ -728,7 +728,10 @@ final class Optimizer
 
     private function message(RuleSpec $rule, StepReport $step): string
     {
-        $lines = [\sprintf('opmin: %s, -%d opcodes in %d function(s)', $rule->shortName(), $step->gain(), \count($step->accepted)), '', 'Rule: ' . $rule->class];
+        $title = $rule->executedGain && $step->gain() === 0
+            ? \sprintf('opmin: %s, fewer executed opcodes in %d function(s)', $rule->shortName(), \count($step->accepted))
+            : \sprintf('opmin: %s, -%d opcodes in %d function(s)', $rule->shortName(), $step->gain(), \count($step->accepted));
+        $lines = [$title, '', 'Rule: ' . $rule->class];
         foreach ($step->accepted as $change) {
             $lines[] = \sprintf('%s  -%d (%s)', $change['function'], $change['gain'], $change['status']);
         }

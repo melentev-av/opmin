@@ -102,6 +102,25 @@ abstract class Stage extends Base
     }
 
     /**
+     * @param list<Path> $targets The files the run may change.
+     * @throws \RuntimeException When the files `git.require_clean` asks for are not clean.
+     */
+    protected function workspace(Project $project, Path $runDir, bool $dryRun, array $targets): Workspace
+    {
+        /** @var Schema\Git $git */
+        $git = $this->container->get(Schema\Git::class);
+
+        return Workspace::create(
+            $project,
+            $runDir,
+            $dryRun,
+            $this->ignoredPaths($project),
+            $git->requireClean,
+            \array_map($project->relative(...), $targets),
+        );
+    }
+
+    /**
      * The environment of a run and what changed in it since the previous run with a report.
      *
      * @return array{Environment, list<non-empty-string>}

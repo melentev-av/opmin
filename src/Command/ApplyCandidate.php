@@ -6,7 +6,6 @@ namespace Opmin\Command;
 
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Llm\Attempt;
-use Opmin\Module\Optimize\Workspace;
 use Opmin\Module\Php\PhpBinaryException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -71,7 +70,7 @@ final class ApplyCandidate extends LlmStage
                 "No attempts left for `{$target->key}`: {$done} of llm.attempts_per_function = {$llm->attemptsPerFunction} are used.",
             );
             $source = $this->source((string) $input->getArgument('source'));
-            $workspace = Workspace::create($project, $session->runDir, false, $this->ignoredPaths($project));
+            $workspace = $this->workspace($project, $session->runDir, false, [$project->root->join($target->file)]);
         } catch (PhpBinaryException|\InvalidArgumentException|\RuntimeException $e) {
             $style->error($e->getMessage());
             return Command::INVALID;

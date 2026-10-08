@@ -6,6 +6,7 @@ namespace Opmin\Module\Optimize;
 
 use Internal\Path;
 use Opmin\Module\Common\FileSystem\FS;
+use Opmin\Module\Config\Schema\RequireClean;
 use Opmin\Module\Project\Project;
 use Symfony\Component\Process\Process;
 
@@ -13,8 +14,9 @@ use Symfony\Component\Process\Process;
  * Where an optimization run changes files and how it keeps every step reversible (brief,
  * «Команда `opmin optimize`», «Целевая кодовая база»):
  *
- * - a git working tree (the project's files are tracked) must be clean; every accepted step is a
- *   commit of the files it changed;
+ * - in a git working tree (the project's files are tracked) every accepted step is a commit of the
+ *   files it changed, so those must be clean (`git.require_clean`); other files may stay dirty, and
+ *   every git command that changes the tree names its paths;
  * - outside git, the originals are copied to `runs/<ts>/original/` before the first change;
  * - with `--dry-run` nothing stays changed: the originals are restored at the end.
  *
@@ -37,10 +39,18 @@ final class Workspace
     /**
      * @param list<non-empty-string> $ignored Relative paths whose changes do not make the tree dirty
      *        (the run directory, the cache).
+     * @param list<non-empty-string> $targets Relative paths of the files the run may change: with
+     *        {@see RequireClean::Targets} only they must be clean.
      * @throws \RuntimeException When the git working tree is not clean.
      */
-    public static function create(Project $project, Path $runDir, bool $dryRun, array $ignored = []): self
-    {
+    public static function create(
+        Project $project,
+        Path $runDir,
+        bool $dryRun,
+        array $ignored = [],
+        RequireClean $requireClean = RequireClean::All,
+        array $targets = [],
+    ): self {
         $top = new Process(['git', 'rev-parse', '--show-toplevel'], (string) $project->root);
         $top->run();
         $gitRoot = $top->isSuccessful() && \trim($top->getOutput()) !== '' ? Path::create(\trim($top->getOutput())) : null;
@@ -52,7 +62,8 @@ final class Workspace
         }
         $workspace = new self($project, $runDir, $gitRoot, $dryRun);
         # A dry run commits nothing and restores every file: the tree may be dirty.
-        $gitRoot === null || $dryRun or $workspace->ensureClean($ignored);
+        $gitRoot === null || $dryRun || $requireClean === RequireClean::Off
+            or $workspace->ensureClean($ignored, $requireClean === RequireClean::Targets ? $targets : null);
         FS::mkdir((string) $runDir);
         $workspace->loadOriginals();
 
@@ -62,16 +73,15 @@ final class Workspace
     /**
      * Brings a resumed run's git tree back to the commit of its last saved step. Only commits of
      * opmin made after it are dropped (a crash between a commit and the save of the state); anything
-     * else that moved HEAD stops the resume.
+     * else that moved HEAD stops the resume. Only the files of the dropped commits are restored:
+     * other changes in the tree, staged or not, stay.
      *
-     * @param list<non-empty-string> $files Target files of the run: their changes are expected.
-     * @param list<non-empty-string> $ignored Relative paths whose changes do not count.
-     * @throws \RuntimeException When HEAD moved otherwise or other files are changed.
+     * @throws \RuntimeException When HEAD moved otherwise.
      */
-    public static function rewind(Project $project, string $head, array $files, array $ignored): void
+    public static function rewind(Project $project, string $head): void
     {
-        $git = static function (array $args) use ($project): Process {
-            $process = new Process(['git', ...$args], (string) $project->root);
+        $git = static function (array $args, ?string $input = null) use ($project): Process {
+            $process = new Process(['git', ...$args], (string) $project->root, null, $input);
             $process->run();
 
             return $process;
@@ -87,25 +97,14 @@ final class Workspace
             \str_starts_with($subject, 'opmin: ') or throw new \RuntimeException($moved);
         }
 
-        $others = [];
-        foreach (\explode("\n", \rtrim($git(['status', '--porcelain', '--untracked-files=all', '--', '.'])->getOutput())) as $line) {
-            $path = \trim(\substr($line, 3), '"');
-            if ($line === '' || \in_array($path, $files, true)) {
-                continue;
-            }
-
-            foreach ($ignored as $skip) {
-                if ($path === $skip || \str_starts_with($path, \rtrim($skip, '/') . '/')) {
-                    continue 2;
-                }
-            }
-
-            $others[] = $path;
+        # Not `reset --hard`: it would also throw away the user's changes in files opmin never touched.
+        $paths = $git(['diff', '--name-only', '-z', '--relative', $head, $current])->getOutput();
+        $steps = [['reset', '--soft', '--quiet', $head]];
+        $paths === '' or $steps[] = ['restore', "--source={$head}", '--staged', '--worktree', '--pathspec-from-file=-', '--pathspec-file-nul'];
+        foreach ($steps as $args) {
+            $process = $git($args, $args[0] === 'restore' ? $paths : null);
+            $process->isSuccessful() or throw new \RuntimeException("git {$args[0]} failed: " . \trim($process->getErrorOutput()));
         }
-
-        $others === [] or throw new \RuntimeException("Other files are changed, the run cannot be rewound to {$head}:\n" . \implode("\n", \array_slice($others, 0, 10)));
-        $reset = $git(['reset', '--hard', '--quiet', $head]);
-        $reset->isSuccessful() or throw new \RuntimeException('git reset failed: ' . \trim($reset->getErrorOutput()));
     }
 
     public function git(): bool
@@ -247,9 +246,11 @@ final class Workspace
 
     /**
      * @param list<non-empty-string> $ignored
+     * @param list<non-empty-string>|null $only The relative paths to check; null — the whole tree.
      */
-    private function ensureClean(array $ignored): void
+    private function ensureClean(array $ignored, ?array $only): void
     {
+        $only === null or $only = \array_fill_keys($only, true);
         $status = $this->runGit(['status', '--porcelain', '--untracked-files=all', '--', '.']);
         $prefix = $this->gitRoot === null ? '' : (string) $this->project->root->tryRelative($this->gitRoot);
         $prefix = $prefix === '' || $prefix === '.' ? '' : \rtrim(\str_replace('\\', '/', $prefix), '/') . '/';
@@ -263,6 +264,10 @@ final class Workspace
             \str_contains($path, ' -> ') and $path = \substr($path, (int) \strpos($path, ' -> ') + 4);
             $path = \trim($path, '"');
             $relative = \str_starts_with($path, $prefix) ? \substr($path, \strlen($prefix)) : $path;
+            if ($only !== null && !isset($only[$relative])) {
+                continue;
+            }
+
             foreach ($ignored as $skip) {
                 if ($relative === $skip || \str_starts_with($relative, \rtrim($skip, '/') . '/')) {
                     continue 2;
@@ -273,8 +278,10 @@ final class Workspace
         }
 
         $dirty === [] or throw new \RuntimeException(
-            "The git working tree is not clean: commit or stash first (every accepted step becomes a commit).\n"
-            . \implode("\n", \array_slice($dirty, 0, 10)),
+            ($only === null
+                ? 'The git working tree is not clean: commit or stash first (every accepted step becomes a commit).'
+                : 'Files of the run have uncommitted changes: commit or stash them first (every accepted step becomes a commit of its files).')
+            . "\n" . \implode("\n", \array_slice($dirty, 0, 10)),
         );
     }
 

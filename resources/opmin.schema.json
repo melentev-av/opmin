@@ -461,6 +461,21 @@
                 }
             }
         },
+        "git": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "require_clean": {
+                    "description": "targets — the files the run may change must be clean; all — the whole tree; off — no check",
+                    "enum": [
+                        "targets",
+                        "all",
+                        "off"
+                    ],
+                    "default": "targets"
+                }
+            }
+        },
         "cache": {
             "type": "object",
             "additionalProperties": false,

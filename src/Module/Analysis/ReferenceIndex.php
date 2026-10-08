@@ -194,10 +194,13 @@ final class ReferenceIndex
         }
 
         $references = (new ReferenceCollector())->collect($stmts);
-        if ($path !== null) {
+        # A name that is not UTF-8 (Latin-1 bytes are valid in PHP names) cannot be JSON: such a file is
+        # simply not cached — substituting the bytes would lose a reference.
+        $json = $path === null ? false : \json_encode($references->toArray(), \JSON_UNESCAPED_SLASHES);
+        if ($path !== null && $json !== false) {
             FS::mkdir((string) $path->parent());
             $tmp = (string) $path . '.' . \bin2hex(\random_bytes(4)) . '.tmp';
-            \file_put_contents($tmp, \json_encode($references->toArray(), \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES));
+            \file_put_contents($tmp, $json);
             \rename($tmp, (string) $path);
         }
 

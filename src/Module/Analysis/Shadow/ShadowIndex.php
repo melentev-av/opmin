@@ -200,12 +200,15 @@ final class ShadowIndex
      */
     private static function writeCache(Path $file, array $files): void
     {
+        # A name or a path that is not UTF-8 cannot be JSON: then the project is not cached.
+        $json = \json_encode(['format' => self::FORMAT . ':' . Info::version(), 'files' => $files], \JSON_UNESCAPED_SLASHES);
+        if ($json === false) {
+            return;
+        }
+
         FS::mkdir((string) $file->parent());
         $tmp = (string) $file . '.' . \bin2hex(\random_bytes(4)) . '.tmp';
-        \file_put_contents($tmp, \json_encode(
-            ['format' => self::FORMAT . ':' . Info::version(), 'files' => $files],
-            \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES,
-        ));
+        \file_put_contents($tmp, $json);
         \rename($tmp, (string) $file);
     }
 

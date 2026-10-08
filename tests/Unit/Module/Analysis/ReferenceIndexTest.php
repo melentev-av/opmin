@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Opmin\Tests\Unit\Module\Analysis;
 
+use Internal\Path;
 use Opmin\Module\Analysis\FileReferences;
 use Opmin\Module\Analysis\Flag;
 use Opmin\Module\Analysis\ReferenceCollector;
@@ -114,6 +115,22 @@ final class ReferenceIndexTest
 
         Assert::same($index->flagsFor('App\Svc::run', UnitKind::Method), [Flag::CalledDynamically]);
         Assert::same($index->flagsFor('App\Other::run', UnitKind::Method), []);
+    }
+
+    public function aFileWithNonUtf8StringsIsIndexedWithoutTheCache(): void
+    {
+        $cache = (string) \realpath(\sys_get_temp_dir()) . '/opmin-refs-' . \bin2hex(\random_bytes(4));
+        # A Latin-1 byte is a valid part of a PHP name, but not UTF-8.
+        $code = "<?php call_user_func(\"App\\\\caf\xE9\"); \$bytes = \"\xFF\xFE\";";
+
+        $first = new ReferenceIndex(Path::create($cache));
+        $first->add('legacy.php', $code);
+        $second = new ReferenceIndex(Path::create($cache));
+        $second->add('legacy.php', $code);
+
+        Assert::same($first->flagsFor("App\\caf\xE9", UnitKind::Function), [Flag::CalledDynamically]);
+        Assert::same($second->flagsFor("App\\caf\xE9", UnitKind::Function), [Flag::CalledDynamically]);
+        \exec('rm -rf ' . \escapeshellarg($cache));
     }
 
     public function unparsableFileIsSkipped(): void

@@ -18,16 +18,23 @@ use Opmin\Module\Common\FileSystem\FS;
 final class Skill
 {
     public const NAME = 'opcode-minimize';
-    private const SOURCE = Info::ROOT_DIR . '/resources/skills/' . self::NAME . '/SKILL.md';
+    private const SOURCE_DIR = Info::ROOT_DIR . '/resources/skills/' . self::NAME;
+
+    /**
+     * Files of the skill: `SKILL.md` and the reference it points to.
+     */
+    private const FILES = ['SKILL.md', 'PATTERNS.md'];
+
     private const VERSION_MARK = '/<!-- opmin-skill-version: (\S+) -->/';
 
     /**
-     * SKILL.md for the running opmin.
+     * A file of the skill for the running opmin.
      */
-    public static function render(): string
+    public static function render(string $file = 'SKILL.md'): string
     {
-        $source = @\file_get_contents(self::SOURCE);
-        $source === false and throw new \RuntimeException('The skill is missing in this build of opmin: ' . self::SOURCE);
+        $path = self::SOURCE_DIR . '/' . $file;
+        $source = @\file_get_contents($path);
+        $source === false and throw new \RuntimeException('The skill is missing in this build of opmin: ' . $path);
 
         return \str_replace('{{version}}', Info::version(), $source);
     }
@@ -75,9 +82,10 @@ final class Skill
     {
         $dir = self::dir($skillsDir);
         FS::mkdir((string) $dir);
-        $file = $dir->join('SKILL.md');
-        \file_put_contents((string) $file, self::render());
+        foreach (self::FILES as $file) {
+            \file_put_contents((string) $dir->join($file), self::render($file));
+        }
 
-        return $file;
+        return $dir->join('SKILL.md');
     }
 }

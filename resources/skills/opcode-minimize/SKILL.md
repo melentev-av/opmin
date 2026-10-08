@@ -1,6 +1,6 @@
 ---
 name: opcode-minimize
-description: Rewrite PHP functions so they compile to fewer opcodes without changing behavior, one function at a time, with opmin counting and verifying every candidate. Use when the user asks to minimize or reduce PHP opcodes, to run the LLM stage of opmin, or to micro-optimize PHP functions with opmin.
+description: Minimize PHP opcodes with opmin — rewrite functions one at a time so they compile to fewer opcodes without changing behavior, with opmin counting and verifying every candidate. Use when the user asks to minimize PHP opcodes, to run the LLM stage of opmin, or to micro-optimize PHP functions with opmin.
 ---
 
 <!-- opmin-skill-version: {{version}} -->
@@ -15,10 +15,13 @@ did not report.
 ## 0. Before you start
 
 1. `opmin --version` must print `{{version}}` — the version this skill is written for. If it differs,
-   run `opmin skill:update` (add `--global` if the skill is installed in `~/.claude/skills`) and
-   reload the skill.
-2. The git working tree must be clean: every accepted candidate becomes a commit. If it is not,
-   ask the user to commit or stash; do not do it yourself.
+   or the version here is still a placeholder in double braces (a skill installer copied this file
+   from the opmin package as is), run `opmin skill:update` (add `--global` if the skill is installed
+   in `~/.claude/skills`) and reload the skill.
+2. Work on a branch of this run with a clean git working tree: every accepted candidate becomes a
+   commit. On the default branch or a branch shared with other work, create one for the run
+   (`git switch -c opmin/<short-name>`). If the tree is dirty, ask the user to commit or stash and
+   wait for them.
 3. Stage A (`opmin optimize`) should run first: it does the mechanical rewrites (fully qualified
    calls, repeated reads) safely and in bulk. This stage is for what rules cannot do.
 
@@ -41,16 +44,20 @@ functions that are never changed (`eval`, `include`, line numbers) are not targe
    ```
 
    It shows the source, the optimized opcode listing and histogram, the dynamic constructs with
-   the rules they impose (**follow them literally**), the acceptance thresholds and the attempts
+   the rules they impose (**follow them literally**), the acceptance rules and the attempts
    rejected so far with their reasons — never repeat a rejected idea.
 
-2. Write the new version of **only this function** to `<run>/candidate.php`: the whole function
+2. Pick the rewrite. Before your first candidate, read [PATTERNS.md](PATTERNS.md) next to this
+   file: the measured rewrites with the condition each one needs, the ones that usually save
+   nothing, and what the opcodes in the listing point to.
+
+3. Write the new version of **only this function** to `<run>/candidate.php`: the whole function
    from its first line (attributes, modifiers, `function`, signature) to its closing brace, with
    the indentation of the file. Include the docblock only when it must change; without one the
    original docblock stays. Nothing outside the function can change: no `use function` imports, no
    new constants, methods or properties — `apply-candidate` refuses such a candidate.
 
-3. Apply it:
+4. Apply it:
 
    ```bash
    opmin apply-candidate 'App\Service\Pricing::total' <run>/candidate.php --format=json
@@ -77,62 +84,16 @@ was rejected and why.
 
 ## Hard rules
 
-- Do not change the signature: parameter names, types, defaults, by-reference markers, the return
-  type, visibility, `static`, attributes.
-- Keep every side effect, in the same order and number: calls that do I/O, write properties or
-  globals, throw, print, log, read time, randomness or the environment.
-- Keep the order in which arguments and operands are evaluated when any of them has an effect.
-- Keep the exceptions: which, when, with which message. Do not add or remove `try`/`catch`.
-- Keep the warnings and deprecations: `$a['k'] ?? null` instead of `$a['k']` removes an
-  "Undefined array key" warning, and frameworks turn warnings into exceptions.
-- Do not remove type checks the behavior depends on (`is_*`, `instanceof`, casts), even when the
-  phpdoc says the type is guaranteed: the caller may pass anything.
-- No nested ternaries, assignments in conditions, `goto` (see the context for the list in force).
-  Cyclomatic complexity and nesting must not grow.
-- The gain must be worth the diff: at least `min_gain` opcodes and `min_gain_per_line` opcodes per
-  changed line. Rewriting a whole function for one opcode is rejected.
-
-## Patterns
-
-Measured with `bin/bench --only=patterns` on PHP 8.1–8.5 (`ops_opt` of a method body; a range is
-8.1–8.3 / 8.4–8.5). Each is a hypothesis — `apply-candidate` counts the real effect in place. Check the
-semantic condition of each one before you use it.
-
-| Pattern | Opcodes | Condition |
-|---|---|---|
-| Fully qualified global function in a namespace: `strlen()` → `\strlen()` | −2 … −7 | The namespace does not define a function of that name. Stage A usually did this already |
-| `for ($i = 0; $i < count($a); $i++)` over `$a[$i]` → `foreach ($a as $x)` | −3 | `$a` is a list (keys 0…n−1), the loop does not change `$a` or `$i` |
-| `sprintf('%s-%s', $a, $b)` → `$a . '-' . $b` | −3 / −1 | Only `%s` with string or int operands (float formatting differs) |
-| `if ($c) { return true; } return false;` → `return $c;` | −2 | `$c` is already a bool (otherwise `return (bool) $c`, which may not save anything) |
-| `array_push($a, $v)` → `$a[] = $v` | −2 | One value pushed, the result of `array_push` is not used |
-| `substr($s, 0, 3) === 'abc'` → `str_starts_with($s, 'abc')` | −2 | PHP 8.0+, `$s` is a string |
-| `isset($a['k']) ? $a['k'] : $d` → `$a['k'] ?? $d` | −1 | Always the same |
-| `"a{$v}b"` (interpolation) → `'a' . $v . 'b'` | −1 | Always the same; the opposite direction costs +1 |
-| `strpos($s, $n) !== false` → `str_contains($s, $n)` | −1 | PHP 8.0+, string operands |
-| `count($a) === 0` → `$a === []` | −1 | `$a` is always an array, never a `Countable` object |
-| `strlen($s) === 0` → `$s === ''` | −1 | `$s` is always a string |
-| `$v = $v + 1` → `++$v` | −1 | `$v` is an int or a float: `++` on a string is alphanumeric |
-| A temporary used once, holding a call result: `$t = trim($v); return strtolower($t);` → nested call | −1 / 0 | The temporary is not named in `compact()`, `get_defined_vars()`, etc. (see the restrictions) |
-
-Usually **no gain** — do not rewrite for these alone:
-
-- `fn` → `static fn`, `==` → `===`, `is_null($v)` → `$v === null`, `intval($v)` → `(int) $v`,
-  `array_key_exists()` → `isset()` (fully qualified, both compile to one opcode);
-- early return instead of `if/else`, removing `else` after `return`, `if/return` → ternary,
-  nested `if` → `&&`;
-- a temporary holding an expression (not a call), a constant expression in a variable (the
-  optimizer folds both);
-- moving a loop invariant out of a loop: the static count stays (fewer opcodes are *executed*,
-  but opmin counts compiled opcodes, so the candidate is rejected unless something else drops);
-- `in_array($v, ['a', 'b'], true)` → `$v === 'a' || $v === 'b'` costs +2.
-
-## Reading the listing
-
-- `INIT_NS_FCALL_BY_NAME` + `JMP_FRAMELESS` + a second call path: an unqualified function in a
-  namespace — the compiler does not know which function runs. A leading `\` removes both paths.
-- `INIT_FCALL` / `DO_ICALL` vs a dedicated opcode (`STRLEN`, `COUNT`, `TYPE_CHECK`,
-  `ARRAY_KEY_EXISTS`, `IN_ARRAY`, `FRAMELESS_ICALL_*` on 8.4+): dedicated ones are cheaper.
-- `QM_ASSIGN` to a `CV` that is read once: a temporary the optimizer kept.
-- `ROPE_INIT` / `ROPE_ADD` / `ROPE_END`: string interpolation.
-- `JMPZ`/`JMPNZ`/`JMP` chains: conditions; fewer branches usually mean fewer jumps.
-- `VERIFY_RETURN_TYPE`, `RECV`: from the signature — never yours to change.
+- The signature stays identical: parameter names, types, defaults, by-reference markers, the
+  return type, visibility, `static`, attributes.
+- Side effects keep their order and count: calls that do I/O, write properties or globals, throw,
+  print, log, read time, randomness or the environment.
+- Arguments and operands keep their evaluation order whenever any of them has an effect.
+- Exceptions stay the same — which, when, with which message — and so do the `try`/`catch` blocks.
+- Warnings and deprecations stay: `$a['k'] ?? null` in place of `$a['k']` silences an "Undefined
+  array key" warning, and frameworks turn warnings into exceptions.
+- Type checks the behavior depends on stay (`is_*`, `instanceof`, casts), even when the phpdoc
+  says the type is guaranteed: the caller may pass anything.
+- The candidate meets the **Acceptance rules** of `llm:context` — the minimum gain in total and per
+  changed line, the allowed growth of complexity and nesting, the forbidden constructs. They are
+  the ones in force for this project; a whole-function rewrite for one opcode falls below them.

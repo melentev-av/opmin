@@ -18,6 +18,7 @@
         "resources/release-keys/primary.pub.pem",
         "resources/release-keys/reserve.pub.pem",
         "resources/skills/opcode-minimize/SKILL.md",
+        "resources/skills/opcode-minimize/PATTERNS.md",
         "bin/opmin",
         "LICENSE.md",
         "NOTICE.md",

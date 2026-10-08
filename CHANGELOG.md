@@ -1,5 +1,87 @@
 # Changelog
 
+## [0.2.0](https://github.com/melentev-av/opmin/compare/v0.1.0...v0.2.0) (2026-10-08)
+
+
+### Features
+
+* **analysis:** flag dynamic constructs per function and write the flags to count ([81aa32e](https://github.com/melentev-av/opmin/commit/81aa32e4bdd3816000fa6dbdf7e7e00707eb59b8))
+* **analysis:** index the functions and constants that shadow global ones ([f72a5a0](https://github.com/melentev-av/opmin/commit/f72a5a0aaa25548ac5858fa2c2821c9b2053f8f0))
+* **baseline:** write opmin.baseline.json with the opcode counts ([2455071](https://github.com/melentev-av/opmin/commit/2455071763dc98d27466e8f12d6734cc5cebd1aa))
+* **check:** fail ci when opcodes grow compared to the baseline ([f5d5b43](https://github.com/melentev-av/opmin/commit/f5d5b438c4e654c35da91c9988bc7d58c83db374))
+* **count:** count opcodes per function under php.binary, compare reports with diff ([cf32dbb](https://github.com/melentev-av/opmin/commit/cf32dbb7cb395578ede6c87e1aa7c262d9cb80f4))
+* **docker:** image with the static binary and the php of production ([2756494](https://github.com/melentev-av/opmin/commit/275649406d7d97fa45aa172d035226acc37aac90))
+* **doctor:** check php.binary, opcache, the harness, tests and phpstan ([3e66b00](https://github.com/melentev-av/opmin/commit/3e66b00a8dbfcc4ed4f182ede22e1e9ab1c9a5b7))
+* **harness:** add the PHP 8.1 worker that calls one version of a function ([7ce4e06](https://github.com/melentev-av/opmin/commit/7ce4e06cc3e4ac1dbedd3276f2965a0b5eaad5b5))
+* **ignore:** add the Opmin\Ignore attribute class and plain comment marks ([d51589b](https://github.com/melentev-av/opmin/commit/d51589b905f8d818fa0874672a8e4a45127baea1))
+* **init:** detect php target, paths, test runner, formatter and phpstan ([0efb58e](https://github.com/melentev-av/opmin/commit/0efb58edc33241e8c7c3314ccebc4c3e63e9cd4d))
+* **llm:** add apply-candidate and the LLM session commands ([3ed9f56](https://github.com/melentev-av/opmin/commit/3ed9f560461a29ff3c4c098e66af2557881e50f2))
+* opcode counting, verification, optimization, ci guard and delivery (m1–m7) ([543506a](https://github.com/melentev-av/opmin/commit/543506a1b2c6e4a0d9f75d54747536816eb4b958))
+* **optimize:** add --review with declined changes in opmin.baseline.yaml ([2ac89f7](https://github.com/melentev-av/opmin/commit/2ac89f7ac2ae212f8c2e524dfaf967ccd420ecaf))
+* **optimize:** allow a dirty git tree with --dry-run ([abcfb1e](https://github.com/melentev-av/opmin/commit/abcfb1eb6daef445f09a819a5b51bbc959b8f344))
+* **optimize:** apply Rector rules one by one with counting and verification ([9267772](https://github.com/melentev-av/opmin/commit/9267772c01ae9b820942160c6e53a7188b6c3cb8))
+* **optimize:** resume interrupted runs and stop cleanly on signals ([c7d81ad](https://github.com/melentev-av/opmin/commit/c7d81ad225c6cf5935f046d8cae75f76b22325b8))
+* **package:** optimize a git package by url in docker ([08ba2b1](https://github.com/melentev-av/opmin/commit/08ba2b10c173b862b29f79c6a85d3fc1fd966de6))
+* **phar:** composer package of the phar and a test in a project with other rector ([8c51eb7](https://github.com/melentev-av/opmin/commit/8c51eb777f009082fa1801e956cbba14af6ad7bf))
+* **rector:** add ExtractRepeatedArrayDimFetchRector and HoistLoopInvariantCountRector ([fdbe92e](https://github.com/melentev-av/opmin/commit/fdbe92e39f230e5912bd44d8e347c73e7fbbab04))
+* **rector:** add ExtractRepeatedPropertyFetchRector ([98aa2d6](https://github.com/melentev-av/opmin/commit/98aa2d67d4b35981254a19881659793fc0bade11))
+* **rector:** add FullyQualifyGlobalCallsRector ([0c3cb09](https://github.com/melentev-av/opmin/commit/0c3cb0997c220eed842a87d9c26f415ec74eadfd))
+* **release:** pin the opmin version per project and hand over to a local opmin ([db8e6af](https://github.com/melentev-av/opmin/commit/db8e6af99ab650037e2f3acafcb6a573467267c4))
+* **report:** write report.md and a versioned report.json for every run ([919a120](https://github.com/melentev-av/opmin/commit/919a1206bc2b9d9573c2d50ce2006c92c7bb04e9))
+* **self-update:** signed releases, self-update and install.sh ([def0f09](https://github.com/melentev-av/opmin/commit/def0f09cc856eae4eedcacf952a19e658e6424e0))
+* **skill:** ship the Claude Code skill opcode-minimize ([1e52b7d](https://github.com/melentev-av/opmin/commit/1e52b7d463e71d4ac05bfa6bc9304c8c9170c1d7))
+* **tests:** add test runner adapters, the static check and counterexample tests ([4f36568](https://github.com/melentev-av/opmin/commit/4f365689a99ec7ce6073db54e91eff7727a6dc9e))
+* **tests:** check coverage maps live, make Pest filter by its descriptions ([cf940dd](https://github.com/melentev-av/opmin/commit/cf940dd5f2abec00f3c569492b8ad6521c1fc922))
+* **verification:** compare call results and keep harness workers alive ([6842f1b](https://github.com/melentev-av/opmin/commit/6842f1b21a159df0fbd48efbcc65c1c6b528e940))
+* **verification:** drive property-testing-core through a thin runner adapter ([375f12e](https://github.com/melentev-av/opmin/commit/375f12e4c535161c27a0cdbbf52794ada387814c))
+* **verification:** generate inputs, measure coverage and diff-test a function ([cf986cd](https://github.com/melentev-av/opmin/commit/cf986cdb6d99b1a2536359747fa523457e3f274e))
+* **verification:** leave branches PHPStan proves dead out of the coverage ([1aec0be](https://github.com/melentev-av/opmin/commit/1aec0be0bc7300258b313dca1cc8ead2e181a7d3))
+* **verifier:** roll back slower changes with --guard-perf ([66af8ce](https://github.com/melentev-av/opmin/commit/66af8cec15cb7f807472931fd387eb704ea74c46))
+* **verify:** verify a changed file on all three levels ([632643d](https://github.com/melentev-av/opmin/commit/632643db280255db166a0b6ab8345118cb101a2e))
+
+
+### Bug Fixes
+
+* **count:** sort php versions with a typed callback, psalm on php 8.3 rejected version_compare ([adc6f31](https://github.com/melentev-av/opmin/commit/adc6f318e91d6f64c1e89250c45b842c581199fd))
+* **harness:** extract the harness from the phar and the static binary ([a21a40a](https://github.com/melentev-av/opmin/commit/a21a40acb069ab6d48bf02332ce4047f7fa71341))
+* **harness:** keep fuzzed code from writing into the project ([f285ec0](https://github.com/melentev-av/opmin/commit/f285ec08fefff76623c19faf97d3a5649127d407))
+* **infection:** create the report directories before the first write ([bdbce89](https://github.com/melentev-av/opmin/commit/bdbce896748bb21ffa222fcd0edf59cea2979107))
+* **optimize:** describe a step of an executed-gain rule without a static gain ([fd9adba](https://github.com/melentev-av/opmin/commit/fd9adba7cf044e18fe103ce7e4dc1ccd771e0312))
+* **optimize:** give every Rector rule a cache of its own ([d975542](https://github.com/melentev-av/opmin/commit/d975542e9308680c90d03bd5056ae074643c8c2f))
+* **optimize:** replace files through a rename and report why a file is not counted ([1816ee1](https://github.com/melentev-av/opmin/commit/1816ee1ad0f7c063dacc169e1d3344f0a5212298))
+* **phar:** run rector and phpstan from the phar and the static binary ([0054cab](https://github.com/melentev-av/opmin/commit/0054cab232cc0ebc73df4edc604db3140caf833f))
+* **playground:** wait for Docker Desktop to see files rewritten just now ([f1400b8](https://github.com/melentev-av/opmin/commit/f1400b832f59c39a7f7edc9f0e3bd9c3dc1c7e10))
+* **rector:** let arithmetic between repeated reads count as pure ([6ca4d12](https://github.com/melentev-av/opmin/commit/6ca4d12dab720f92f98ebc72dbe4b49b1510ed57))
+* **release:** cache key of static-php-cli without commas ([eee39f3](https://github.com/melentev-av/opmin/commit/eee39f3dd478ca88c96db4dd755d189e9b73fe19))
+* **release:** no external php in the smoke tests of the macos intel binary ([724bb8d](https://github.com/melentev-av/opmin/commit/724bb8d47255fe50d3ea0a5a3204a0f0c6d5facf))
+* **release:** php 8.4 as php.binary of the macos smoke tests ([5c1d04b](https://github.com/melentev-av/opmin/commit/5c1d04b2af7e8ccd9c624216757687a0d77868cf))
+* **report:** show no coverage for functions the differential test did not run ([55cdc4c](https://github.com/melentev-av/opmin/commit/55cdc4c03cb88c4059f55f018e6a312b548ef733))
+* **tests:** run PHPStan as a bare PHAR in the dead-branch test ([d93cb41](https://github.com/melentev-av/opmin/commit/d93cb412386c9a0727b843307e9808e0e194a54e))
+* **verification:** repair bugs that mutation testing brought out ([444055c](https://github.com/melentev-av/opmin/commit/444055cd213fe8a918ab8436b97c3eba55c2165e))
+* **verify:** accept absolute paths outside the current directory ([968f618](https://github.com/melentev-av/opmin/commit/968f618f8d37910b2dc23541a7f441992baaa4bf))
+
+
+### Documentation
+
+* **readme:** ci guard with github actions and gitlab ci examples ([f2de34a](https://github.com/melentev-av/opmin/commit/f2de34ab796f9a45a36804114fc5362316611b16))
+* **readme:** describe the Rector stage of optimize ([c73c987](https://github.com/melentev-av/opmin/commit/c73c98793daa7b401c797e997f8287a8c72fd8dc))
+* **readme:** installation, quick start, git packages, verifying a release ([ace945a](https://github.com/melentev-av/opmin/commit/ace945acedab4d60c0f112889c292bb621bb8570))
+* **rector:** measure the standard Rector rules and keep only those that save opcodes ([52f7622](https://github.com/melentev-av/opmin/commit/52f7622119e90a344fc9b3f7ab9c96ba8563cded))
+* **testing:** describe the tests of the rules and of the optimize pipeline ([a67a1ea](https://github.com/melentev-av/opmin/commit/a67a1ea62869a0c21715c608ac672fc9e3e3800a))
+
+
+### Code Refactoring
+
+* **analysis:** recognize ignore marks on functions and classes in one place ([ed8776e](https://github.com/melentev-av/opmin/commit/ed8776edaa9123c5ded7bd12f7152d2ee5abe202))
+* **project:** resolve target paths and globs for every command ([8f9d517](https://github.com/melentev-av/opmin/commit/8f9d517b6db4069a1e162f63d1320da07edf2205))
+* **verification:** drop an always-true condition of the string shrinker ([0a1dec4](https://github.com/melentev-av/opmin/commit/0a1dec47cee537a7e92cfa448c1b1948103ba469))
+* **verification:** verify the files of one step together ([dd3fa0b](https://github.com/melentev-av/opmin/commit/dd3fa0b3c911934c64a33ecc69bc88fe28dbd0f3))
+
+
+### Continuous Integration
+
+* **release:** a feature bumps the minor version before 1.0.0 ([86b622f](https://github.com/melentev-av/opmin/commit/86b622f13c00321ce5ad0e6a125c68191f5f5a8d))
+
 ## 0.1.0 (2026-10-06)
 
 

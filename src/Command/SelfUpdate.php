@@ -79,16 +79,25 @@ final class SelfUpdate extends Base
             }
 
             $target = $installation->kind === Installation::BINARY ? Platform::current() : 'phar';
+            # Composed before the file is replaced: see below.
+            $done = \sprintf(
+                "\n [OK] opmin is updated: %s → %s (%s).\n\n Update the Claude Code skill as well when you use it: opmin skill:update [--global]\n\n",
+                $current,
+                $release->version,
+                (string) $installation->file,
+            );
             (new Updater($source, Signature::bundled(), $target))->update($installation, $release);
         } catch (ReleaseException $e) {
             $style->error($e->getMessage());
             return Command::FAILURE;
         }
 
-        $style->success(\sprintf('opmin is updated: %s → %s (%s).', $current, $release->version, (string) $installation->file));
-        $style->text('Update the Claude Code skill as well when you use it: opmin skill:update [--global]');
-
-        return Command::SUCCESS;
+        # The running opmin loads its classes lazily from its own file, which is the new release now: any
+        # class not loaded yet would be read from the wrong archive. So nothing is loaded any more — the
+        # message goes straight to stdout and the process ends here.
+        \fwrite(\STDOUT, $done);
+        /** @psalm-suppress ForbiddenCode Returning to the console application would load classes from the replaced file. */
+        exit(Command::SUCCESS);
     }
 
     protected function getConfigFile(InputInterface $input): ?string

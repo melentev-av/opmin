@@ -178,7 +178,9 @@ opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
   `FullyQualifyGlobalCallsRector` (`strlen()` → `\strlen()`, only when no namespaced function or test mock —
   php-mock, ClockMock — can shadow it), `ExtractRepeatedPropertyFetchRector` (readonly properties across calls,
   mutable ones while no user code runs, no `__get`/hooks), `ExtractRepeatedArrayDimFetchRector` (only keys proven to
-  exist), `HoistLoopInvariantCountRector` (`\count()` of an unchanged local array out of a `for` condition).
+  exist), `HoistLoopInvariantCountRector` (`\count()` of an unchanged local array out of a `for` condition). For the
+  two extraction rules, a call of a known pure built-in function (`\explode()`, `\strlen()`, `\abs()`…) with
+  arguments of scalar native types runs no user code (`Opmin\Rector\Support\PureFunctionCall`).
 - Code can be excluded from every rule or from some: see [Excluding code](#excluding-code).
 - Which standard Rector rules save opcodes: [docs/standard-rules.md](docs/standard-rules.md).
 

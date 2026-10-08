@@ -6,6 +6,7 @@ namespace Opmin\Rector\Rule;
 
 use Opmin\Rector\Support\ArgumentPassing;
 use Opmin\Rector\Support\FunctionBody;
+use Opmin\Rector\Support\PureFunctionCall;
 use Opmin\Rector\Support\ReadEvent;
 use Opmin\Rector\Support\ReadEventCollector;
 use Opmin\Rector\Support\ReadSpec;
@@ -41,6 +42,8 @@ abstract class AbstractExtractRepeatedReadRector extends AbstractRector implemen
      * costs as much as one read, so 2 reads save 1 opcode, 3 reads — 2.
      */
     public const int DEFAULT_MIN_READS = 2;
+
+    private const string EXTRACTED_FROM = 'opmin_extracted_from';
 
     /** @var positive-int */
     protected int $minReads = self::DEFAULT_MIN_READS;
@@ -159,6 +162,11 @@ abstract class AbstractExtractRepeatedReadRector extends AbstractRector implemen
 
     protected function nativeType(Expr $expr): ?Type
     {
+        # A variable put in by an earlier extraction has no scope yet: it holds the read it replaced.
+        /** @var mixed $read */
+        $read = $expr->getAttribute(self::EXTRACTED_FROM);
+        $read instanceof Expr and $expr = $read;
+
         return self::scope($expr)?->getNativeType($expr);
     }
 
@@ -202,8 +210,9 @@ abstract class AbstractExtractRepeatedReadRector extends AbstractRector implemen
                 $replace[\spl_object_id($read)] = true;
             }
 
-            $this->traverseNodesWithCallable(\array_slice($stmts, $index), static fn(Node $n): ?Node => isset($replace[\spl_object_id($n)]) ? new Expr\Variable($name) : null);
-            $assign = new Stmt\Expression(new Expr\Assign(new Expr\Variable($name), $first));
+            $attributes = [self::EXTRACTED_FROM => $first];
+            $this->traverseNodesWithCallable(\array_slice($stmts, $index), static fn(Node $n): ?Node => isset($replace[\spl_object_id($n)]) ? new Expr\Variable($name, $attributes) : null);
+            $assign = new Stmt\Expression(new Expr\Assign(new Expr\Variable($name, $attributes), $first));
             \array_splice($stmts, $index, 0, [$assign]);
             $changed = true;
         }
@@ -230,6 +239,7 @@ abstract class AbstractExtractRepeatedReadRector extends AbstractRector implemen
             fn(Expr $e): bool => $this->neverObject($e),
             fn(Expr\PropertyFetch $e): bool => $this->plainProperty($e),
             fn(Expr\CallLike $call, int $position): ?bool => (new ArgumentPassing($this->reflectionResolver))->byReference($call, $position),
+            fn(Expr\FuncCall $call): bool => (new PureFunctionCall($this->reflectionResolver, $this->nativeType(...)))->pure($call),
         );
         $events = $collector->collect($stmts);
         $tried = [];

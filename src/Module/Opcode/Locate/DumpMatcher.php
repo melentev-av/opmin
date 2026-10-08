@@ -14,7 +14,8 @@ use Opmin\Module\Opcode\FunctionCount;
  *
  * Both lists are in dump order, so they are walked side by side, and every pair is checked: the
  * kind (closure or named), the name of a named unit and the last line. Any disagreement is an
- * error — never a guess: a count attributed to the wrong function is worse than no count.
+ * error — never a guess: a count attributed to the wrong function is worse than no count. The only
+ * blocks without a unit are exact copies of a closure (see {@see self::isCopy()}).
  *
  * @internal
  */
@@ -70,6 +71,31 @@ final class DumpMatcher
     }
 
     /**
+     * PHP 8.4+ compiles an unqualified call of a frameless function (`trim`, `str_replace`…) in a
+     * namespace twice — the frameless call and the fallback to a namespaced function — so a closure
+     * among its arguments is dumped once more, opcode for opcode. Such a copy is the same function of
+     * the source: it is not counted again.
+     *
+     * @param list<DumpBlock> $paired Closure blocks already attributed.
+     */
+    private static function isCopy(DumpBlock $block, array $paired): bool
+    {
+        if (!$block->isClosure()) {
+            return false;
+        }
+
+        foreach ($paired as $original) {
+            if ($original->name === $block->name && $original->lineStart === $block->lineStart
+                && $original->lineEnd === $block->lineEnd && $original->listing === $block->listing
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * @param list<CodeUnit> $units
      * @param list<DumpBlock> $blocks One phase.
      * @return array<non-empty-string, array{CodeUnit, DumpBlock}> By unit key, without abstract units.
@@ -77,9 +103,15 @@ final class DumpMatcher
     private function pair(array $units, array $blocks): array
     {
         $pairs = [];
+        $paired = [];
         $i = 0;
         foreach ($units as $unit) {
             $block = $blocks[$i] ?? null;
+            # A copy is skipped only when it is not the unit expected here (two equal closures on one line).
+            while ($block !== null && !$this->matches($unit, $block) && self::isCopy($block, $paired)) {
+                $block = $blocks[++$i] ?? null;
+            }
+
             if ($unit->abstract) {
                 # PHP 8.1 dumps abstract methods, newer versions do not.
                 $block !== null && $this->matches($unit, $block) and ++$i;
@@ -102,6 +134,11 @@ final class DumpMatcher
                 $unit->endLine,
             ));
             $pairs[$unit->key] = [$unit, $block];
+            $block->isClosure() and $paired[] = $block;
+            ++$i;
+        }
+
+        while (isset($blocks[$i]) && self::isCopy($blocks[$i], $paired)) {
             ++$i;
         }
 

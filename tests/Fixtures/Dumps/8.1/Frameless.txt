@@ -1,0 +1,377 @@
+
+$_main:
+     ; (lines=2, args=0, vars=0, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Frameless.php:1-44
+     ; return  [] RANGE[0..0]
+0000 DECLARE_CLASS string("fixture\count\frameless")
+0001 RETURN int(1)
+
+Fixture\Count\Frameless::camel:
+     ; (lines=20, args=1, vars=1, tmps=5)
+     ; (before optimizer)
+     ; /fixtures/Frameless.php:13-20
+     ; return  [] RANGE[0..0]
+0000 CV0($s) = RECV 1
+0001 INIT_NS_FCALL_BY_NAME 1 string("Fixture\Count\trim")
+0002 INIT_NS_FCALL_BY_NAME 2 string("Fixture\Count\implode")
+0003 SEND_VAL_EX string("") 1
+0004 INIT_NS_FCALL_BY_NAME 2 string("Fixture\Count\array_map")
+0005 T1 = DECLARE_LAMBDA_FUNCTION 0
+0006 SEND_VAL_EX T1 1
+0007 INIT_NS_FCALL_BY_NAME 1 string("Fixture\Count\str_split")
+0008 SEND_VAR_EX CV0($s) 1
+0009 V2 = DO_FCALL_BY_NAME
+0010 SEND_VAR_NO_REF_EX V2 2
+0011 V3 = DO_FCALL_BY_NAME
+0012 SEND_VAR_NO_REF_EX V3 2
+0013 V4 = DO_FCALL_BY_NAME
+0014 SEND_VAR_NO_REF_EX V4 1
+0015 V5 = DO_FCALL_BY_NAME
+0016 VERIFY_RETURN_TYPE V5
+0017 RETURN V5
+0018 VERIFY_RETURN_TYPE
+0019 RETURN null
+LIVE RANGES:
+     5: 0016 - 0017 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=8, args=1, vars=2, tmps=2)
+     ; (before optimizer)
+     ; /fixtures/Frameless.php:15-19
+     ; return  [] RANGE[0..0]
+0000 CV0($c) = RECV 1
+0001 BIND_STATIC (ref) CV1($i)
+0002 T2 = PRE_INC CV1($i)
+0003 T3 = CONCAT T2 CV0($c)
+0004 VERIFY_RETURN_TYPE T3
+0005 RETURN T3
+0006 VERIFY_RETURN_TYPE
+0007 RETURN null
+LIVE RANGES:
+     3: 0004 - 0005 (tmp/var)
+
+Fixture\Count\Frameless::twoOnOneLine:
+     ; (lines=27, args=1, vars=1, tmps=8)
+     ; (before optimizer)
+     ; /fixtures/Frameless.php:22-25
+     ; return  [] RANGE[0..0]
+0000 CV0($a) = RECV 1
+0001 INIT_NS_FCALL_BY_NAME 1 string("Fixture\Count\trim")
+0002 INIT_NS_FCALL_BY_NAME 2 string("Fixture\Count\implode")
+0003 SEND_VAL_EX string(",") 1
+0004 INIT_NS_FCALL_BY_NAME 2 string("Fixture\Count\array_map")
+0005 T1 = DECLARE_LAMBDA_FUNCTION 0
+0006 SEND_VAL_EX T1 1
+0007 SEND_VAR_EX CV0($a) 2
+0008 V2 = DO_FCALL_BY_NAME
+0009 SEND_VAR_NO_REF_EX V2 2
+0010 V3 = DO_FCALL_BY_NAME
+0011 INIT_NS_FCALL_BY_NAME 2 string("Fixture\Count\implode")
+0012 SEND_VAL_EX string(",") 1
+0013 INIT_NS_FCALL_BY_NAME 2 string("Fixture\Count\array_map")
+0014 T4 = DECLARE_LAMBDA_FUNCTION 1
+0015 SEND_VAL_EX T4 1
+0016 SEND_VAR_EX CV0($a) 2
+0017 V5 = DO_FCALL_BY_NAME
+0018 SEND_VAR_NO_REF_EX V5 2
+0019 V6 = DO_FCALL_BY_NAME
+0020 T7 = CONCAT V3 V6
+0021 SEND_VAL_EX T7 1
+0022 V8 = DO_FCALL_BY_NAME
+0023 VERIFY_RETURN_TYPE V8
+0024 RETURN V8
+0025 VERIFY_RETURN_TYPE
+0026 RETURN null
+LIVE RANGES:
+     3: 0011 - 0020 (tmp/var)
+     8: 0023 - 0024 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=3, args=1, vars=1, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Frameless.php:24-24
+     ; return  [] RANGE[0..0]
+0000 CV0($x) = RECV 1
+0001 RETURN CV0($x)
+0002 RETURN null
+
+Fixture\Count\{closure}:
+     ; (lines=3, args=1, vars=1, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Frameless.php:24-24
+     ; return  [] RANGE[0..0]
+0000 CV0($x) = RECV 1
+0001 RETURN CV0($x)
+0002 RETURN null
+
+Fixture\Count\Frameless::nested:
+     ; (lines=15, args=1, vars=1, tmps=4)
+     ; (before optimizer)
+     ; /fixtures/Frameless.php:27-32
+     ; return  [] RANGE[0..0]
+0000 CV0($a) = RECV 1
+0001 INIT_NS_FCALL_BY_NAME 1 string("Fixture\Count\trim")
+0002 INIT_NS_FCALL_BY_NAME 3 string("Fixture\Count\array_reduce")
+0003 SEND_VAR_EX CV0($a) 1
+0004 T1 = DECLARE_LAMBDA_FUNCTION 0
+0005 SEND_VAL_EX T1 2
+0006 SEND_VAL_EX string("") 3
+0007 V2 = DO_FCALL_BY_NAME
+0008 T3 = CAST (string) V2
+0009 SEND_VAL_EX T3 1
+0010 V4 = DO_FCALL_BY_NAME
+0011 VERIFY_RETURN_TYPE V4
+0012 RETURN V4
+0013 VERIFY_RETURN_TYPE
+0014 RETURN null
+LIVE RANGES:
+     4: 0011 - 0012 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=15, args=2, vars=2, tmps=5)
+     ; (before optimizer)
+     ; /fixtures/Frameless.php:29-31
+     ; return  [] RANGE[0..0]
+0000 CV0($carry) = RECV 1
+0001 CV1($x) = RECV 2
+0002 INIT_NS_FCALL_BY_NAME 2 string("Fixture\Count\implode")
+0003 SEND_VAL_EX string("") 1
+0004 INIT_NS_FCALL_BY_NAME 2 string("Fixture\Count\array_map")
+0005 T2 = DECLARE_LAMBDA_FUNCTION 0
+0006 SEND_VAL_EX T2 1
+0007 T3 = INIT_ARRAY 1 (packed) CV1($x) NEXT
+0008 SEND_VAL_EX T3 2
+0009 V4 = DO_FCALL_BY_NAME
+0010 SEND_VAR_NO_REF_EX V4 2
+0011 V5 = DO_FCALL_BY_NAME
+0012 T6 = CONCAT CV0($carry) V5
+0013 RETURN T6
+0014 RETURN null
+
+Fixture\Count\{closure}:
+     ; (lines=3, args=1, vars=1, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Frameless.php:30-30
+     ; return  [] RANGE[0..0]
+0000 CV0($y) = RECV 1
+0001 RETURN CV0($y)
+0002 RETURN null
+
+Fixture\Count\Frameless::qualified:
+     ; (lines=17, args=1, vars=1, tmps=4)
+     ; (before optimizer)
+     ; /fixtures/Frameless.php:34-37
+     ; return  [] RANGE[0..0]
+0000 CV0($a) = RECV 1
+0001 INIT_FCALL 1 96 string("trim")
+0002 INIT_FCALL 2 112 string("implode")
+0003 SEND_VAL string("") 1
+0004 INIT_FCALL 2 112 string("array_map")
+0005 T1 = DECLARE_LAMBDA_FUNCTION 0
+0006 SEND_VAL T1 1
+0007 SEND_VAR CV0($a) 2
+0008 V2 = DO_ICALL
+0009 SEND_VAR V2 2
+0010 V3 = DO_ICALL
+0011 SEND_VAR V3 1
+0012 V4 = DO_ICALL
+0013 VERIFY_RETURN_TYPE V4
+0014 RETURN V4
+0015 VERIFY_RETURN_TYPE
+0016 RETURN null
+LIVE RANGES:
+     4: 0013 - 0014 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=3, args=1, vars=1, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Frameless.php:36-36
+     ; return  [] RANGE[0..0]
+0000 CV0($x) = RECV 1
+0001 RETURN CV0($x)
+0002 RETURN null
+
+Fixture\Count\Frameless::after:
+     ; (lines=6, args=1, vars=1, tmps=1)
+     ; (before optimizer)
+     ; /fixtures/Frameless.php:39-42
+     ; return  [] RANGE[0..0]
+0000 CV0($x) = RECV 1
+0001 T1 = ADD CV0($x) int(1)
+0002 VERIFY_RETURN_TYPE T1
+0003 RETURN T1
+0004 VERIFY_RETURN_TYPE
+0005 RETURN null
+LIVE RANGES:
+     1: 0002 - 0003 (tmp/var)
+
+$_main:
+     ; (lines=2, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Frameless.php:1-44
+0000 DECLARE_CLASS string("fixture\count\frameless")
+0001 RETURN int(1)
+
+Fixture\Count\Frameless::camel:
+     ; (lines=18, args=1, vars=1, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Frameless.php:13-20
+0000 CV0($s) = RECV 1
+0001 INIT_NS_FCALL_BY_NAME 1 string("Fixture\Count\trim")
+0002 INIT_NS_FCALL_BY_NAME 2 string("Fixture\Count\implode")
+0003 SEND_VAL_EX string("") 1
+0004 INIT_NS_FCALL_BY_NAME 2 string("Fixture\Count\array_map")
+0005 T1 = DECLARE_LAMBDA_FUNCTION 0
+0006 SEND_VAL_EX T1 1
+0007 INIT_NS_FCALL_BY_NAME 1 string("Fixture\Count\str_split")
+0008 SEND_VAR_EX CV0($s) 1
+0009 V1 = DO_FCALL_BY_NAME
+0010 SEND_VAR_NO_REF_EX V1 2
+0011 V1 = DO_FCALL_BY_NAME
+0012 SEND_VAR_NO_REF_EX V1 2
+0013 V1 = DO_FCALL_BY_NAME
+0014 SEND_VAR_NO_REF_EX V1 1
+0015 V1 = DO_FCALL_BY_NAME
+0016 VERIFY_RETURN_TYPE V1
+0017 RETURN V1
+LIVE RANGES:
+     1: 0016 - 0017 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=5, args=1, vars=2, tmps=2)
+     ; (after optimizer)
+     ; /fixtures/Frameless.php:15-19
+0000 CV0($c) = RECV 1
+0001 BIND_STATIC (ref) CV1($i)
+0002 T3 = PRE_INC CV1($i)
+0003 T2 = CONCAT T3 CV0($c)
+0004 RETURN T2
+
+Fixture\Count\Frameless::twoOnOneLine:
+     ; (lines=25, args=1, vars=1, tmps=3)
+     ; (after optimizer)
+     ; /fixtures/Frameless.php:22-25
+0000 CV0($a) = RECV 1
+0001 INIT_NS_FCALL_BY_NAME 1 string("Fixture\Count\trim")
+0002 INIT_NS_FCALL_BY_NAME 2 string("Fixture\Count\implode")
+0003 SEND_VAL_EX string(",") 1
+0004 INIT_NS_FCALL_BY_NAME 2 string("Fixture\Count\array_map")
+0005 T1 = DECLARE_LAMBDA_FUNCTION 0
+0006 SEND_VAL_EX T1 1
+0007 SEND_VAR_EX CV0($a) 2
+0008 V1 = DO_FCALL_BY_NAME
+0009 SEND_VAR_NO_REF_EX V1 2
+0010 V2 = DO_FCALL_BY_NAME
+0011 INIT_NS_FCALL_BY_NAME 2 string("Fixture\Count\implode")
+0012 SEND_VAL_EX string(",") 1
+0013 INIT_NS_FCALL_BY_NAME 2 string("Fixture\Count\array_map")
+0014 T1 = DECLARE_LAMBDA_FUNCTION 1
+0015 SEND_VAL_EX T1 1
+0016 SEND_VAR_EX CV0($a) 2
+0017 V1 = DO_FCALL_BY_NAME
+0018 SEND_VAR_NO_REF_EX V1 2
+0019 V3 = DO_FCALL_BY_NAME
+0020 T1 = CONCAT V2 V3
+0021 SEND_VAL_EX T1 1
+0022 V1 = DO_FCALL_BY_NAME
+0023 VERIFY_RETURN_TYPE V1
+0024 RETURN V1
+LIVE RANGES:
+     2: 0011 - 0020 (tmp/var)
+     1: 0023 - 0024 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=2, args=1, vars=1, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Frameless.php:24-24
+0000 CV0($x) = RECV 1
+0001 RETURN CV0($x)
+
+Fixture\Count\{closure}:
+     ; (lines=2, args=1, vars=1, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Frameless.php:24-24
+0000 CV0($x) = RECV 1
+0001 RETURN CV0($x)
+
+Fixture\Count\Frameless::nested:
+     ; (lines=13, args=1, vars=1, tmps=2)
+     ; (after optimizer)
+     ; /fixtures/Frameless.php:27-32
+0000 CV0($a) = RECV 1
+0001 INIT_NS_FCALL_BY_NAME 1 string("Fixture\Count\trim")
+0002 INIT_NS_FCALL_BY_NAME 3 string("Fixture\Count\array_reduce")
+0003 SEND_VAR_EX CV0($a) 1
+0004 T1 = DECLARE_LAMBDA_FUNCTION 0
+0005 SEND_VAL_EX T1 2
+0006 SEND_VAL_EX string("") 3
+0007 V2 = DO_FCALL_BY_NAME
+0008 T1 = CAST (string) V2
+0009 SEND_VAL_EX T1 1
+0010 V1 = DO_FCALL_BY_NAME
+0011 VERIFY_RETURN_TYPE V1
+0012 RETURN V1
+LIVE RANGES:
+     1: 0011 - 0012 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=14, args=2, vars=2, tmps=2)
+     ; (after optimizer)
+     ; /fixtures/Frameless.php:29-31
+0000 CV0($carry) = RECV 1
+0001 CV1($x) = RECV 2
+0002 INIT_NS_FCALL_BY_NAME 2 string("Fixture\Count\implode")
+0003 SEND_VAL_EX string("") 1
+0004 INIT_NS_FCALL_BY_NAME 2 string("Fixture\Count\array_map")
+0005 T2 = DECLARE_LAMBDA_FUNCTION 0
+0006 SEND_VAL_EX T2 1
+0007 T2 = INIT_ARRAY 1 (packed) CV1($x) NEXT
+0008 SEND_VAL_EX T2 2
+0009 V2 = DO_FCALL_BY_NAME
+0010 SEND_VAR_NO_REF_EX V2 2
+0011 V3 = DO_FCALL_BY_NAME
+0012 T2 = CONCAT CV0($carry) V3
+0013 RETURN T2
+
+Fixture\Count\{closure}:
+     ; (lines=2, args=1, vars=1, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Frameless.php:30-30
+0000 CV0($y) = RECV 1
+0001 RETURN CV0($y)
+
+Fixture\Count\Frameless::qualified:
+     ; (lines=14, args=1, vars=1, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Frameless.php:34-37
+0000 CV0($a) = RECV 1
+0001 INIT_FCALL 1 96 string("trim")
+0002 INIT_FCALL 2 112 string("implode")
+0003 SEND_VAL string("") 1
+0004 INIT_FCALL 2 112 string("array_map")
+0005 T1 = DECLARE_LAMBDA_FUNCTION 0
+0006 SEND_VAL T1 1
+0007 SEND_VAR CV0($a) 2
+0008 V1 = DO_ICALL
+0009 SEND_VAR V1 2
+0010 V1 = DO_ICALL
+0011 SEND_VAR V1 1
+0012 V1 = DO_ICALL
+0013 RETURN V1
+
+Fixture\Count\{closure}:
+     ; (lines=2, args=1, vars=1, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Frameless.php:36-36
+0000 CV0($x) = RECV 1
+0001 RETURN CV0($x)
+
+Fixture\Count\Frameless::after:
+     ; (lines=4, args=1, vars=1, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Frameless.php:39-42
+0000 CV0($x) = RECV 1
+0001 T1 = ADD CV0($x) int(1)
+0002 VERIFY_RETURN_TYPE T1
+0003 RETURN T1

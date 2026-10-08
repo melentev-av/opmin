@@ -5,6 +5,7 @@
 #
 #   tests/Fixtures/Dumps/capture.sh            # all versions
 #   tests/Fixtures/Dumps/capture.sh 8.4 8.5    # some versions
+#   FILES=Basic.php tests/Fixtures/Dumps/capture.sh   # some files
 #
 # Paths in the dumps are /fixtures/<file>. The dump is piped out of the container (not written
 # into the mounted directory): Docker Desktop file sharing sometimes shows a stale directory.
@@ -12,7 +13,7 @@ set -eu
 cd "$(dirname "$0")/../Count"
 for v in ${*:-8.1 8.2 8.3 8.4 8.5}; do
   mkdir -p "../Dumps/$v"
-  for f in [A-Z]*.php; do
+  for f in ${FILES:-[A-Z]*.php}; do
     case "$f:$v" in Readonly.php:8.1|Hooks.php:8.[123]) continue ;; esac
     docker run --rm -v "$PWD":/fixtures:ro -w /fixtures "php:$v-cli" php \
       -d opcache.enable=1 -d opcache.enable_cli=1 -d opcache.file_cache= -d opcache.file_cache_only=0 -d opcache.file_update_protection=0 \

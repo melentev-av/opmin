@@ -66,17 +66,41 @@ $hooks = [
     'Fixture\Count\Person::$name::set' => 5,
     'Fixture\Count\Person::$age::get' => 4,
 ];
+# 8.4+ compiles trim()/implode() of a namespace twice (frameless call and fallback): the methods grow,
+# the closure copies are not counted again.
+$frameless = [
+    '<main>' => 2,
+    'Fixture\Count\Frameless::camel' => 33,
+    'Fixture\Count\Frameless::camel::{closure:1}' => 5,
+    'Fixture\Count\Frameless::twoOnOneLine' => 47,
+    'Fixture\Count\Frameless::twoOnOneLine::{closure:1}' => 2,
+    'Fixture\Count\Frameless::twoOnOneLine::{closure:2}' => 2,
+    'Fixture\Count\Frameless::nested' => 23,
+    'Fixture\Count\Frameless::nested::{closure:1}' => 23,
+    'Fixture\Count\Frameless::nested::{closure:1}::{closure:1}' => 2,
+    'Fixture\Count\Frameless::qualified' => 9,
+    'Fixture\Count\Frameless::qualified::{closure:1}' => 2,
+    'Fixture\Count\Frameless::after' => 4,
+];
+$framelessBefore84 = [
+    'Fixture\Count\Frameless::camel' => 18,
+    'Fixture\Count\Frameless::twoOnOneLine' => 25,
+    'Fixture\Count\Frameless::nested' => 13,
+    'Fixture\Count\Frameless::nested::{closure:1}' => 14,
+    'Fixture\Count\Frameless::qualified' => 14,
+] + $frameless;
 
 return [
-    '8.1' => ['Basic.php' => $basicBefore84, 'Strings.php' => $strings81],
-    '8.2' => ['Basic.php' => $basicBefore84, 'Readonly.php' => $readonly, 'Strings.php' => $strings],
-    '8.3' => ['Basic.php' => $basicBefore84, 'Readonly.php' => $readonly, 'Strings.php' => $strings],
-    '8.4' => ['Basic.php' => $basic, 'Readonly.php' => $readonly, 'Hooks.php' => $hooks, 'Strings.php' => $strings],
+    '8.1' => ['Basic.php' => $basicBefore84, 'Strings.php' => $strings81, 'Frameless.php' => $framelessBefore84],
+    '8.2' => ['Basic.php' => $basicBefore84, 'Readonly.php' => $readonly, 'Strings.php' => $strings, 'Frameless.php' => $framelessBefore84],
+    '8.3' => ['Basic.php' => $basicBefore84, 'Readonly.php' => $readonly, 'Strings.php' => $strings, 'Frameless.php' => $framelessBefore84],
+    '8.4' => ['Basic.php' => $basic, 'Readonly.php' => $readonly, 'Hooks.php' => $hooks, 'Strings.php' => $strings, 'Frameless.php' => $frameless],
     # 8.5 drops VERIFY_RETURN_TYPE of `new self` returned as `self`.
     '8.5' => [
         'Basic.php' => $basic,
         'Readonly.php' => ['Fixture\Count\Money::add' => 7] + $readonly,
         'Hooks.php' => $hooks,
         'Strings.php' => $strings,
+        'Frameless.php' => $frameless,
     ],
 ];

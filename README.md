@@ -372,9 +372,10 @@ docker run --rm -v "$PWD:/out" ghcr.io/melentev-av/opmin:php8.4 sh -c \
 
 ## Results on real packages
 
-Every week CI optimizes real packages in git package mode with Stage A (the four own Rector rules) and runs their
-own tests on the patched code ([smoke-real-packages.yml](.github/workflows/smoke-real-packages.yml),
-`tests/Smoke/run.sh <package> <php>` locally). The tests must stay green: a red run is a bug of the verifier.
+An example: real packages optimized in git package mode with Stage A (the four own Rector rules), then their own
+tests run on the patched code and stay green. Measured on 2026-10-08 with opmin 0.2 in CI; the run can be repeated by
+hand ([smoke-real-packages.yml](.github/workflows/smoke-real-packages.yml), or `tests/Smoke/run.sh <package> <php>`
+locally).
 
 | Package | PHP | Opcodes | Saved | Functions changed | Package's tests after the patch | Time |
 |---|---|---|---|---|---|---|

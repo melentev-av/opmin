@@ -3,13 +3,12 @@
 # Smoke test on real packages (brief, «Тестирование самой тулзы»; plan/M8): the static binary of this commit
 # optimizes real packages in git package mode, in the opmin image of the package's PHP, and the packages' own
 # tests must stay green after the patch. The best detector of «equivalent» changes that are not.
-# Weekly and by hand: it takes long and depends on foreign repositories.
+# By hand only: it was the acceptance test of M8 and is worth repeating after big changes of the rules,
+# the verifier or the delivery; it takes long and depends on foreign repositories.
 
 name: 🔥 Smoke on real packages
 
 on:  # yamllint disable-line rule:truthy
-  schedule:
-    - cron: '17 3 * * 1'
   workflow_dispatch:
 
 concurrency:

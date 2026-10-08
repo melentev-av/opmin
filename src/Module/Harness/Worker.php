@@ -75,6 +75,7 @@ final class Worker
         $this->process = $process;
         /** @var array<int, resource> $pipes */
         $this->pipes = $pipes;
+        \stream_set_blocking($this->pipes[0], false);
         \stream_set_blocking($this->pipes[1], false);
         \stream_set_blocking($this->pipes[2], false);
 
@@ -129,13 +130,39 @@ final class Worker
     {
         $this->isRunning() or throw new WorkerException(WorkerException::CRASH, 'The harness is not running.', $this->stderr);
         $line = \json_encode($request, \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE | \JSON_PRESERVE_ZERO_FRACTION) . "\n";
-        $written = @\fwrite($this->pipes[0], $line);
-        if ($written !== \strlen($line)) {
-            $this->kill();
-            throw new WorkerException(WorkerException::CRASH, 'The harness closed its input.', $this->stderr);
-        }
+        # A request longer than the pipe buffer is written in parts, and the output of the worker is read
+        # meanwhile: a worker that writes before it reads (a buffered php://output flushed by a destructor
+        # after the previous response) would otherwise wait for us while we wait for it.
+        $deadline = \hrtime(true) + $this->options->loadTimeoutMs * 1_000_000;
+        $offset = 0;
+        $length = \strlen($line);
+        while (true) {
+            $written = @\fwrite($this->pipes[0], \substr($line, $offset, 65536));
+            if ($written === false) {
+                $this->kill();
+                throw new WorkerException(WorkerException::CRASH, 'The harness closed its input.', $this->stderr);
+            }
 
-        \fflush($this->pipes[0]);
+            $offset += $written;
+            if ($offset >= $length) {
+                return;
+            }
+
+            $left = $deadline - \hrtime(true);
+            if ($left <= 0) {
+                $this->kill();
+                throw new WorkerException(WorkerException::TIMEOUT, "The harness did not read the request in {$this->options->loadTimeoutMs} ms.", $this->stderr);
+            }
+
+            $read = [$this->pipes[1], $this->pipes[2]];
+            $write = [$this->pipes[0]];
+            $except = null;
+            $ready = @\stream_select($read, $write, $except, \intdiv($left, 1_000_000_000), \intdiv($left % 1_000_000_000, 1000));
+            if ($ready !== false && $this->drain($read)) {
+                $this->kill();
+                throw new WorkerException(WorkerException::CRASH, 'The harness ended before it read the request.', $this->stderr);
+            }
+        }
     }
 
     /**
@@ -220,18 +247,7 @@ final class Worker
                 continue;
             }
 
-            $eof = false;
-            foreach ($read as $pipe) {
-                $chunk = (string) \fread($pipe, 65536);
-                if ($pipe === $this->pipes[2]) {
-                    $this->stderr = \substr($this->stderr . $chunk, -self::STDERR_LIMIT);
-                    continue;
-                }
-
-                $this->buffer .= $chunk;
-                $chunk === '' && \feof($pipe) and $eof = true;
-            }
-
+            $eof = $this->drain($read);
             if ($eof && !\str_contains($this->buffer, "\n")) {
                 $status = \is_resource($this->process) ? \proc_get_status($this->process) : null;
                 $this->kill();
@@ -242,6 +258,29 @@ final class Worker
                 );
             }
         }
+    }
+
+    /**
+     * Reads what the ready pipes have: stdout into the buffer, stderr into the diagnostics.
+     *
+     * @param array<array-key, resource> $pipes
+     * @return bool Whether stdout reached its end.
+     */
+    private function drain(array $pipes): bool
+    {
+        $eof = false;
+        foreach ($pipes as $pipe) {
+            $chunk = (string) \fread($pipe, 65536);
+            if ($pipe === $this->pipes[2]) {
+                $this->stderr = \substr($this->stderr . $chunk, -self::STDERR_LIMIT);
+                continue;
+            }
+
+            $this->buffer .= $chunk;
+            $chunk === '' && \feof($pipe) and $eof = true;
+        }
+
+        return $eof;
     }
 
     private function kill(): void

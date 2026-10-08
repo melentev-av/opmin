@@ -39,6 +39,21 @@ final class PackageRunTest
         Assert::false(\in_array('--user', $install, true));
     }
 
+    public function aFailedInstallShowsTheProblemBeforeTheLongHints(): void
+    {
+        $output = "Your requirements could not be resolved to an installable set of packages.\n\n"
+            . "  Problem 1\n    - symfony/intl v7.3.0 requires ext-intl * -> it is missing from your system.\n"
+            . \str_repeat("    hint line\n", 30);
+
+        $problem = PackageRun::composerProblem($output);
+
+        Assert::string($problem)
+            ->startsWith('Problem 1')
+            ->contains('requires ext-intl');
+        Assert::same(\count(\explode("\n", $problem)), 15);
+        Assert::same(PackageRun::composerProblem("a\nb\nc"), "a\nb\nc");
+    }
+
     public function removingTheWorkspaceNeverFollowsLinksOutOfIt(): void
     {
         $dir = (string) \realpath(\sys_get_temp_dir()) . '/opmin-tree-' . \bin2hex(\random_bytes(4));

@@ -91,6 +91,26 @@ final readonly class PackageRun
     }
 
     /**
+     * The reason of a failed `composer install`: its «Problem» lines (a missing extension, a PHP version)
+     * come first and are followed by long hints, so the tail alone would lose the reason.
+     */
+    public static function composerProblem(string $output): string
+    {
+        $lines = \explode("\n", \trim($output));
+        $start = null;
+        foreach ($lines as $i => $line) {
+            if (\preg_match('/^\s*Problem \d+/', $line) === 1) {
+                $start = $i;
+                break;
+            }
+        }
+
+        $lines = $start === null ? \array_slice($lines, -15) : \array_slice($lines, $start, 15);
+
+        return \trim(\implode("\n", $lines));
+    }
+
+    /**
      * @param \Closure(): bool $confirm Asks whether to run foreign code without isolation.
      * @return int Exit code of the inner run.
      * @throws PackageException
@@ -271,7 +291,8 @@ final readonly class PackageRun
      */
     private function install(Checkout $checkout, ?string $image): void
     {
-        $args = ['composer', 'install', '--no-interaction', '--no-progress', '--prefer-dist'];
+        # Packages require Xdebug for the coverage of their tests (league/csv); opmin takes it with pcov.
+        $args = ['composer', 'install', '--no-interaction', '--no-progress', '--prefer-dist', '--ignore-platform-req=ext-xdebug'];
         $this->allowScripts or \array_push($args, '--no-scripts', '--no-plugins');
         # The network is on here: dependencies are downloaded. It is off for the tests.
         $process = new Process($image === null ? $args : [...$this->docker($checkout, $image, network: true), ...$args], (string) $checkout->dir);
@@ -283,7 +304,7 @@ final readonly class PackageRun
 
         throw new PackageException(\sprintf(
             "composer install of the package failed:\n%s%s",
-            \trim(\implode("\n", \array_slice(\explode("\n", \trim($process->getErrorOutput() . "\n" . $process->getOutput())), -15))),
+            self::composerProblem($process->getErrorOutput() . "\n" . $process->getOutput()),
             $this->allowScripts ? '' : "\nIf the package needs its composer scripts or plugins, rerun with --allow-scripts (they are foreign code too).",
         ));
     }

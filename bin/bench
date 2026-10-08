@@ -1,0 +1,259 @@
+#!/usr/bin/env php
+<?php
+
+/**
+ * Measures the opcode effect of opmin's own Rector rules on the PHP of `php.binary`: for each
+ * experiment it compiles the code before and after the rewrite and prints `ops_opt` of both. The
+ * defaults of the rules (`min_reads`) come from here; rerun it when a new PHP version appears.
+ *
+ *   bin/bench                         # php.binary = php
+ *   bin/bench --php=/usr/bin/php8.1   # another PHP (a Docker wrapper from `bin/playground wrapper 8.1` works too)
+ *   bin/bench --only=fqn              # one experiment group: reads | dims | count | fqn | const | patterns | standard
+ *
+ * `standard` runs standard Rector rules (docs/standard-rules.md) on code they rewrite and counts the result.
+ */
+
+declare(strict_types=1);
+
+use Internal\Path;
+use Opmin\Module\Opcode\CountCache;
+use Opmin\Module\Opcode\Dump\OpcacheDumper;
+use Opmin\Module\Opcode\OpcodeCounter;
+use Opmin\Module\Optimize\Rector\RectorRunner;
+use Opmin\Module\Optimize\Rector\RuleCatalog;
+use Opmin\Module\Php\PhpBinaryProbe;
+use Opmin\Module\Project\Project;
+
+require __DIR__ . '/../vendor/autoload.php';
+
+$options = \getopt('', ['php:', 'only:']);
+$php = (new PhpBinaryProbe())->probe(\is_string($options['php'] ?? null) && $options['php'] !== '' ? $options['php'] : 'php');
+$only = \is_string($options['only'] ?? null) ? $options['only'] : null;
+
+$root = __DIR__ . '/../runtime/bench';
+\is_dir($root) or \mkdir($root, 0777, true);
+$root = (string) \realpath($root);
+$project = new Project(Path::create($root), false, null);
+$counter = new OpcodeCounter(new OpcacheDumper($php, 1), new CountCache(Path::create($root . '/.cache'), $php));
+
+# Every body is measured as the method `Bench\Foo::f()`: `$this`, a typed object `$x`, an array `$a`
+# and an untyped `$v` are available.
+$class = <<<'PHP'
+    final class Foo
+    {
+        public function __construct(public readonly Foo $foo, public int $n = 0) {}
+        public function m(mixed ...$args): void { ++$this->n; }
+        public function f(Foo $x, array $a, $v) {
+            %s
+        }
+    }
+    PHP;
+
+/**
+ * @param array<string, array{string, string}> $pairs Label => [body before, body after].
+ * @return array<string, array{int, int}>
+ */
+$measure = static function (array $pairs) use ($counter, $project, $root, $class): array {
+    $files = [];
+    foreach ($pairs as $label => $bodies) {
+        foreach ($bodies as $side => $body) {
+            $file = $root . '/' . \md5($label . $side . $body) . '.php';
+            \file_put_contents($file, "<?php\nnamespace Bench;\n" . \sprintf($class, $body) . "\n");
+            $files[$label][$side] = Path::create($file);
+        }
+    }
+
+    $result = $counter->count($project, \array_merge(...\array_values(\array_map('array_values', $files))));
+    $result->errors === [] or throw new \RuntimeException(\print_r($result->errors, true));
+    $ops = [];
+    foreach ($result->functions as $function) {
+        $function->key === 'Bench\Foo::f' and $ops[$function->file] = $function->opsOpt;
+    }
+
+    $rows = [];
+    foreach ($files as $label => $sides) {
+        $rows[$label] = [$ops[$project->relative($sides[0])], $ops[$project->relative($sides[1])]];
+    }
+
+    return $rows;
+};
+
+$print = static function (string $title, array $rows): void {
+    echo "\n{$title}\n";
+    foreach ($rows as $label => [$before, $after]) {
+        \printf("  %-44s %4d → %-4d %+d\n", $label, $before, $after, $after - $before);
+    }
+};
+
+echo "PHP {$php->version}\n";
+
+if ($only === null || $only === 'reads') {
+    # ExtractRepeatedPropertyFetchRector: N reads of `$x->foo` against `$foo = $x->foo` + N reads of `$foo`.
+    foreach (['$this', '$x'] as $var) {
+        foreach (['method call' => '%s->m();', 'value' => '$v[] = %s;', 'nested fetch' => '$v[] = %s->n;'] as $kind => $use) {
+            $pairs = [];
+            for ($n = 1; $n <= 4; ++$n) {
+                $pairs["{$n} read(s)"] = [
+                    \str_repeat(\sprintf($use, "{$var}->foo") . "\n", $n),
+                    "\$foo = {$var}->foo;\n" . \str_repeat(\sprintf($use, '$foo') . "\n", $n),
+                ];
+            }
+
+            $print("Property fetch {$var}->foo, {$kind}", $measure($pairs));
+        }
+    }
+}
+
+if ($only === null || $only === 'dims') {
+    # ExtractRepeatedArrayDimFetchRector: N reads of `$a['k']`.
+    foreach (['value' => '$v[] = %s;', 'nested dim' => '$v[] = %s[0];', 'call argument' => '$this->m(%s);'] as $kind => $use) {
+        $pairs = [];
+        for ($n = 1; $n <= 4; ++$n) {
+            $pairs["{$n} read(s)"] = [
+                \str_repeat(\sprintf($use, "\$a['k']") . "\n", $n),
+                "\$k = \$a['k'];\n" . \str_repeat(\sprintf($use, '$k') . "\n", $n),
+            ];
+        }
+
+        $print("Array dim fetch \$a['k'], {$kind}", $measure($pairs));
+    }
+
+    $pairs = [];
+    for ($n = 2; $n <= 4; ++$n) {
+        $pairs["{$n} read(s)"] = [
+            'return ' . \implode(' + ', \array_fill(0, $n, "\$a['k']")) . ';',
+            "\$k = \$a['k'];\nreturn " . \implode(' + ', \array_fill(0, $n, '$k')) . ';',
+        ];
+    }
+
+    $print("Array dim fetch \$a['k'], one expression", $measure($pairs));
+}
+
+if ($only === null || $only === 'count') {
+    # HoistLoopInvariantCountRector.
+    $print('Loop-invariant count()', $measure([
+        'for, \count' => [
+            'for ($i = 0; $i < \count($a); $i++) { $v[] = $a[$i]; } return $v;',
+            'for ($i = 0, $n = \count($a); $i < $n; $i++) { $v[] = $a[$i]; } return $v;',
+        ],
+        'for, count' => [
+            'for ($i = 0; $i < count($a); $i++) { $v[] = $a[$i]; } return $v;',
+            'for ($i = 0, $n = count($a); $i < $n; $i++) { $v[] = $a[$i]; } return $v;',
+        ],
+        'for, \count, $n before the loop' => [
+            'for ($i = 0; $i < \count($a); $i++) { $v[] = $a[$i]; } return $v;',
+            '$n = \count($a); for ($i = 0; $i < $n; $i++) { $v[] = $a[$i]; } return $v;',
+        ],
+    ]));
+}
+
+if ($only === null || $only === 'fqn') {
+    # FullyQualifyGlobalCallsRector: functions.
+    $calls = [
+        'strlen($v)', 'count($a)', 'is_array($v)', 'is_null($v)', 'is_int($v)', 'is_string($v)', 'is_object($v)',
+        'intval($v)', 'boolval($v)', 'strval($v)', 'floatval($v)', 'gettype($v)', 'get_class($v)',
+        'in_array($v, $a)', "in_array(\$v, ['a', 'b'], true)", 'array_key_exists($v, $a)', 'chr($v)', 'ord($v)',
+        "function_exists('foo')", "defined('FOO')", 'sprintf($v, 1)', 'array_map($v, $a)', 'str_contains($v, $v)',
+        'array_slice($a, 1)', "implode(',', \$a)", 'call_user_func($v)', 'call_user_func_array($v, $a)',
+        'func_get_args()', 'func_num_args()', 'array_keys($a)', 'max($a)', 'abs($v)', 'json_encode($a)', 'strtolower($v)',
+        "constant('X')", 'get_called_class()', 'array_values($a)', 'iterator_to_array($v)', 'is_callable($v)',
+    ];
+    $pairs = [];
+    foreach ($calls as $call) {
+        $pairs[$call] = ["return {$call};", "return \\{$call};"];
+    }
+
+    $print('Global functions: name → \\name', $measure($pairs));
+}
+
+if ($only === null || $only === 'const') {
+    $constants = ['PHP_EOL', 'PHP_INT_MAX', 'M_PI', 'E_ALL', 'DIRECTORY_SEPARATOR', 'PHP_VERSION_ID', 'JSON_THROW_ON_ERROR', 'SORT_STRING', 'PHP_OS_FAMILY', 'PHP_VERSION'];
+    $pairs = [];
+    foreach ($constants as $constant) {
+        $pairs[$constant] = ["return {$constant};", "return \\{$constant};"];
+    }
+
+    $print('Global constants: NAME → \\NAME', $measure($pairs));
+}
+
+if ($only === null || $only === 'patterns') {
+    # The patterns of the skill (resources/skills/opcode-minimize/SKILL.md): before → after.
+    $pairs = [
+        'FQN: strlen → \strlen' => ['return strlen($v);', 'return \strlen($v);'],
+        'FQN: in_array, strict' => ["return in_array(\$v, ['a', 'b'], true);", "return \\in_array(\$v, ['a', 'b'], true);"],
+        'array_key_exists → isset' => ["return \\array_key_exists('k', \$a);", "return isset(\$a['k']);"],
+        'isset ? : → ??' => ["return isset(\$a['k']) ? \$a['k'] : null;", "return \$a['k'] ?? null;"],
+        'constant expression in a variable' => ['$day = 60 * 60 * 24; return $v * $day;', 'return $v * (60 * 60 * 24);'],
+        'single-use temporary' => ['$t = $v + 1; return $t * 2;', 'return ($v + 1) * 2;'],
+        'single-use temporary of a call' => ['$t = \trim($v); return \strtolower($t);', 'return \strtolower(\trim($v));'],
+        'if/else assign → early return' => ['if ($v) { $r = 1; } else { $r = 2; } return $r;', 'if ($v) { return 1; } return 2;'],
+        'else after return' => ['if ($v) { return 1; } else { return 2; }', 'if ($v) { return 1; } return 2;'],
+        'early return → ternary' => ['if ($v) { return 1; } return 2;', 'return $v ? 1 : 2;'],
+        'nested if → &&' => ['if ($v) { if ($x->n) { return 1; } } return 2;', 'if ($v && $x->n) { return 1; } return 2;'],
+        'fn → static fn' => ['return \array_map(fn($i) => $i + 1, $a);', 'return \array_map(static fn($i) => $i + 1, $a);'],
+        '== → ===' => ['return $v == 1;', 'return $v === 1;'],
+        'interpolation → concatenation' => ['return "a{$v}b{$v}c";', "return 'a' . \$v . 'b' . \$v . 'c';"],
+        'concatenation of 2 → interpolation' => ["return \$v . '-' . \$v;", 'return "{$v}-{$v}";'],
+        'sprintf → concatenation' => ["return \\sprintf('%s-%s', \$v, \$v);", "return \$v . '-' . \$v;"],
+        'loop invariant out of foreach' => [
+            '$r = []; foreach ($a as $i) { $r[] = $i * \count($a); } return $r;',
+            '$r = []; $n = \count($a); foreach ($a as $i) { $r[] = $i * $n; } return $r;',
+        ],
+        'count($a) === 0 → $a === []' => ['return \count($a) === 0;', 'return $a === [];'],
+        'strlen($v) === 0 → $v === \'\'' => ['return \strlen($v) === 0;', "return \$v === '';"],
+        'in_array of 2 → ===' => ["return \\in_array(\$v, ['a', 'b'], true);", "return \$v === 'a' || \$v === 'b';"],
+        'array_push → []=' => ['\array_push($a, $v); return $a;', '$a[] = $v; return $a;'],
+        '$v = $v + 1 → ++$v' => ['$v = $v + 1; return $v;', '++$v; return $v;'],
+        'return of a bool if' => ['if ($v > 1) { return true; } return false;', 'return $v > 1;'],
+        'for with count → foreach' => [
+            '$s = 0; for ($i = 0; $i < \count($a); $i++) { $s += $a[$i]; } return $s;',
+            '$s = 0; foreach ($a as $i) { $s += $i; } return $s;',
+        ],
+        'is_null → === null' => ['return \is_null($v);', 'return $v === null;'],
+        'intval → (int)' => ['return \intval($v);', 'return (int) $v;'],
+        'substr prefix → str_starts_with' => ["return \\substr(\$v, 0, 3) === 'abc';", "return \\str_starts_with(\$v, 'abc');"],
+        'strpos !== false → str_contains' => ["return \\strpos(\$v, 'a') !== false;", "return \\str_contains(\$v, 'a');"],
+    ];
+
+    $print('Patterns of the skill', $measure($pairs));
+}
+
+if ($only === 'standard') {
+    # Rule => body of `Bench\Foo::f()` it rewrites.
+    $samples = [
+        'Rector\CodeQuality\Rector\If_\SimplifyIfReturnBoolRector' => 'if ($v > 1) { return true; } return false;',
+        'Rector\CodeQuality\Rector\Assign\CombinedAssignRector' => '$n = 1; $n = $n + $v; return $n;',
+        'Rector\DeadCode\Rector\Assign\RemoveUnusedVariableAssignRector' => '$unused = $v * 2; return $v;',
+        'Rector\EarlyReturn\Rector\If_\ChangeNestedIfsToEarlyReturnRector' => 'if ($v) { if ($a) { return 1; } } return 2;',
+        'Rector\CodeQuality\Rector\FuncCall\SingleInArrayToCompareRector' => "return in_array(\$v, ['a'], true);",
+        'Rector\CodeQuality\Rector\FuncCall\SimplifyFuncGetArgsCountRector' => 'return count(func_get_args());',
+        'Rector\CodeQuality\Rector\FuncCall\CompactToVariablesRector' => "\$b = \$v; return compact('a', 'b');",
+        'Rector\CodeQuality\Rector\Identical\StrlenZeroToIdenticalEmptyStringRector' => 'return strlen((string) $v) === 0;',
+        'Rector\CodeQuality\Rector\For_\ForRepeatedCountToOwnVariableRector' => '$s = 0; for ($i = 0; $i < count($a); $i++) { $s += $a[$i]; } return $s;',
+        'Rector\EarlyReturn\Rector\If_\RemoveAlwaysElseRector' => 'if ($v) { return 1; } else { return 2; }',
+        'Rector\CodeQuality\Rector\Ternary\UnnecessaryTernaryExpressionRector' => 'return $v === 1 ? true : false;',
+        'Rector\DeadCode\Rector\Return_\RemoveDeadConditionAboveReturnRector' => 'if ($v) { return 1; } return 1;',
+        'Rector\CodeQuality\Rector\Isset_\IssetOnPropertyObjectToPropertyExistsRector' => 'return isset($x->n);',
+    ];
+    $runner = new RectorRunner($project, Path::create($root . '/.cache'), '8.1');
+    $rows = [];
+    foreach ($samples as $rule => $body) {
+        if (!\class_exists($rule)) {
+            $rows[$rule] = [0, 0];
+            continue;
+        }
+
+        $file = $root . '/std-' . \md5($rule) . '.php';
+        $code = "<?php\nnamespace Bench;\n" . \sprintf($class, $body) . "\n";
+        \file_put_contents($file, $code);
+        $before = $measure([$rule => [$body, $body]])[$rule][0];
+        $spec = RuleCatalog::build(new Opmin\Module\Config\Schema\Rector(), new Opmin\Module\Config\Schema\RectorStandard(), true, [$rule], '8.1')[0];
+        $runner->run($spec, [Path::create($file)]);
+        $changed = (string) \file_get_contents($file);
+        \preg_match('/public function f\(Foo \$x, array \$a, \$v\) \{(.*)\n    \}\n\}/s', $changed, $m);
+        $after = $changed === $code ? $before : $measure([$rule . '#after' => [$m[1] ?? $body, $m[1] ?? $body]])[$rule . '#after'][0];
+        $rows[\substr($rule, (int) \strrpos($rule, '\\') + 1) . ($changed === $code ? ' (no change)' : '')] = [$before, $after];
+    }
+
+    $print('Standard Rector rules on code they rewrite', $rows);
+}

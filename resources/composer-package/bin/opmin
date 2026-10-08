@@ -1,0 +1,8 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// The composer package of opmin: the scoped PHAR of the release, nothing else. Its dependencies are
+// prefixed inside, so they never collide with the project's vendor/.
+require __DIR__ . '/../opmin.phar';

@@ -1,0 +1,14 @@
+{
+    "name": "melentev-av/opmin",
+    "description": "opmin as a PHAR: minimizes PHP opcodes without changing behavior. Scoped, no dependencies.",
+    "license": "MIT",
+    "type": "library",
+    "keywords": ["opcache", "opcodes", "optimization", "rector", "dev"],
+    "homepage": "https://github.com/melentev-av/opmin",
+    "require": {
+        "php": ">=8.3"
+    },
+    "bin": [
+        "bin/opmin"
+    ]
+}

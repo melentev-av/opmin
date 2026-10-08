@@ -2,7 +2,6 @@
     "$schema": "https://raw.githubusercontent.com/box-project/box/main/res/schema.json",
     "compactors": [
         "KevinGH\\Box\\Compactor\\Json",
-        "KevinGH\\Box\\Compactor\\Php",
         "KevinGH\\Box\\Compactor\\PhpScoper"
     ],
     "check-requirements": false,
@@ -10,9 +9,15 @@
     "directories": [
         "src"
     ],
+    "directories-bin": [
+        "harness"
+    ],
     "files": [
         "resources/version.json",
         "resources/opmin.schema.json",
+        "resources/release-keys/primary.pub.pem",
+        "resources/release-keys/reserve.pub.pem",
+        "resources/skills/opcode-minimize/SKILL.md",
         "bin/opmin",
         "LICENSE.md",
         "NOTICE.md",

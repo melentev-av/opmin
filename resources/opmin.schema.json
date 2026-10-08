@@ -28,6 +28,19 @@
                 "tests"
             ]
         },
+        "requires": {
+            "description": "opmin version the project expects (e.g. \"^1.2\"; .opmin-version works too); null — any",
+            "anyOf": [
+                {
+                    "type": "string",
+                    "minLength": 1
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null
+        },
         "php": {
             "type": "object",
             "additionalProperties": false,
@@ -101,7 +114,7 @@
                     "default": "vendor/bin/phpstan analyse --no-progress --error-format=json"
                 },
                 "format": {
-                    "description": "Formatter run on changed files ({files} is replaced); null — format-preserving printing only",
+                    "description": "Formatter run on changed files ({files} is replaced); null — detect (Pint, PHP-CS-Fixer, ECS, PHPCBF), none — no formatter",
                     "anyOf": [
                         {
                             "type": "string",
@@ -156,7 +169,6 @@
                             },
                             "default": [
                                 "DEAD_CODE",
-                                "EARLY_RETURN",
                                 "CODE_QUALITY",
                                 "UP_TO_PHP_TARGET"
                             ]
@@ -169,11 +181,12 @@
                                 "minLength": 1
                             },
                             "default": [
-                                "Rector\\CodeQuality\\Rector\\If_\\SimplifyIfReturnBoolRector",
-                                "Rector\\CodeQuality\\Rector\\Assign\\CombinedAssignRector",
+                                "Rector\\CodeQuality\\Rector\\FuncCall\\SingleInArrayToCompareRector",
+                                "Rector\\CodeQuality\\Rector\\FuncCall\\SimplifyFuncGetArgsCountRector",
+                                "Rector\\CodeQuality\\Rector\\Identical\\StrlenZeroToIdenticalEmptyStringRector",
+                                "Rector\\CodeQuality\\Rector\\Ternary\\UnnecessaryTernaryExpressionRector",
                                 "Rector\\DeadCode\\Rector\\Assign\\RemoveUnusedVariableAssignRector",
-                                "Rector\\EarlyReturn\\Rector\\If_\\ChangeNestedIfsToEarlyReturnRector",
-                                "Rector\\CodeQuality\\Rector\\Class_\\InlineConstructorDefaultToPropertyRector"
+                                "Rector\\DeadCode\\Rector\\Return_\\RemoveDeadConditionAboveReturnRector"
                             ]
                         },
                         "skip": {
@@ -207,9 +220,10 @@
                     "default": 90
                 },
                 "coverage_driver": {
-                    "description": "Coverage driver: auto | xdebug | pcov",
+                    "description": "Coverage of differential tests: auto | probes (branch probes, no extension) | xdebug | pcov (line coverage); auto — probes",
                     "enum": [
                         "auto",
+                        "probes",
                         "xdebug",
                         "pcov"
                     ],
@@ -399,6 +413,49 @@
                     "type": "string",
                     "minLength": 1,
                     "default": "origin/main"
+                }
+            }
+        },
+        "package": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "docker_image": {
+                    "description": "Image for git packages; {version} — opmin version, {php} — the PHP minor the package allows",
+                    "type": "string",
+                    "minLength": 1,
+                    "default": "ghcr.io/melentev-av/opmin:{version}-php{php}"
+                },
+                "workspace": {
+                    "description": "Where the clone is made; null — ~/.cache/opmin/packages with Docker (the Docker VM shares home), the temp directory without",
+                    "anyOf": [
+                        {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
+                },
+                "memory": {
+                    "description": "Memory limit of the container (docker --memory)",
+                    "type": "string",
+                    "minLength": 1,
+                    "default": "4g"
+                },
+                "cpus": {
+                    "description": "CPU limit of the container (docker --cpus); null — all cores of the Docker host",
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
                 }
             }
         },

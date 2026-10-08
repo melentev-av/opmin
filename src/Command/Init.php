@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Opmin\Command;
 
 use Internal\Path;
+use Opmin\Info;
 use Opmin\Module\Config\ConfigWriter;
+use Opmin\Module\Project\InitDetector;
+use Opmin\Module\Skill\Skill;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\QuestionHelper;
@@ -14,13 +17,18 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Symfony\Component\Console\Style\StyleInterface;
+use Symfony\Component\Yaml\Yaml;
 
 /**
- * Creates `opmin.yaml` with every key, its default value and a comment.
+ * Creates `opmin.yaml` with every key, its value and a comment, and puts the Claude Code skill
+ * `opcode-minimize` into `.claude/skills/` next to it (unless `--no-skill`). The PHP target, code
+ * directories, test runner, formatter and PHPStan of the project are detected and written instead of the
+ * defaults; the rest keeps the defaults.
  *
  * ```bash
  * opmin init
  * opmin init --config=./custom.yaml --overwrite
+ * opmin init --no-skill
  * ```
  *
  * @internal
@@ -31,6 +39,7 @@ use Symfony\Component\Console\Style\StyleInterface;
 )]
 final class Init extends Base
 {
+    protected const bool CHECK_VERSION = false;
     private const DEFAULT_CONFIG_PATH = 'opmin.yaml';
     private const CACHE_IGNORE_LINE = '/.opmin-cache/';
 
@@ -43,6 +52,7 @@ final class Init extends Base
             InputOption::VALUE_NONE,
             'Overwrite existing configuration file without confirmation',
         );
+        $this->addOption('no-skill', null, InputOption::VALUE_NONE, 'Do not put the Claude Code skill into .claude/skills');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -57,10 +67,15 @@ final class Init extends Base
             return Command::FAILURE;
         }
 
-        \file_put_contents((string) $configPath, ConfigWriter::render());
+        $detected = InitDetector::detect($configPath->parent());
+        \file_put_contents((string) $configPath, ConfigWriter::render(\array_map(static fn(array $found): mixed => $found[0], $detected)));
         $style->success("Configuration file created: {$configPath}");
+        foreach ($detected as $key => $found) {
+            $style->text(\sprintf('  %s: %s  <fg=gray>(%s)</>', $key, Yaml::dump($found[0], 0), $found[1]));
+        }
 
         $this->ignoreCacheDirectory($configPath->parent(), $style);
+        $input->getOption('no-skill') or $this->installSkill($configPath->parent(), $style);
 
         return Command::SUCCESS;
     }
@@ -128,5 +143,22 @@ final class Init extends Base
         $prefix = $content === '' || \str_ends_with($content, "\n") ? '' : "\n";
         \file_put_contents((string) $gitignore, $prefix . self::CACHE_IGNORE_LINE . "\n", \FILE_APPEND);
         $style->text('Added ' . self::CACHE_IGNORE_LINE . ' to .gitignore');
+    }
+
+    /**
+     * Puts the skill next to the config, or updates an older copy.
+     */
+    private function installSkill(Path $root, StyleInterface $style): void
+    {
+        $skills = $root->join('.claude', 'skills');
+        if (Skill::installedVersion($skills) === Info::version()) {
+            return;
+        }
+
+        try {
+            $style->text('Claude Code skill: ' . (string) Skill::install($skills));
+        } catch (\RuntimeException $e) {
+            $style->warning('The Claude Code skill is not installed: ' . $e->getMessage());
+        }
     }
 }

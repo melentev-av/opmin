@@ -48,7 +48,8 @@ jobs:
         run: echo "::add-matcher::${{ runner.tool_cache }}/php.json"
 
       - name: 🤖 Validate composer.json and composer.lock
-        run: composer validate --ansi --strict
+        # --no-check-all: property-testing-core is pinned exactly on purpose (young package, see docs/testing.md).
+        run: composer validate --ansi --strict --no-check-all
 
       - name: 📥 Install dependencies with composer
         uses: ramsey/composer-install@v3
@@ -57,6 +58,52 @@ jobs:
 
       - name: 🧪 Run tests
         run: composer test
+
+  opcodes:
+    # Opcode counts depend on the PHP that compiles the code (php.binary), not on the PHP running opmin:
+    # the integration tests count with every supported php.binary while opmin itself runs on 8.4.
+    name: 🔢 Opcodes with php.binary ${{ matrix.php-binary }}
+    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        php-binary:
+          - '8.1'
+          - '8.2'
+          - '8.3'
+          - '8.4'
+          - '8.5'
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: 🛠️ Setup php.binary ${{ matrix.php-binary }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-binary }}
+          extensions: opcache
+          coverage: none
+
+      - name: 📌 Remember php.binary
+        run: |
+          echo "OPMIN_TEST_PHP_BINARY=$(readlink -f "$(command -v php)")" >> "$GITHUB_ENV"
+          php -v
+
+      - name: 🛠️ Setup PHP 8.4 for opmin
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          ini-values: error_reporting=E_ALL
+          coverage: none
+
+      - name: 📥 Install dependencies with composer
+        uses: ramsey/composer-install@v3
+
+      - name: 🔢 Count opcodes with php.binary ${{ matrix.php-binary }}
+        run: |
+          "$OPMIN_TEST_PHP_BINARY" -v
+          vendor/bin/testo --ansi --no-coverage --suite=integration
 
   coverage:
     name: 📊 Coverage
@@ -88,9 +135,9 @@ jobs:
 
   compile-phar:
     # A cheap check that the scoped PHAR still builds and starts; release assets are built
-    # only when a version is released (see build-phar-release.yml).
+    # only when a version is released (see build-release.yml).
     name: 📦 PHAR builds and runs
-    timeout-minutes: 10
+    timeout-minutes: 20
     runs-on: ubuntu-24.04
     steps:
       - name: 📦 Check out the codebase
@@ -121,5 +168,9 @@ jobs:
           .build/phar/opmin.phar list
           mkdir -p /tmp/phar-smoke && cd /tmp/phar-smoke && "$GITHUB_WORKSPACE/.build/phar/opmin.phar" init --no-interaction
           test -s /tmp/phar-smoke/opmin.yaml
+
+      # The harness, Rector and PHPStan from inside the PHAR, next to the project's own php-parser and Rector.
+      - name: 📦 PHAR as a composer package in a project with other php-parser and Rector
+        run: tests/Phar/composer-project.sh .build/phar/opmin.phar
 
 ...

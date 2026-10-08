@@ -11,7 +11,7 @@
 - Return codes: `Command::SUCCESS` (0), `Command::FAILURE` (1), `Command::INVALID` (2, invalid config/usage).
   Commands with their own meaning of codes (`check`: 1 — opcodes grew, 2 — baseline from another PHP) document
   them in the class docblock.
-- A command that is not implemented yet extends `NotImplemented` and sets `STAGE`: it fails with exit code 1, so a
+- A command that is not implemented yet must fail with exit code 1 and name the stage that implements it, so a
   placeholder never looks like a successful run in CI.
 - Paths are `Internal\Path` value objects, not strings.
 - Interactive questions only when `$input->isInteractive()`; every question has a flag for non-interactive mode.

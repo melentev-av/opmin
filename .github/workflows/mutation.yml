@@ -1,0 +1,47 @@
+---
+
+# Mutation testing of the verifier (brief: MSI >= 80%). Long (the integration tests run per mutant),
+# so it runs weekly and on demand rather than on every push.
+
+name: 🧬 Mutation testing
+
+on:  # yamllint disable-line rule:truthy
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  cancel-in-progress: true
+  group: mutation-${{ github.ref }}
+
+jobs:
+  infection:
+    name: 🧬 Infection over the verifier
+    timeout-minutes: 120
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: 🛠️ Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          ini-values: error_reporting=E_ALL
+          coverage: pcov
+
+      - name: 📥 Install dependencies with composer
+        uses: ramsey/composer-install@v3
+
+      - name: 🧬 Mutate segment by segment, fail below 80% MSI
+        run: bin/infect
+
+      - name: 📤 Upload the mutation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: infection
+          path: runtime/infection/mut
+          retention-days: 14
+
+...

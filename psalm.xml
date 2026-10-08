@@ -12,14 +12,18 @@
         <RedundantCastGivenDocblockType errorLevel="suppress"/>
         <MissingOverrideAttribute errorLevel="suppress"/>
         <!-- Config parsing handles untyped YAML/env/CLI values by design; types are enforced by ValueCaster. -->
+        <!-- Recipes and results of the harness protocol are JSON-like arrays by design (docs/harness-protocol.md). -->
         <MixedAssignment>
             <errorLevel type="suppress">
+                <directory name="src/Module/Verification"/>
+                <directory name="src/Module/Harness"/>
                 <directory name="src/Module/Config"/>
                 <file name="src/Module/Common/Internal/Injection/ConfigInflector.php"/>
             </errorLevel>
         </MixedAssignment>
         <MixedArgument>
             <errorLevel type="suppress">
+                <directory name="src/Module/Verification"/>
                 <directory name="src/Module/Config"/>
             </errorLevel>
         </MixedArgument>
@@ -46,9 +50,21 @@
         <PropertyNotSetInConstructor>
             <errorLevel type="suppress">
                 <directory name="src/Command"/>
+                <!-- Rector sets the services of AbstractRector through autowire(), not the constructor. -->
+                <directory name="src/Rector"/>
             </errorLevel>
         </PropertyNotSetInConstructor>
+        <!-- Rector rules narrow refactor(Node) to the node types they register (Rector's convention). -->
+        <MoreSpecificImplementedParamType>
+            <errorLevel type="suppress">
+                <directory name="src/Rector"/>
+            </errorLevel>
+        </MoreSpecificImplementedParamType>
     </issueHandlers>
+    <extraFiles>
+        <!-- Loaded by Rector's own autoloader. -->
+        <directory name="vendor/rector/rector/vendor/symplify/rule-doc-generator-contracts/src"/>
+    </extraFiles>
     <projectFiles>
         <directory name="src"/>
         <ignoreFiles>

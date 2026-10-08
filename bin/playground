@@ -11,10 +11,17 @@ declare(strict_types=1);
  *
  *   bin/playground init [scenario...]   create scenarios (default: all required ones)
  *   bin/playground reset [scenario...]  delete and re-create scenarios from scratch
- *   bin/playground run <scenario>       doctor → count → optimize → check, then the scenario's tests
+ *   bin/playground run <scenario>       doctor → count → verify → baseline → check (red) → optimize → check, then tests
  *   bin/playground run --all            the same for every existing scenario, with a summary table
+ *   bin/playground run --all --php=8.4  … with php.binary in the opmin-dev:8.4 image (pcov, pcntl)
+ *   bin/playground run --all --tool=phar        … with opmin from .build/phar/opmin.phar (`make phar` first)
+ *   bin/playground run --all --tool=docker      … with opmin inside the release image built from that PHAR
+ *                                               (docker/Dockerfile, PHP of --php, default 8.4); git-package
+ *                                               then runs the package in that image too
  *   bin/playground test [scenario...]   run only the scenario's own tests
- *   bin/playground php <ver> <cmd...>   run a command in the php:<ver>-cli Docker image
+ *   bin/playground php <ver> <cmd...>   run a command in the opmin-dev:<ver> image (php:<ver>-cli + pcov, pcntl, composer),
+ *                                       the repository mounted at its own path
+ *   bin/playground wrapper <ver>...     write playground/.bin/php<ver>: that PHP in Docker as php.binary
  *   bin/playground list                 list scenarios
  */
 
@@ -38,6 +45,7 @@ const SCENARIOS = [
     'vanilla-composer' => ['required' => true, 'about' => 'composer project (PSR-4), PHPUnit, no framework'],
     'laravel' => ['required' => true, 'about' => 'fresh Laravel with seeds in app/Services, PHPUnit, Pint'],
     'testo' => ['required' => true, 'about' => 'composer project with tests on Testo'],
+    'pest' => ['required' => true, 'about' => 'plain composer project, PSR-4, tests on Pest'],
     'traps' => ['required' => true, 'about' => 'trap code + weak tests that do not catch breaking rewrites'],
     'git-package' => ['required' => true, 'about' => 'bare repository git-package.git with tags v1.0.0 and v1.1.0'],
     'symfony' => ['required' => false, 'about' => 'symfony/skeleton with seeds in src/Service, PHP-CS-Fixer'],
@@ -60,6 +68,7 @@ function main(array $args): int
             'run' => run($args),
             'test' => testAll(scenarios($args, existingOnly: true)),
             'php' => dockerPhp($args),
+            'wrapper' => wrappers($args),
             'list' => listScenarios(),
             default => help(),
         };
@@ -146,6 +155,7 @@ function init(array $names, bool $reset): int
             'vanilla-composer' => buildComposerProject('vanilla-composer', 'Acme', withTests: 'phpunit'),
             'testo' => buildComposerProject('testo', 'Acme', withTests: 'testo'),
             'traps' => buildTraps(),
+            'pest' => buildComposerProject('pest', 'Acme', withTests: 'pest'),
             'laravel' => buildLaravel(),
             'symfony' => buildSymfony(),
             'git-package' => buildGitPackage(),
@@ -168,12 +178,15 @@ function buildVanilla(): void
     $dir = scenarioDir('vanilla');
     copySeeds(SEEDS . '/code', $dir . '/lib', 'Vanilla\\Lib');
     copySeeds(SEEDS . '/vanilla', $dir, 'Vanilla');
+    # Bare files have no composer.json: the config marks the project root (the playground itself
+    # lives inside the opmin repository, whose composer.json must not be taken for it).
+    \file_put_contents($dir . '/opmin.yaml', "paths: [global.php, lib]\n");
 }
 
 /**
  * Plain composer project: code in src/, tests in tests/.
  *
- * @param 'phpunit'|'testo' $withTests
+ * @param 'phpunit'|'testo'|'pest' $withTests
  * @param list<non-empty-string>|null $only Seed files to take from code/ (null — all).
  */
 function buildComposerProject(string $name, string $namespace, string $withTests, ?array $only = null, ?string $testsFrom = null): void
@@ -186,19 +199,21 @@ function buildComposerProject(string $name, string $namespace, string $withTests
         'name' => 'playground/' . $name,
         'type' => 'project',
         'require' => ['php' => '>=8.3'],
-        'require-dev' => $withTests === 'phpunit'
-            ? ['phpunit/phpunit' => '^11.5 || ^12', 'symfony/phpunit-bridge' => '^7.3 || ^8']
-            : ['testo/testo' => TESTO_VERSION],
+        'require-dev' => match ($withTests) {
+            'phpunit' => ['phpunit/phpunit' => '^11.5 || ^12', 'symfony/phpunit-bridge' => '^7.3 || ^8'],
+            'pest' => ['pestphp/pest' => '^3.8 || ^4.0'],
+            'testo' => ['testo/testo' => TESTO_VERSION],
+        },
         'autoload' => ['psr-4' => [$namespace . '\\' => 'src/']],
         'autoload-dev' => ['psr-4' => [$namespace . '\\Tests\\' => 'tests/']],
-        'config' => ['sort-packages' => true],
+        'config' => ['sort-packages' => true, 'allow-plugins' => ['pestphp/pest-plugin' => true]],
         'minimum-stability' => 'dev',
         'prefer-stable' => true,
     ];
     \is_file($dir . '/src/functions.php') and $composer['autoload']['files'] = ['src/functions.php'];
     writeJson($dir . '/composer.json', $composer);
 
-    if ($withTests === 'phpunit') {
+    if ($withTests === 'phpunit' || $withTests === 'pest') {
         \file_put_contents($dir . '/phpunit.xml.dist', phpunitXml('tests', 'src'));
     } else {
         \file_put_contents($dir . '/testo.php', <<<'PHP'
@@ -230,6 +245,8 @@ function buildTraps(): void
         only: ['Traps.php', 'MagicBag.php'],
         testsFrom: SEEDS . '/traps/tests-phpunit',
     );
+    # Traps of opmin's own rules: one class per file for PSR-4.
+    copySeeds(SEEDS . '/traps/code', scenarioDir('traps') . '/src', 'Acme');
     \copy(SEEDS . '/traps/README.md', scenarioDir('traps') . '/README.md');
 }
 
@@ -245,12 +262,15 @@ function buildLaravel(): void
     sh('cp -R ' . \escapeshellarg($skeleton) . ' ' . \escapeshellarg($dir), ROOT);
     copySeeds(SEEDS . '/code', $dir . '/app/Services', 'App\\Services');
     copySeeds(SEEDS . '/tests-phpunit', $dir . '/tests/Unit/Services', 'App\\Services', 'Tests\\Unit\\Services');
+    # A Laravel project follows Pint: the seeds too, so optimize formats its steps instead of skipping.
+    sh('vendor/bin/pint --quiet app/Services tests/Unit/Services', $dir);
 
     $composer = readJson($dir . '/composer.json');
     $composer['autoload']['files'] = \array_values(\array_unique([...($composer['autoload']['files'] ?? []), 'app/Services/functions.php']));
     writeJson($dir . '/composer.json', $composer);
 
     sh('composer require --dev symfony/phpunit-bridge --no-interaction --no-progress --quiet', $dir);
+    ignoreOpminFiles($dir);
 }
 
 function buildSymfony(): void
@@ -264,6 +284,7 @@ function buildSymfony(): void
 
     sh('cp -R ' . \escapeshellarg($skeleton) . ' ' . \escapeshellarg($dir), ROOT);
     copySeeds(SEEDS . '/code', $dir . '/src/Service', 'App\\Service');
+    ignoreOpminFiles($dir);
     copySeeds(SEEDS . '/tests-phpunit', $dir . '/tests/Service', 'App\\Service', 'App\\Tests\\Service');
 
     $composer = readJson($dir . '/composer.json');
@@ -344,6 +365,41 @@ function buildRealPackage(): void
  */
 function run(array $args): int
 {
+    $tool = 'sources';
+    $toolPhp = '8.4';
+    foreach ($args as $i => $arg) {
+        if (\preg_match('/^--tool=(sources|phar|docker)$/', $arg, $m) === 1) {
+            $tool = $m[1];
+            unset($args[$i]);
+            continue;
+        }
+
+        \preg_match('/^--php=(8\.[1-5])$/', $arg, $m) === 1 and $toolPhp = $m[1];
+    }
+
+    if ($tool === 'docker') {
+        # opmin and its php.binary are both inside the image: no wrapper.
+        \in_array($toolPhp, ['8.3', '8.4', '8.5'], true) or throw new \RuntimeException('--tool=docker runs the PHAR in the image: --php=8.3 or newer.');
+        $args = \array_values(\array_filter($args, static fn(string $a): bool => \preg_match('/^--php=/', $a) !== 1));
+        toolImage($toolPhp);
+    }
+
+    \putenv('PLAYGROUND_TOOL=' . ($tool === 'docker' ? 'docker:' . $toolPhp : $tool));
+    $tool === 'phar' && !\is_file(ROOT . '/.build/phar/opmin.phar')
+        and throw new \RuntimeException('--tool=phar needs .build/phar/opmin.phar: run `make phar`.');
+    step("opmin from {$tool}");
+
+    foreach ($args as $i => $arg) {
+        if (\preg_match('/^--php=(8\.[1-5])$/', $arg, $m) === 1) {
+            # php.binary in the opmin-dev image (pcov: coverage maps of the project's tests).
+            wrappers([$m[1]]);
+            \putenv('OPMIN_PHP_BINARY=' . \realpath(PLAYGROUND . "/.bin/php{$m[1]}"));
+            \putenv('TMPDIR=' . \realpath(PLAYGROUND . '/.tmp'));
+            unset($args[$i]);
+        }
+    }
+
+    $args = \array_values($args);
     $all = \in_array('--all', $args, true);
     $names = $all
         ? \array_values(\array_filter(\array_keys(SCENARIOS), scenarioExists(...)))
@@ -355,15 +411,32 @@ function run(array $args): int
         scenarioExists($name) or throw new \RuntimeException("{$name}: not created, run `bin/playground init {$name}`.");
         step("{$name}: running the full cycle");
 
-        $dir = $name === 'git-package' ? ROOT : scenarioDir($name);
+        $dir = scenarioDir($name);
+        # The package runs in the image of this build (the release image of this version does not exist);
+        # with the tool from sources or the PHAR without Docker, after the confirmation --yes.
         $target = $name === 'git-package'
-            ? ['file://' . \realpath(PLAYGROUND . '/git-package.git'), '--ref=v1.1.0']
+            ? ['file://' . \realpath(PLAYGROUND . '/git-package.git'), '--ref=v1.1.0', ...($tool === 'docker'
+                ? ['--set=package.docker_image=opmin:playground-php{php}', '--set=php.target=' . $toolPhp]
+                : ['--no-docker', '--yes'])]
             : [];
 
         $row = ['scenario' => $name];
-        foreach (['doctor' => [], 'count' => [], 'optimize' => $target, 'check' => []] as $command => $extra) {
+        # Prepared rewrites match the seeds: verified before optimize changes the code.
+        $verify = verifyScenario($name, $dir);
+        $guard = null;
+        foreach (['doctor' => [], 'count' => [], 'guard' => [], 'optimize' => $target, 'check' => []] as $command => $extra) {
             if ($name === 'git-package' && $command !== 'optimize') {
                 $row[$command] = 'n/a';
+                continue;
+            }
+
+            if ($command === 'guard') {
+                $guard = guardBefore($name, $dir);
+                continue;
+            }
+
+            if ($command === 'check') {
+                $row['check'] = guardAfter($dir, $guard);
                 continue;
             }
 
@@ -376,13 +449,241 @@ function run(array $args): int
             };
         }
 
+        $row['ops'] = ($row['count'] ?? '') === 'ok' ? countTotal($dir) : '';
+        $row['optimized'] = optimizeResult($dir);
+        $row['verify'] = $verify . ($name === 'traps' ? '; ' . ruleTraps($dir) : '');
         $row['tests'] = $name === 'git-package' ? 'n/a' : (testScenario($name) ? 'green' : 'RED');
         $rows[] = $row;
     }
 
     summary($rows);
 
-    return \in_array('RED', \array_column($rows, 'tests'), true) ? 1 : 0;
+    $bad = \array_filter($rows, static fn(array $r): bool => $r['tests'] === 'RED' || \str_contains($r['verify'], 'REJECTED')
+        || \str_contains($r['verify'], 'MISSED') || \str_contains($r['verify'], 'CHANGED'));
+
+    return $bad === [] ? 0 : 1;
+}
+
+/**
+ * The CI guard before optimize: `opmin baseline` (committed in a git scenario), then a change that
+ * keeps the behavior but grows `Obvious::describe` (committed too: optimize needs a clean tree), and
+ * `opmin check` must fail on it.
+ *
+ * @return array{args: list<string>, red: string} What the check after optimize runs with, and the
+ *         result of the check before it: `red` (as expected), `n/a` without the seed, or what went wrong.
+ */
+function guardBefore(string $name, string $dir): array
+{
+    $git = \is_dir($dir . '/.git');
+    $code = opmin($dir, 'baseline', []);
+    if ($code !== 0) {
+        return ['args' => ['--all'], 'red' => "baseline exit {$code}"];
+    }
+
+    if (!$git) {
+        return ['args' => ['--all'], 'red' => 'n/a'];
+    }
+
+    sh(GIT . ' add opmin.baseline.json && ' . GIT . " commit -q -m 'opmin baseline'", $dir);
+    $base = \trim((string) \shell_exec('cd ' . \escapeshellarg($dir) . ' && git rev-parse HEAD'));
+    $args = ['--base=' . $base];
+    $files = \glob($dir . '/{src,app/Services,src/Service}/Obvious.php', \GLOB_BRACE) ?: [];
+    $code = $files === [] ? '' : (string) \file_get_contents($files[0]);
+    if (!\str_contains($code, 'if (is_string($value)) {')) {
+        # No seed (traps) or already optimized by an earlier run (`bin/playground reset` re-creates it).
+        return ['args' => $args, 'red' => 'n/a'];
+    }
+
+    step("{$name}: a change that grows Obvious::describe, then `opmin check` must fail");
+    \file_put_contents($files[0], \str_replace('if (is_string($value)) {', 'if (is_string($value) && is_string($value)) {', $code));
+    sh(GIT . " commit -q -am 'grow Obvious::describe'", $dir);
+    $code = opmin($dir, 'check', $args);
+
+    return ['args' => $args, 'red' => $code === 1 ? 'red' : "exit {$code}"];
+}
+
+/**
+ * The check after optimize: green again (the optimized functions decreased, so it asks to update the
+ * baseline). `red→green` is the expected result of a git scenario.
+ *
+ * @param array{args: list<string>, red: string}|null $guard
+ */
+function guardAfter(string $dir, ?array $guard): string
+{
+    if ($guard === null || \str_starts_with($guard['red'], 'baseline')) {
+        return $guard['red'] ?? 'n/a';
+    }
+
+    $code = opmin($dir, 'check', $guard['args']);
+    $after = $code === 0 ? 'green' : "exit {$code}";
+
+    return $guard['red'] === 'n/a' ? $after : "{$guard['red']}→{$after}";
+}
+
+/**
+ * Opcodes before → after of the last `opmin optimize` run, kept/rolled-back functions.
+ */
+function optimizeResult(string $dir): string
+{
+    $reports = \glob($dir . '/runs/*/report.json') ?: [];
+    \sort($reports);
+    $file = \end($reports);
+    /** @var mixed $report */
+    $report = $file === false ? null : \json_decode((string) \file_get_contents($file), true);
+    if (!\is_array($report)) {
+        return '';
+    }
+
+    $kept = $rolledBack = 0;
+    foreach ($report['steps'] ?? [] as $step) {
+        $kept += \count($step['accepted'] ?? []);
+        $rolledBack += \count($step['rejected'] ?? []);
+    }
+
+    $totals = $report['totals'] ?? [];
+
+    return \sprintf('%d→%d (%d/%d)', $totals['ops_before'] ?? 0, $totals['ops_after'] ?? 0, $kept, $rolledBack);
+}
+
+/**
+ * The traps of opmin's own rules must leave `optimize` untouched: no rule fires on them, or the
+ * verifier rolls the change back.
+ */
+function ruleTraps(string $dir): string
+{
+    $changed = [];
+    foreach (\glob(SEEDS . '/traps/code/*.php') ?: [] as $seed) {
+        $expected = \strtr((string) \file_get_contents($seed), ['PlaygroundSeeds' => 'Acme']);
+        (string) @\file_get_contents($dir . '/src/' . \basename($seed)) === $expected or $changed[] = \basename($seed, '.php');
+    }
+
+    return $changed === [] ? 'rule traps untouched' : 'RULE TRAPS CHANGED: ' . \implode(', ', $changed);
+}
+
+/**
+ * `opmin verify` on prepared rewrites: in `traps/` every wrong rewrite must be rejected although the
+ * scenario's weak tests pass on it; elsewhere the correct rewrite of `Obvious.php` must be accepted,
+ * with the scenario's own test runner (PHPUnit, Testo) when it has one.
+ */
+function verifyScenario(string $name, string $dir): string
+{
+    if ($name === 'git-package') {
+        return 'n/a';
+    }
+
+    $withTests = $name !== 'vanilla';
+    if ($name === 'traps') {
+        $caught = 0;
+        $rewrites = require SEEDS . '/rewrites/traps.php';
+        foreach ($rewrites as $label => [$file, $search, $replace]) {
+            $source = findFile($dir, $file);
+            $candidate = $source === null ? null : rewrite($source, [[$search, $replace]], $dir);
+            if ($candidate === null) {
+                echo "    {$label}: the seed does not match {$file}\n";
+                continue;
+            }
+
+            $report = verifyJson($dir, $source, $candidate, $withTests);
+            $rejected = ($report['accepted'] ?? true) === false;
+            $green = ($report['tests']['success'] ?? null) === true ? 'green' : 'not green';
+            $rejected and ++$caught;
+            $reasons = \array_filter(\array_map(static fn(array $f): string => $f['reason'], \is_array($report['functions'] ?? null) ? $report['functions'] : []));
+            echo '    ' . ($rejected ? 'rejected' : 'ACCEPTED') . ": {$label} (weak tests on the rewrite: {$green})\n";
+            $reasons === [] or print('      ' . \mb_strimwidth((string) \reset($reasons), 0, 120, '…') . "\n");
+        }
+
+        $total = \count($rewrites);
+
+        return $caught === $total ? "{$caught}/{$total} caught" : "MISSED {$caught}/{$total}";
+    }
+
+    $results = [];
+    $ok = true;
+    foreach (require SEEDS . '/rewrites/equivalent.php' as $file => $replacements) {
+        $source = findFile($dir, $file);
+        $candidate = $source === null ? null : rewrite($source, $replacements, $dir);
+        if ($source === null) {
+            continue;
+        }
+
+        if ($candidate === null) {
+            $results[] = "{$file}: seed mismatch";
+            $ok = false;
+            continue;
+        }
+
+        $report = verifyJson($dir, $source, $candidate, $withTests);
+        $statuses = [];
+        foreach (\is_array($report['functions'] ?? null) ? $report['functions'] : [] as $key => $function) {
+            echo "    {$key}: {$function['status']} {$function['reason']}\n";
+            $statuses[] = $function['status'];
+        }
+
+        # A side-effecting function is proven only by the project's tests with a coverage map.
+        $coverage = $withTests && !\str_contains(\implode("\n", \is_array($report['notes'] ?? null) ? $report['notes'] : []), 'No coverage map');
+        $accepted = ($report['accepted'] ?? false) === true;
+        $expected = $file !== 'FileJournal.php' || $coverage;
+        $ok = $ok && $accepted === $expected;
+        $results[] = \basename($file, '.php') . ': ' . ($accepted ? \implode(',', \array_unique($statuses)) : ($expected ? 'REJECTED' : 'unproven'));
+    }
+
+    return $results === [] ? 'n/a' : \implode('; ', $results) . ($ok ? '' : ' REJECTED');
+}
+
+function findFile(string $dir, string $name): ?string
+{
+    $iterator = new \RecursiveIteratorIterator(new \RecursiveCallbackFilterIterator(
+        new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+        static fn(\SplFileInfo $f): bool => !\in_array($f->getFilename(), ['vendor', '.opmin-cache', 'runs', 'node_modules', '.git', 'storage'], true),
+    ));
+    foreach ($iterator as $file) {
+        if ($file->getFilename() === $name) {
+            return $file->getPathname();
+        }
+    }
+
+    return null;
+}
+
+/**
+ * @param list<array{string, string}> $replacements
+ * @return string|null Path of the candidate; null when a replacement does not match.
+ */
+function rewrite(string $source, array $replacements, string $dir): ?string
+{
+    $code = (string) \file_get_contents($source);
+    foreach ($replacements as [$search, $replace]) {
+        if (!\str_contains($code, $search)) {
+            # The Laravel seeds are formatted by Pint: no spaces around the concatenation.
+            [$search, $replace] = [\str_replace(' . ', '.', $search), \str_replace(' . ', '.', $replace)];
+        }
+
+        if (!\str_contains($code, $search)) {
+            return null;
+        }
+
+        $code = \str_replace($search, $replace, $code);
+    }
+
+    @\mkdir($dir . '/.opmin-cache/rewrites', 0777, true);
+    $candidate = $dir . '/.opmin-cache/rewrites/' . \bin2hex(\random_bytes(4)) . '-' . \basename($source);
+    \file_put_contents($candidate, $code);
+
+    return $candidate;
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function verifyJson(string $dir, string $source, string $candidate, bool $withTests): array
+{
+    $cmd = toolCommand($dir) . ' --no-interaction verify --format=json '
+        . \escapeshellarg($source) . ' ' . \escapeshellarg($candidate) . ($withTests ? ' --with-tests' : '') . ' 2>/dev/null';
+    echo '  $ opmin verify ' . \basename($source) . ($withTests ? ' --with-tests' : '') . "\n";
+    /** @var mixed $report */
+    $report = \json_decode((string) \shell_exec('cd ' . \escapeshellarg($dir) . ' && ' . $cmd), true);
+
+    return \is_array($report) ? $report : [];
 }
 
 /**
@@ -390,7 +691,8 @@ function run(array $args): int
  */
 function opmin(string $dir, string $command, array $extra): int
 {
-    $cmd = \escapeshellarg(\PHP_BINARY) . ' ' . \escapeshellarg(\realpath(ROOT) . '/bin/opmin') . ' --no-interaction '
+    # The package mode starts Docker itself: it always runs on the host.
+    $cmd = ($extra !== [] && \str_starts_with($extra[0], 'file://') ? toolCommand($dir, host: true) : toolCommand($dir)) . ' --no-interaction '
         . $command . ' ' . \implode(' ', \array_map('escapeshellarg', $extra));
     echo "  $ opmin {$command}\n";
 
@@ -423,6 +725,7 @@ function testScenario(string $name): bool
         $name === 'git-package' && !\is_file($dir . '/composer.json') => true,
         $name === 'vanilla' => shCode('for f in $(find . -name "*.php"); do php -l "$f" > /dev/null || exit 1; done', $dir) === 0,
         \is_file($dir . '/testo.php') && \is_file($dir . '/vendor/bin/testo') => shCode('vendor/bin/testo --no-ansi > /dev/null', $dir) === 0,
+        \is_file($dir . '/vendor/bin/pest') => shCode('vendor/bin/pest > /dev/null', $dir) === 0,
         \is_file($dir . '/vendor/bin/phpunit') => shCode('vendor/bin/phpunit --no-progress > /dev/null', $dir) === 0,
         default => throw new \RuntimeException("{$name}: no test runner found"),
     };
@@ -433,14 +736,43 @@ function testScenario(string $name): bool
  */
 function summary(array $rows): void
 {
-    $columns = ['scenario', 'doctor', 'count', 'optimize', 'check', 'tests'];
+    $columns = ['scenario', 'doctor', 'count', 'ops', 'optimize', 'optimized', 'check', 'tests', 'verify'];
     echo "\n";
-    \printf("  %-18s %-10s %-10s %-10s %-10s %-6s\n", ...$columns);
-    echo '  ' . \str_repeat('-', 68) . "\n";
+    \printf("  %-18s %-10s %-10s %-12s %-10s %-18s %-10s %-6s %s\n", ...$columns);
+    echo '  ' . \str_repeat('-', 130) . "\n";
     foreach ($rows as $row) {
-        \printf("  %-18s %-10s %-10s %-10s %-10s %-6s\n", ...\array_map(static fn(string $c): string => $row[$c] ?? '', $columns));
+        \printf("  %-18s %-10s %-10s %-12s %-10s %-18s %-10s %-6s %s\n", ...\array_map(static fn(string $c): string => $row[$c] ?? '', $columns));
     }
-    echo "\n  Opcode totals and trap results appear here once `count` (M1) and `optimize` (M3) exist.\n\n";
+    echo "\n  check: `red→green` — the check failed on a change that grows Obvious::describe and passed after\n"
+        . "  optimize (git scenarios); `green` — the check after optimize where there is nothing to grow.\n"
+        . "  ops: opcodes after the optimizer / functions (from `count`, after optimize). optimized: opcodes\n"
+        . "  before→after of the last optimize run (kept/rolled-back functions). verify: traps/ — wrong rewrites\n"
+        . "  rejected although weak tests pass, the traps of opmin's rules untouched by optimize; elsewhere —\n"
+        . "  correct rewrites accepted (FileJournal writes a file: proven by the project's tests only with a\n"
+        . "  coverage map — Xdebug or pcov in php.binary).\n\n";
+}
+
+/**
+ * What `opmin init` adds to the .gitignore of a framework skeleton: the scenario stays clean after a run.
+ */
+function ignoreOpminFiles(string $dir): void
+{
+    \file_put_contents($dir . '/.gitignore', "/.opmin-cache/\n/runs/\n", \FILE_APPEND);
+}
+
+/**
+ * `<ops_opt> / <functions>` of the scenario, from `opmin count --format=json` (taken from the cache
+ * right after the full-cycle run).
+ */
+function countTotal(string $dir): string
+{
+    $cmd = toolCommand($dir) . ' --no-interaction count --format=json 2>/dev/null';
+    /** @var mixed $report */
+    $report = \json_decode((string) \shell_exec('cd ' . \escapeshellarg($dir) . ' && ' . $cmd), true);
+
+    return \is_array($report) && isset($report['totals']['ops_opt'], $report['totals']['functions'])
+        ? $report['totals']['ops_opt'] . ' / ' . $report['totals']['functions']
+        : '?';
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -448,8 +780,8 @@ function summary(array $rows): void
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Runs a command in the official php:<ver>-cli image with the repository mounted at /opmin and
- * the current directory as the working directory: `bin/playground php 8.1 php -v`.
+ * Runs a command in the opmin-dev:<ver> image with the repository mounted at the same path as on the
+ * host (paths in reports and caches stay valid): `bin/playground php 8.4 vendor/bin/infection`.
  *
  * @param list<string> $args
  */
@@ -458,18 +790,99 @@ function dockerPhp(array $args): int
     $version = \array_shift($args);
     ($version !== null && \preg_match('/^8\.[1-5]$/', $version) === 1 && $args !== [])
         or throw new \RuntimeException('Usage: bin/playground php <8.1..8.5> <command...>');
-
+    devImage($version);
     $root = (string) \realpath(ROOT);
     $cwd = (string) \getcwd();
-    $workdir = \str_starts_with($cwd, $root) ? '/opmin' . \substr($cwd, \strlen($root)) : '/opmin';
 
     return shCode(\sprintf(
-        'docker run --rm -i -v %s:/opmin -w %s php:%s-cli sh -c %s',
+        'docker run --rm -i --init --ulimit core=0 -v %s:%s -w %s -e COMPOSER_HOME=%s opmin-dev:%s sh -c %s',
         \escapeshellarg($root),
-        \escapeshellarg($workdir),
+        \escapeshellarg($root),
+        \escapeshellarg(\str_starts_with($cwd, $root) ? $cwd : $root),
+        \escapeshellarg($root . '/playground/.cache/composer'),
         $version,
         \escapeshellarg(\implode(' ', $args)),
     ), $cwd);
+}
+
+/**
+ * playground/.bin/php<ver>: a php.binary that runs the opmin-dev image (`--init`: a stopped harness
+ * worker does not leave its container running). Temporary files must be inside the repository:
+ * `TMPDIR=$PWD/playground/.tmp`.
+ *
+ * @param list<string> $versions
+ */
+function wrappers(array $versions): int
+{
+    $versions === [] and $versions = ['8.1', '8.2', '8.3', '8.4', '8.5'];
+    $root = (string) \realpath(ROOT);
+    @\mkdir(PLAYGROUND . '/.bin', 0777, true);
+    @\mkdir(PLAYGROUND . '/.tmp', 0777, true);
+    foreach ($versions as $version) {
+        \preg_match('/^8\.[1-5]$/', $version) === 1 or throw new \RuntimeException("Unknown PHP version {$version}");
+        devImage($version);
+        $wrapper = PLAYGROUND . "/.bin/php{$version}";
+        # Docker Desktop on macOS caches file attributes of the bind mount for about a second: a PHP
+        # file rewritten just now (a candidate written in place for a count or the tests) is read
+        # with its old size, truncated. Wait when one changed in the last two seconds.
+        \file_put_contents($wrapper, \sprintf(
+            "#!/bin/sh\n"
+            . "if [ \"\$(uname)\" = Darwin ] && [ -n \"\$(find \"\$PWD\" -maxdepth 4 \\( -name vendor -o -name node_modules -o -name .git -o -name storage \\) -prune -o -name '*.php' -mtime -2s -print 2>/dev/null | head -1)\" ]; then sleep 2; fi\n"
+            . "exec docker run --rm -i --init -v %s:%s -w \"\$PWD\" opmin-dev:%s php \"\$@\"\n",
+            \escapeshellarg($root),
+            \escapeshellarg($root),
+            $version,
+        ));
+        \chmod($wrapper, 0755);
+        ok("playground/.bin/php{$version}");
+    }
+
+    return 0;
+}
+
+/**
+ * The command that starts opmin of the run (`--tool`): sources, the PHAR, or the image.
+ */
+function toolCommand(string $dir, bool $host = false): string
+{
+    $tool = (string) \getenv('PLAYGROUND_TOOL');
+    $root = (string) \realpath(ROOT);
+    if (\str_starts_with($tool, 'docker:') && !$host) {
+        return \sprintf(
+            'docker run --rm -i --init -v %s:%s -w %s -e HOME=/tmp%s opmin:playground-php%s opmin',
+            \escapeshellarg($root),
+            \escapeshellarg($root),
+            \escapeshellarg((string) \realpath($dir)),
+            \function_exists('posix_getuid') ? ' --user ' . \posix_getuid() . ':' . \posix_getgid() : '',
+            \substr($tool, 7),
+        );
+    }
+
+    return \escapeshellarg(\PHP_BINARY) . ' ' . \escapeshellarg($tool === 'phar' ? $root . '/.build/phar/opmin.phar' : $root . '/bin/opmin');
+}
+
+/**
+ * opmin:playground-php<ver>: docker/Dockerfile with the PHAR of this checkout instead of the binary.
+ */
+function toolImage(string $version): void
+{
+    $phar = ROOT . '/.build/phar/opmin.phar';
+    \is_file($phar) or throw new \RuntimeException('--tool=docker needs .build/phar/opmin.phar: run `make phar`.');
+    $context = PLAYGROUND . '/.cache/image';
+    @\mkdir($context, 0777, true);
+    \copy($phar, $context . '/opmin');
+    step("building opmin:playground-php{$version} from the PHAR");
+    sh(\sprintf('docker build -q -t opmin:playground-php%s --build-arg PHP=%s -f docker/Dockerfile %s', $version, $version, \escapeshellarg($context)), ROOT);
+}
+
+function devImage(string $version): void
+{
+    if (shCode("docker image inspect opmin-dev:{$version} > /dev/null 2>&1", ROOT) === 0) {
+        return;
+    }
+
+    step("building opmin-dev:{$version} (once)");
+    sh(\sprintf('docker build -q -t opmin-dev:%s --build-arg PHP=%s %s', $version, $version, \escapeshellarg(SEEDS . '/docker')), ROOT);
 }
 
 // ---------------------------------------------------------------------------------------------

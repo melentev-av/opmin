@@ -27,7 +27,8 @@ jobs:
           coverage: none
 
       - name: 🤖 Validate composer.json and composer.lock
-        run: composer validate --ansi --strict
+        # --no-check-all: property-testing-core is pinned exactly on purpose (young package, see docs/testing.md).
+        run: composer validate --ansi --strict --no-check-all
 
       - name: 📥 Install dependencies with composer
         uses: ramsey/composer-install@v3

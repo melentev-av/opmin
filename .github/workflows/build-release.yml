@@ -1,0 +1,397 @@
+---
+
+# Builds a release: the scoped PHAR, the static opmin binary (PHAR + static-php-cli micro) and the Docker
+# images on native runners — every platform is compiled on a machine of its own OS and architecture, no
+# emulation.
+# Publishes the archives, the PHAR, sha256sum.txt and its signature (sha256sum.txt.sig, checked by
+# `opmin self-update` and install.sh), plus GitHub build provenance attestations (`gh attestation verify`).
+# Runs only when a version is released (`release: published`, see create-release.yml) or by hand.
+
+name: 📦 Build release
+
+on:  # yamllint disable-line rule:truthy
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to attach binaries to (empty — build only, upload as workflow artifacts).
+        required: false
+        type: string
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+  # Embedded PHP runs only the orchestrator; the analyzed code always runs under php.binary.
+  SPC_PHP_VERSION: '8.4'
+  # zlib: the PHAR is GZ-compressed and self-update unpacks .tar.gz; openssl: HTTPS downloads and the
+  # release signature of self-update; pcntl/posix: process pool; the rest: Symfony and opmin itself.
+  # No iconv: symfony/string only uses it when present, and GNU libiconv (LGPL) would be linked statically.
+  # Each library linked into the binary is listed in LICENSE-THIRD-PARTY.md.
+  SPC_EXTENSIONS: 'ctype,filter,mbstring,openssl,pcntl,phar,posix,tokenizer,zlib'
+
+jobs:
+  # The PHAR is the same for every platform: build it once, on Linux.
+  phar:
+    name: 📦 PHAR
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: 🛠️ Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          ini-values: 'memory_limit=-1, phar.readonly=0'
+          tools: composer, box
+          coverage: none
+
+      - name: 🏷️ Write version
+        run: |
+          [ -z "$RELEASE_TAG" ] || printf '{".": "%s"}\n' "${RELEASE_TAG#v}" > resources/version.json
+
+      - name: 📥 Install dependencies with composer
+        uses: ramsey/composer-install@v3
+        with:
+          composer-options: "--no-dev"
+
+      - name: 📦 Build PHAR
+        run: |
+          box validate box.json.dist --ansi
+          box compile --no-parallel
+          box info .build/phar/opmin.phar --ansi
+          .build/phar/opmin.phar --version
+
+      - name: 📤 Upload PHAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: phar-for-binaries
+          path: .build/phar/opmin.phar
+          retention-days: 7
+          if-no-files-found: error
+
+  # Each platform is built on a native runner of its own OS and architecture. No PHP is installed
+  # here: static-php-cli builds the embedded PHP itself and the smoke test runs the binary alone.
+  build:
+    name: 📦 ${{ matrix.target }}
+    needs: phar
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # `binary` is what `file` must report for the result: a build that silently ran on the
+          # wrong architecture (e.g. under Rosetta) fails instead of being published.
+          - target: linux-x86_64
+            # php.binary of the smoke tests (8.1 is the oldest supported); empty — no external PHP.
+            php: '8.1'
+            runner: ubuntu-24.04
+            spc: spc-linux-x86_64
+            binary: x86-64
+          - target: linux-aarch64
+            # php.binary of the smoke tests (8.1 is the oldest supported); empty — no external PHP.
+            php: '8.1'
+            runner: ubuntu-24.04-arm
+            spc: spc-linux-aarch64
+            binary: aarch64
+          - target: macos-x86_64
+            # setup-php hangs on macos-15-intel (it built PHP 8.1 and 8.4 from source for over half an hour
+            # and failed): the harness and Rector of the same build are checked on the other platforms.
+            php: ''
+            runner: macos-15-intel
+            spc: spc-macos-x86_64
+            binary: x86_64
+          - target: macos-arm64
+            # php.binary of the smoke tests (8.1 is the oldest supported); empty — no external PHP.
+            php: '8.4'
+            runner: macos-26
+            spc: spc-macos-aarch64
+            binary: arm64
+    env:
+      SPC_SKIP_BREW_INSTALL: '1'
+      # Binaries built on the newest macOS must still start on older ones.
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: 🖥️ Runner architecture
+        run: |
+          uname -a
+          echo "machine: $(uname -m)"
+          if [ "$(uname -s)" = Darwin ]; then
+            sysctl -n machdep.cpu.brand_string
+            echo "translated by Rosetta: $(sysctl -in sysctl.proc_translated || echo 0)"
+          fi
+
+      - name: 📥 Download PHAR
+        uses: actions/download-artifact@v4
+        with:
+          name: phar-for-binaries
+          path: .build/phar
+
+      - name: 🏷️ Version
+        shell: bash
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          echo "VERSION=${VERSION:-dev}" >> "$GITHUB_ENV"
+          # A cache key cannot contain commas.
+          echo "SPC_CACHE_KEY=$(printf '%s' "$SPC_EXTENSIONS" | tr ',' '-')" >> "$GITHUB_ENV"
+
+      - name: 📥 Download static-php-cli
+        run: |
+          mkdir -p .build/bin
+          curl -fsSL -o .build/bin/spc "https://dl.static-php.dev/static-php-cli/spc-bin/nightly/${{ matrix.spc }}"
+          chmod +x .build/bin/spc
+
+      - name: 💾 Cache static-php-cli downloads and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            downloads
+            buildroot
+            pkgroot
+          key: spc-${{ matrix.target }}-php${{ env.SPC_PHP_VERSION }}-${{ env.SPC_CACHE_KEY }}
+
+      - name: 🔨 Build micro SAPI
+        env:
+          # spc downloads sources through the GitHub API: anonymous calls share the runner IP's
+          # 60 requests/hour and fail with 403; the job token lifts that limit.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Mirrors of static-php-cli sometimes answer 500: retry downloads before failing the release.
+          retry() { for i in 1 2 3; do "$@" && return 0; echo "::warning::attempt $i failed: $*"; sleep $((i * 30)); done; return 1; }
+          retry .build/bin/spc doctor --auto-fix
+          [ -f buildroot/bin/micro.sfx ] || {
+            retry .build/bin/spc download --with-php="$SPC_PHP_VERSION" --for-extensions="$SPC_EXTENSIONS" --prefer-pre-built
+            .build/bin/spc build "$SPC_EXTENSIONS" --build-micro
+          }
+
+      - name: 🔗 Combine micro with the PHAR
+        run: |
+          chmod +x .build/phar/opmin.phar
+          mkdir -p dist
+          .build/bin/spc micro:combine .build/phar/opmin.phar --output=dist/opmin
+          chmod +x dist/opmin
+
+      - name: 🔍 Check binary architecture
+        run: |
+          file dist/opmin
+          file dist/opmin | grep -q '${{ matrix.binary }}' || { echo "::error::expected ${{ matrix.binary }}"; exit 1; }
+
+      - name: 🤔 Smoke test
+        run: |
+          dist/opmin --version
+          dist/opmin list
+          mkdir -p "$RUNNER_TEMP/smoke" && cd "$RUNNER_TEMP/smoke" && "$GITHUB_WORKSPACE/dist/opmin" init --no-interaction
+          test -s "$RUNNER_TEMP/smoke/opmin.yaml"
+
+      # An external php.binary: the harness is extracted from the binary and runs under it, while the
+      # orchestrator runs on the embedded PHP.
+      - name: 🛠️ Setup PHP ${{ matrix.php }} as php.binary
+        if: matrix.php != ''
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: opcache
+          coverage: none
+
+      - name: 🤔 Harness under an external php.binary
+        if: matrix.php != ''
+        run: |
+          cd "$RUNNER_TEMP/smoke"
+          printf '<?php\nfunction twice(int $x): int { return $x * 2; }\n' > a.php
+          printf '<?php\nfunction twice(int $x): int { return $x + $x; }\n' > same.php
+          printf '<?php\nfunction twice(int $x): int { return $x * 3; }\n' > other.php
+          "$GITHUB_WORKSPACE/dist/opmin" count a.php
+          "$GITHUB_WORKSPACE/dist/opmin" verify a.php same.php
+          if "$GITHUB_WORKSPACE/dist/opmin" verify a.php other.php; then echo "::error::a changed behavior was accepted"; exit 1; fi
+
+      # Rector and PHPStan run inside the binary (micro runs no other script): a rule must still apply.
+      - name: 🤔 Rector inside the binary
+        if: matrix.php != ''
+        run: |
+          mkdir -p "$RUNNER_TEMP/rector/src" && cd "$RUNNER_TEMP/rector"
+          printf '<?php\nnamespace Acme;\nfinal class Text\n{\n    public function size(string $s): int\n    {\n        return strlen($s) + strlen(trim($s));\n    }\n}\n' > src/Text.php
+          "$GITHUB_WORKSPACE/dist/opmin" optimize --dry-run --no-interaction --set=commands.phpstan=null src | tee optimize.log
+          grep -q 'opcodes (-' optimize.log || { echo "::error::optimize did not apply a rule"; exit 1; }
+
+      - name: 🗜️ Archive
+        run: |
+          ARCHIVE="opmin-${VERSION}-${{ matrix.target }}.tar.gz"
+          tar -czf "$ARCHIVE" -C dist opmin
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: 📤 Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opmin-${{ matrix.target }}
+          path: ${{ env.ARCHIVE }}
+          retention-days: 7
+          if-no-files-found: error
+
+  # The images: the linux binary of each architecture plus the PHP of production as php.binary. Every
+  # architecture is built on its own native runner; the manifest job joins them under one tag.
+  docker:
+    name: 🐳 Docker ${{ matrix.arch }}
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            target: linux-x86_64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            target: linux-aarch64
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: docker
+
+      - name: 📥 Download the binary
+        uses: actions/download-artifact@v4
+        with:
+          name: opmin-${{ matrix.target }}
+          path: dist
+
+      - name: 🏷️ Version
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          echo "VERSION=${VERSION:-dev}" >> "$GITHUB_ENV"
+          mkdir -p docker/context
+          tar -xzf dist/opmin-*-${{ matrix.target }}.tar.gz -C docker/context opmin
+
+      - name: 🔑 Log in to ghcr.io
+        if: env.RELEASE_TAG != ''
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Each image must count opcodes, start the harness and reject a changed behavior before it is pushed.
+      - name: 🐳 Build, test and push
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke/src"
+          printf '<?php\nfunction twice(int $x): int { return $x * 2; }\n' > "$RUNNER_TEMP/smoke/src/a.php"
+          printf '<?php\nfunction twice(int $x): int { return $x * 3; }\n' > "$RUNNER_TEMP/smoke/other.php"
+          for php in 8.1 8.2 8.3 8.4 8.5; do
+            tag="$IMAGE:$VERSION-php$php-${{ matrix.arch }}"
+            docker build --pull --build-arg PHP="$php" -t "$tag" -f docker/Dockerfile docker/context
+            run() { docker run --rm -v "$RUNNER_TEMP/smoke:/app" "$tag" "$@"; }
+            run opmin doctor
+            run opmin count src/a.php
+            if run opmin verify src/a.php other.php; then echo "::error::php$php: a changed behavior was accepted"; exit 1; fi
+            [ -z "$RELEASE_TAG" ] || docker push "$tag"
+          done
+
+  docker-manifest:
+    name: 🐳 Docker manifests
+    needs: docker
+    if: ${{ inputs.tag || github.event.release.tag_name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      packages: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+    steps:
+      - name: 🔑 Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🐳 Join the architectures
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          for php in 8.1 8.2 8.3 8.4 8.5; do
+            docker buildx imagetools create -t "$IMAGE:$VERSION-php$php" -t "$IMAGE:php$php" \
+              "$IMAGE:$VERSION-php$php-amd64" "$IMAGE:$VERSION-php$php-arm64"
+          done
+
+  # One job attaches every asset: parallel uploads to the same release race and drop assets.
+  # It publishes only when every platform is built: a release without one binary would break install.sh there.
+  publish:
+    name: 📤 Publish to the release
+    needs: [phar, build]
+    if: ${{ inputs.tag || github.event.release.tag_name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      # Build provenance attestations: a keyless signature by GitHub of what this workflow built.
+      id-token: write
+      attestations: write
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: resources/release-keys
+
+      - name: 📥 Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: opmin-*
+          path: dist
+          merge-multiple: true
+
+      - name: 📥 Download PHAR
+        uses: actions/download-artifact@v4
+        with:
+          name: phar-for-binaries
+          path: dist
+
+      - name: 🔢 Checksums
+        run: |
+          cd dist
+          test "$(ls opmin-*.tar.gz | wc -l)" -eq 4
+          sha256sum opmin-*.tar.gz opmin.phar > sha256sum.txt
+          cat sha256sum.txt
+
+      # The private key lives only in this step. The signature must verify with a public key opmin ships:
+      # otherwise every installed opmin would refuse this release.
+      - name: 🔏 Sign checksums
+        env:
+          OPMIN_SIGNING_KEY: ${{ secrets.OPMIN_SIGNING_KEY }}
+        run: |
+          [ -n "$OPMIN_SIGNING_KEY" ] || { echo "::error::secret OPMIN_SIGNING_KEY is not set"; exit 1; }
+          umask 077
+          KEY="$(mktemp)"
+          trap 'rm -f "$KEY"' EXIT
+          printf '%s\n' "$OPMIN_SIGNING_KEY" > "$KEY"
+          openssl dgst -sha256 -sign "$KEY" -out dist/sha256sum.txt.sig dist/sha256sum.txt
+          for pub in resources/release-keys/*.pub.pem; do
+            openssl dgst -sha256 -verify "$pub" -signature dist/sha256sum.txt.sig dist/sha256sum.txt && exit 0
+          done
+          echo "::error::the signature matches none of resources/release-keys"; exit 1
+
+      - name: 🪪 Attest build provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            dist/opmin-*.tar.gz
+            dist/opmin.phar
+
+      - name: 📤 Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$RELEASE_TAG" dist/*.tar.gz dist/opmin.phar dist/sha256sum.txt dist/sha256sum.txt.sig \
+            --clobber --repo "$GITHUB_REPOSITORY"
+
+...

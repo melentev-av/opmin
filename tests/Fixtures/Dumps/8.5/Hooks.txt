@@ -1,0 +1,104 @@
+
+$_main:
+     ; (lines=2, args=0, vars=0, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Hooks.php:1-26
+     ; return  [] RANGE[0..0]
+0000 DECLARE_CLASS_DELAYED string("fixture\\count\\person") string("")
+0001 RETURN int(1)
+
+Fixture\Count\Person::__construct:
+     ; (lines=4, args=1, vars=1, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Hooks.php:18-24
+     ; return  [] RANGE[0..0]
+0000 CV0($age) = RECV 1
+0001 ASSIGN_OBJ THIS string("age")
+0002 OP_DATA CV0($age)
+0003 RETURN null
+
+Fixture\Count\Person::$name::get:
+     ; (lines=8, args=0, vars=0, tmps=2)
+     ; (before optimizer)
+     ; /fixtures/Hooks.php:15-15
+     ; return  [] RANGE[0..0]
+0000 INIT_FCALL 1 96 string("strtoupper")
+0001 T0 = FETCH_OBJ_R THIS string("name")
+0002 SEND_VAL T0 1
+0003 V1 = DO_ICALL
+0004 VERIFY_RETURN_TYPE V1
+0005 RETURN V1
+0006 VERIFY_RETURN_TYPE
+0007 RETURN null
+LIVE RANGES:
+     1: 0004 - 0005 (tmp/var)
+
+Fixture\Count\Person::$name::set:
+     ; (lines=5, args=1, vars=1, tmps=2)
+     ; (before optimizer)
+     ; /fixtures/Hooks.php:12-14
+     ; return  [] RANGE[0..0]
+0000 CV0($value) = RECV 1
+0001 T2 = FRAMELESS_ICALL_1(trim) CV0($value)
+0002 ASSIGN_OBJ THIS string("name")
+0003 OP_DATA T2
+0004 RETURN null
+
+Fixture\Count\Person::$age::get:
+     ; (lines=6, args=0, vars=0, tmps=2)
+     ; (before optimizer)
+     ; /fixtures/Hooks.php:20-22
+     ; return  [] RANGE[0..0]
+0000 T0 = FETCH_OBJ_R THIS string("age")
+0001 T1 = MUL T0 int(2)
+0002 VERIFY_RETURN_TYPE T1
+0003 RETURN T1
+0004 VERIFY_RETURN_TYPE
+0005 RETURN null
+LIVE RANGES:
+     1: 0002 - 0003 (tmp/var)
+
+$_main:
+     ; (lines=2, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Hooks.php:1-26
+0000 DECLARE_CLASS_DELAYED string("fixture\\count\\person") string("")
+0001 RETURN int(1)
+
+Fixture\Count\Person::__construct:
+     ; (lines=4, args=1, vars=1, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Hooks.php:18-24
+0000 CV0($age) = RECV 1
+0001 ASSIGN_OBJ THIS string("age")
+0002 OP_DATA CV0($age)
+0003 RETURN null
+
+Fixture\Count\Person::$name::get:
+     ; (lines=5, args=0, vars=0, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Hooks.php:15-15
+0000 INIT_FCALL 1 96 string("strtoupper")
+0001 T0 = FETCH_OBJ_R THIS string("name")
+0002 SEND_VAL T0 1
+0003 V0 = DO_ICALL
+0004 RETURN V0
+
+Fixture\Count\Person::$name::set:
+     ; (lines=5, args=1, vars=1, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Hooks.php:12-14
+0000 CV0($value) = RECV 1
+0001 T1 = FRAMELESS_ICALL_1(trim) CV0($value)
+0002 ASSIGN_OBJ THIS string("name")
+0003 OP_DATA T1
+0004 RETURN null
+
+Fixture\Count\Person::$age::get:
+     ; (lines=4, args=0, vars=0, tmps=2)
+     ; (after optimizer)
+     ; /fixtures/Hooks.php:20-22
+0000 T1 = FETCH_OBJ_R THIS string("age")
+0001 T0 = ADD T1 T1
+0002 VERIFY_RETURN_TYPE T0
+0003 RETURN T0

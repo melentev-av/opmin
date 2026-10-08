@@ -1,0 +1,88 @@
+{
+    "status": "failed",
+    "php": "8.4.1",
+    "scope": "changed",
+    "base": "origin/main",
+    "tolerance": 1,
+    "max_ops_new_function": 25,
+    "totals": {
+        "checked": 5,
+        "unchanged": 0,
+        "grown": 1,
+        "new_over_limit": 1,
+        "decreased": 1,
+        "new": 2,
+        "removed": 1
+    },
+    "findings": [
+        {
+            "kind": "grown",
+            "severity": "error",
+            "function": "App\\Price::calc",
+            "file": "src/Price.php",
+            "line": 20,
+            "before": 5,
+            "after": 9,
+            "delta": 4,
+            "suggestion": {
+                "rule": "Opmin\\Rector\\Rule\\FullyQualifyGlobalCallsRector",
+                "gain": 4
+            }
+        },
+        {
+            "kind": "new_over_limit",
+            "severity": "warning",
+            "function": "App\\Odd::{closure:1}",
+            "file": "src/odd, \"name\" & co.php",
+            "line": 12,
+            "before": null,
+            "after": 30,
+            "delta": 30,
+            "suggestion": null
+        },
+        {
+            "kind": "decreased",
+            "severity": "info",
+            "function": "App\\Price::total",
+            "file": "src/Price.php",
+            "line": 30,
+            "before": 9,
+            "after": 7,
+            "delta": -2,
+            "suggestion": null
+        },
+        {
+            "kind": "new",
+            "severity": "info",
+            "function": "App\\Price::<tax & \"fee\">",
+            "file": "src/Price.php",
+            "line": 40,
+            "before": null,
+            "after": 4,
+            "delta": 4,
+            "suggestion": null
+        },
+        {
+            "kind": "new",
+            "severity": "info",
+            "function": "App\\Odd::small",
+            "file": "src/odd, \"name\" & co.php",
+            "line": 20,
+            "before": null,
+            "after": 2,
+            "delta": 2,
+            "suggestion": null
+        },
+        {
+            "kind": "removed",
+            "severity": "info",
+            "function": "App\\Price::gone",
+            "file": "src/Price.php",
+            "line": null,
+            "before": 3,
+            "after": null,
+            "delta": -3,
+            "suggestion": null
+        }
+    ]
+}

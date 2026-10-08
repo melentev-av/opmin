@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<!-- The harness runs under the project's PHP: analyzed as PHP 8.1, without the tool's vendor. -->
+<psalm xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns="https://getpsalm.org/schema/config"
+       xsi:schemaLocation="https://getpsalm.org/schema/config vendor/vimeo/psalm/config.xsd"
+       errorLevel="1"
+       findUnusedBaselineEntry="false"
+       findUnusedCode="false"
+       phpVersion="8.1"
+       autoloader="harness/bootstrap.php"
+>
+    <issueHandlers>
+        <!-- Class and function names come from the protocol, values from the analyzed code. -->
+        <ArgumentTypeCoercion errorLevel="suppress"/>
+        <MixedAssignment errorLevel="suppress"/>
+        <RedundantCastGivenDocblockType errorLevel="suppress"/>
+        <!-- Optional extensions and libraries: Xdebug, pcov, Carbon, Symfony Clock. -->
+        <UndefinedFunction errorLevel="suppress"/>
+        <UndefinedConstant errorLevel="suppress"/>
+        <!-- The project's autoloader and files are required by path. -->
+        <UnresolvableInclude errorLevel="suppress"/>
+        <InternalMethod errorLevel="suppress"/>
+    </issueHandlers>
+    <projectFiles>
+        <directory name="harness"/>
+    </projectFiles>
+</psalm>

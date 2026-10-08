@@ -17,6 +17,9 @@ final class Info
     /** @var non-empty-string Absolute path to the root directory */
     public const ROOT_DIR = __DIR__ . '/..';
 
+    /** @var non-empty-string GitHub repository: releases, the Docker image, the schema */
+    public const REPOSITORY = 'melentev-av/opmin';
+
     /** @var non-empty-string URL of the JSON Schema of `opmin.yaml` */
     public const SCHEMA_URL = 'https://raw.githubusercontent.com/melentev-av/opmin/master/resources/opmin.schema.json';
 

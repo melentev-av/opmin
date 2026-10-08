@@ -22,7 +22,7 @@ final class Verification
     #[ConfigKey('verification.min_branch_coverage', 'Branch coverage (%) of the original function required from differential tests')]
     public int $minBranchCoverage = 90;
 
-    #[ConfigKey('verification.coverage_driver', 'Coverage driver: auto | xdebug | pcov')]
+    #[ConfigKey('verification.coverage_driver', 'Coverage of differential tests: auto | probes (branch probes, no extension) | xdebug | pcov (line coverage); auto — probes')]
     public CoverageDriver $coverageDriver = CoverageDriver::Auto;
 
     /** @var non-negative-int */

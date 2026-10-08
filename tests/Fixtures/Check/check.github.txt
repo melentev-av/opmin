@@ -1,0 +1,3 @@
+::error file=src/Price.php,line=20,title=opmin%3A grown::App\Price::calc: opcodes grew 5 → 9 (+4, tolerance 1); FullyQualifyGlobalCallsRector would save 4 (opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector')
+::warning file=src/odd%2C "name" & co.php,line=12,title=opmin%3A new_over_limit::App\Odd::{closure:1}: new function with 30 opcodes, above the limit of 25 for new functions
+::notice file=src/Price.php,line=30,title=opmin%3A decreased::App\Price::total: opcodes decreased 9 → 7 (-2), update the baseline

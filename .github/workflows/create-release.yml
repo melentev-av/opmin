@@ -5,7 +5,7 @@
 #   On a push to master release-please opens/updates a release PR (CHANGELOG.md + version);
 #   no builds and no tests run here.
 #   Merging the release PR creates the tag and the GitHub release; the `release: published`
-#   event then starts build-phar-release.yml and build-bin-release.yml.
+#   event then starts build-release.yml (PHAR, binaries, Docker images).
 #
 # release-please acts as the GitHub App `opmin-release`, not as GITHUB_TOKEN: events created with
 # GITHUB_TOKEN start no workflows, so the checks would never run on the release PR and the builds

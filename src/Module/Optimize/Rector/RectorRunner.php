@@ -1,0 +1,150 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Opmin\Module\Optimize\Rector;
+
+use Internal\Path;
+use Opmin\Module\Common\Cpu;
+use Opmin\Module\Common\FileSystem\FS;
+use Opmin\Module\Project\Project;
+use Opmin\Module\Release\Installation;
+use Symfony\Component\Process\Process;
+
+/**
+ * Runs Rector with exactly one rule over the target files, in a process of the PHP running opmin
+ * (Rector is part of the orchestrator; the project's `rector.php` is never read). Rector rewrites
+ * the files in place, printing changed code format-preserving.
+ *
+ * The config is generated per rule: paths, `php.target`, a cache directory in `cache.dir/rector`, the
+ * rule (with its options), or its set with every other rule of the set skipped. Rector loads the
+ * project's `vendor/autoload.php` itself (from the working directory) for PHPStan's reflection.
+ *
+ * @internal
+ */
+final readonly class RectorRunner
+{
+    /** Below this many files the parallel workers cost more than they save. */
+    private const PARALLEL_FROM = 20;
+
+    /**
+     * @param non-empty-string|null $phpTarget `8.3`.
+     */
+    public function __construct(
+        private Project $project,
+        private Path $cacheDir,
+        private ?string $phpTarget,
+        private float $timeout = 1800.0,
+    ) {}
+
+    /**
+     * Rector's own binary, run with the PHP running opmin.
+     */
+    public static function binary(): string
+    {
+        # Composer's InstalledVersions loses rector/rector once Rector's own vendor is loaded.
+        $file = (new \ReflectionClass(\Rector\Config\RectorConfig::class))->getFileName();
+        $file === false and throw new \RuntimeException('rector/rector is not installed.');
+
+        return \dirname($file, 3) . '/bin/rector';
+    }
+
+    /**
+     * @param list<Path> $files Absolute.
+     * @return list<string> Errors Rector reported (a rule crashed on a file); empty on success.
+     * @throws \RuntimeException When Rector cannot run.
+     */
+    public function run(RuleSpec $rule, array $files): array
+    {
+        if ($files === []) {
+            return [];
+        }
+
+        $dir = $this->cacheDir->join('rector');
+        FS::mkdir((string) $dir);
+        $config = $dir->join('config-' . \hash('xxh128', \serialize([$rule, $files, $this->phpTarget])) . '.php');
+        # A cache per rule: Rector hashes the config by the registered rules, which are the same for
+        # every rule taken out of one set — a shared cache would let the first rule hide the files
+        # from the others.
+        $cache = $dir->join('cache', \hash('xxh128', \serialize([$rule->class, $rule->options, $this->phpTarget])));
+        \file_put_contents((string) $config, $this->config($rule, $files, $cache));
+
+        $args = ['process', '--config=' . (string) $config, '--output-format=json', '--no-progress-bar', '--no-diffs'];
+        $installation = Installation::current();
+        $process = $installation->kind === Installation::SOURCES
+            ? new Process([\PHP_BINARY, '-d', 'memory_limit=-1', self::binary(), ...$args], (string) $this->project->root, timeout: $this->timeout)
+            # The PHAR and the static binary run Rector inside themselves.
+            : new Process([...$installation->command(), ...$args], (string) $this->project->root, ['OPMIN_INTERNAL' => 'rector', 'OPMIN_NO_DELEGATE' => '1'], timeout: $this->timeout);
+        $process->run();
+
+        /** @var mixed $result */
+        $result = \json_decode(self::json($process->getOutput()), true);
+        if (!\is_array($result)) {
+            throw new \RuntimeException(\sprintf(
+                "Rector failed with %s (exit code %d):\n%s",
+                $rule->shortName(),
+                (int) $process->getExitCode(),
+                \trim($process->getErrorOutput() . "\n" . $process->getOutput()),
+            ));
+        }
+
+        $errors = [];
+        /** @var mixed $error */
+        foreach (\is_array($result['errors'] ?? null) ? $result['errors'] : [] as $error) {
+            if (\is_array($error)) {
+                /** @var mixed $file */
+                $file = $error['file'] ?? null;
+                /** @var mixed $message */
+                $message = $error['message'] ?? null;
+                $errors[] = (\is_string($file) ? $file : '?') . ': ' . (\is_string($message) ? $message : '?');
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * The JSON document in Rector's output (a deprecation notice may precede it).
+     */
+    private static function json(string $output): string
+    {
+        $start = \strpos($output, '{');
+
+        return $start === false ? '' : \substr($output, $start);
+    }
+
+    /**
+     * @param list<Path> $files
+     */
+    private function config(RuleSpec $rule, array $files, Path $cache): string
+    {
+        $paths = \var_export(\array_map('strval', $files), true);
+        $lines = [
+            '<?php',
+            '',
+            'declare(strict_types=1);',
+            '',
+            '// Generated by opmin for one rule; do not edit.',
+            'return static function (Rector\Config\RectorConfig $config): void {',
+            "    \$config->paths({$paths});",
+            '    $config->cacheDirectory(' . \var_export((string) $cache, true) . ');',
+            # Rector's workers restart `PHP_BINARY <its script>`, which the PHAR and the static binary cannot be.
+            \count($files) >= self::PARALLEL_FROM && Installation::current()->kind === Installation::SOURCES
+                ? '    $config->parallel(processTimeout: 600, maxNumberOfProcess: ' . Cpu::count() . ', jobSize: 8);'
+                : '    $config->disableParallel();',
+        ];
+        $this->phpTarget === null or $lines[] = '    $config->phpVersion(' . \str_replace('.', '0', $this->phpTarget) . '00);';
+        if ($rule->set !== null) {
+            $lines[] = '    $config->import(' . \var_export($rule->set, true) . ');';
+            $rule->skip === [] or $lines[] = '    $config->skip(' . \var_export($rule->skip, true) . ');';
+        } elseif ($rule->options !== null) {
+            $lines[] = '    $config->ruleWithConfiguration(' . \var_export($rule->class, true) . ', ' . \var_export($rule->options, true) . ');';
+        } else {
+            $lines[] = '    $config->rule(' . \var_export($rule->class, true) . ');';
+        }
+
+        $lines[] = '};';
+
+        return \implode("\n", $lines) . "\n";
+    }
+}

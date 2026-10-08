@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace Opmin\Tests\Integration\Command;
 
 use Opmin\Command\Init;
-use Opmin\Command\NotImplemented;
+use Opmin\Command\SkillInstall;
+use Opmin\Command\SkillUpdate;
+use Opmin\Info;
 use Opmin\Module\Config\ConfigLoader;
+use Opmin\Module\Config\Schema\TestRunner;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Lifecycle\AfterTest;
@@ -18,7 +21,8 @@ use Testo\Test;
  */
 #[Test]
 #[Covers(Init::class)]
-#[Covers(NotImplemented::class)]
+#[Covers(SkillInstall::class)]
+#[Covers(SkillUpdate::class)]
 final class CliTest
 {
     private string $dir;
@@ -41,7 +45,7 @@ final class CliTest
         [$code, $out] = $this->opmin('list');
 
         Assert::same($code, 0);
-        foreach (['init', 'count', 'diff', 'optimize', 'apply-candidate', 'baseline', 'check', 'doctor', 'self-update', 'skill:install', 'skill:update'] as $command) {
+        foreach (['init', 'count', 'diff', 'optimize', 'llm:targets', 'llm:context', 'apply-candidate', 'llm:finish', 'baseline', 'check', 'doctor', 'self-update', 'skill:install', 'skill:update'] as $command) {
             Assert::string($out)->contains("  {$command} ");
         }
     }
@@ -57,6 +61,25 @@ final class CliTest
             ->startsWith('# yaml-language-server: $schema=');
         Assert::array(ConfigLoader::loadFile($this->dir . '/opmin.yaml'))->hasKeys('verification.seed', 'cache.dir');
         Assert::same(\file_get_contents($this->dir . '/.gitignore'), "/.opmin-cache/\n");
+    }
+
+    public function initWritesWhatItDetectsInTheProject(): void
+    {
+        \mkdir($this->dir . '/app');
+        \file_put_contents($this->dir . '/composer.json', '{"require": {"php": "^8.2 || ^8.3"}, "require-dev": {"phpunit/phpunit": "^11"}}');
+        \file_put_contents($this->dir . '/phpunit.xml', '<phpunit/>');
+        \file_put_contents($this->dir . '/pint.json', '{}');
+
+        [$code, $out] = $this->opmin('init', '--no-interaction', '--no-skill');
+
+        Assert::same($code, 0);
+        Assert::string($out)->contains("php.target: '8.2'")->contains('paths: [app]')->contains('tests.runner: phpunit');
+        $values = ConfigLoader::loadFile($this->dir . '/opmin.yaml');
+        Assert::same($values['php.target'] ?? null, '8.2');
+        Assert::same($values['paths'] ?? null, ['app']);
+        Assert::same($values['tests.runner'] ?? null, TestRunner::PhpUnit);
+        Assert::same($values['commands.format'] ?? null, 'vendor/bin/pint {files}');
+        Assert::same(\array_key_exists('commands.phpstan', $values) ? $values['commands.phpstan'] : 'missing', null);
     }
 
     public function initKeepsExistingGitignoreEntry(): void
@@ -78,6 +101,28 @@ final class CliTest
         Assert::same($code, 1);
         Assert::same($overwriteCode, 0);
         Assert::string((string) \file_get_contents($this->dir . '/opmin.yaml'))->contains('paths: [src]');
+    }
+
+    public function aPinnedVersionStopsAnotherOpminButNotSelfUpdate(): void
+    {
+        \file_put_contents($this->dir . '/.opmin-version', "9.9.9\n");
+
+        [$code, , $err] = $this->opmin('count');
+        [$updateCode, $updateOut] = $this->opminWithEnv(['HTTPS_PROXY' => 'http://127.0.0.1:9'], 'self-update');
+
+        Assert::same($code, 2);
+        Assert::string($err)->ignoringWhitespace(lineBreaks: true)
+            ->contains('This project expects opmin 9.9.9')->contains('opmin self-update --to=9.9.9');
+        Assert::same($updateCode, 1);
+        Assert::string($updateOut)->ignoringWhitespace(lineBreaks: true)->contains('This opmin runs from sources');
+    }
+
+    public function selfUpdateRefusesToReplaceSourcesWithoutGoingToTheNetwork(): void
+    {
+        [$code, $out] = $this->opminWithEnv(['HTTPS_PROXY' => 'http://127.0.0.1:9'], 'self-update');
+
+        Assert::same($code, 1);
+        Assert::string($out)->ignoringWhitespace(lineBreaks: true)->contains('This opmin runs from sources');
     }
 
     public function initWorksWhenExistingConfigIsBroken(): void
@@ -118,12 +163,41 @@ final class CliTest
         Assert::string($err)->contains('(opmin.yaml.dist)');
     }
 
-    public function notImplementedCommandFails(): void
+    public function initPutsTheSkillIntoTheProject(): void
     {
-        [$code, $out] = $this->opmin('optimize');
+        [$code, $out] = $this->opmin('init', '--no-interaction');
+        $skill = $this->dir . '/.claude/skills/opcode-minimize/SKILL.md';
 
-        Assert::same($code, 1);
-        Assert::string($out)->contains('not implemented yet (planned for M3)');
+        Assert::same($code, 0);
+        Assert::string($out)->contains('Claude Code skill');
+        Assert::string((string) \file_get_contents($skill))->contains('<!-- opmin-skill-version: ' . Info::version() . ' -->');
+        \exec('rm -rf ' . \escapeshellarg($this->dir . '/.claude'));
+        [$noSkill] = $this->opmin('init', '--no-interaction', '--overwrite', '--no-skill');
+        Assert::same($noSkill, 0);
+        Assert::false(\file_exists($skill));
+    }
+
+    public function skillIsInstalledAndUpdatedLocallyAndGlobally(): void
+    {
+        $home = ['HOME' => $this->dir . '/home'];
+        $local = $this->dir . '/.claude/skills/opcode-minimize/SKILL.md';
+        $global = $this->dir . '/home/.claude/skills/opcode-minimize/SKILL.md';
+
+        [$update] = $this->opmin('skill:update');
+        [$install, $installOut] = $this->opmin('skill:install');
+        [$again, $againOut] = $this->opmin('skill:install');
+        \file_put_contents($local, "<!-- opmin-skill-version: 0.0.1 -->\n");
+        [$other, $otherOut] = $this->opmin('skill:install');
+        [$updated, $updatedOut] = $this->opmin('skill:update');
+        [$globalCode] = $this->opminWithEnv($home, 'skill:install', '--global');
+
+        Assert::same([$update, $install, $again, $other, $updated, $globalCode], [1, 0, 0, 1, 0, 0]);
+        Assert::string($installOut)->contains('is installed');
+        Assert::string($againOut)->contains('is installed already');
+        Assert::string($otherOut)->ignoringWhitespace(lineBreaks: true)->contains('The skill 0.0.1 is installed')->contains('skill:update');
+        Assert::string($updatedOut)->contains('0.0.1 → ' . Info::version());
+        Assert::string((string) \file_get_contents($local))->contains('opmin-skill-version: ' . Info::version());
+        Assert::true(\is_file($global));
     }
 
     /**

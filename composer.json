@@ -20,15 +20,20 @@
         "php": ">=8.3",
         "internal/container": "^1.1",
         "internal/path": "^1.4",
+        "nikic/php-parser": "^5.4",
+        "phpstan/phpdoc-parser": "^2.3",
         "psr/container": "1 - 2",
+        "rasuvaeff/property-testing-core": "1.2.0",
         "rector/rector": "~2.7.0",
         "symfony/console": "^7.3 || ^8",
+        "symfony/process": "^7.3 || ^8",
         "symfony/yaml": "^7.3 || ^8"
     },
     "require-dev": {
-        "rasuvaeff/property-testing-core": "1.2.0",
+        "infection/infection": "^0.35",
         "rasuvaeff/property-testing-testo": "1.1.0",
         "spiral/code-style": "^2.3.1",
+        "testo/bridge-infection": "0.1.9",
         "testo/bridge-rector": "0.3.3",
         "testo/testo": "0.10.55",
         "vimeo/psalm": "^6.10 || ^7.0"
@@ -55,7 +60,10 @@
         "platform": {
             "php": "8.3.16"
         },
-        "sort-packages": true
+        "sort-packages": true,
+        "allow-plugins": {
+            "infection/extension-installer": true
+        }
     },
     "scripts": {
         "cs:diff": "php-cs-fixer fix --dry-run -v --diff",
@@ -63,6 +71,8 @@
         "psalm": "psalm",
         "psalm:baseline": "psalm --set-baseline=psalm-baseline.xml",
         "psalm:ci": "psalm --output-format=github --show-info=false --stats --threads=4",
+        "infect": "bin/infect",
+        "psalm:harness": "psalm --config=psalm-harness.xml --no-cache",
         "schema:dump": "@php bin/opmin schema:dump",
         "test": "testo --ansi --no-coverage",
         "test:cc": [

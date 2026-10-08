@@ -15,3 +15,9 @@
   `composer schema:dump` (CI fails on a stale `resources/opmin.schema.json`).
 - Do not invent opcode "optimizations": every claim about opcodes is checked by a real count on the current PHP.
 - Comments explain *why*, not *what*. Match the density of the surrounding code.
+- Files shipped inside the PHAR (`Info::ROOT_DIR . '/…'`) are `phar://` URLs: keep them as strings, never
+  `Internal\Path` — it collapses `phar://` into `phar:/`. Anything `php.binary` must read is extracted first
+  (`HarnessFiles`, `PhpStanPhar`).
+- A subprocess of opmin itself goes through `Installation::current()->command()` (with `OPMIN_INTERNAL` for an
+  internal entry point): the static binary cannot run any script but its own, so `PHP_BINARY <script>` is wrong.
+

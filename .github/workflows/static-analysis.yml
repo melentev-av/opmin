@@ -40,6 +40,36 @@ jobs:
       - name: 🔍 Run static analysis using vimeo/psalm
         run: composer psalm:ci
 
+  harness:
+    # The harness runs under the project's PHP: PHP 8.1 syntax and standard library, no dependencies.
+    name: 🧰 Harness on PHP 8.1
+    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: 🛠️ Setup PHP 8.1
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          coverage: none
+
+      - name: 🧪 Lint the harness with PHP 8.1
+        run: find harness -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: 🛠️ Setup PHP 8.3 for Psalm
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: 📥 Install dependencies with composer
+        uses: ramsey/composer-install@v3
+
+      - name: 🔍 Psalm with phpVersion 8.1 over harness/
+        run: vendor/bin/psalm --config=psalm-harness.xml --no-cache --output-format=github --show-info=false
+
   json-schema:
     name: 🧾 opmin.yaml JSON Schema is up to date
     timeout-minutes: 5

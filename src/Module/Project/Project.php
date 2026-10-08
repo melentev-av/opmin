@@ -11,7 +11,9 @@ use Internal\Path;
  *
  * The root is the nearest directory with `composer.json` or `opmin.yaml`/`opmin.yaml.dist` above the
  * analyzed paths: a config marks the root of bare files that live inside another project. Without
- * either, the root is the current directory.
+ * either, the root is the current directory. A `composer.json` without a config below a current
+ * directory that holds one is a package of a monorepo and is passed over: the config in effect is
+ * the one of the current directory, and its `paths` and commands are relative to it.
  *
  * @internal
  */
@@ -31,18 +33,21 @@ final readonly class Project
 
     /**
      * @param Path $start Absolute directory or file to search upwards from.
-     * @param Path $fallback Absolute root when no `composer.json` is found.
+     * @param Path $fallback Absolute current directory: the root when nothing is found.
      */
     public static function detect(Path $start, Path $fallback): self
     {
         $dir = $start->isFile() ? $start->parent() : $start;
+        $configured = self::hasConfig($fallback);
         while (true) {
+            $config = self::hasConfig($dir);
+            $package = $configured && !$config && $dir->isWithin($fallback);
             $composer = $dir->join('composer.json');
-            if ($composer->isFile()) {
+            if ($composer->isFile() && !$package) {
                 return new self($dir, true, self::phpTarget((string) \file_get_contents((string) $composer)));
             }
 
-            if ($dir->join('opmin.yaml')->isFile() || $dir->join('opmin.yaml.dist')->isFile()) {
+            if ($config) {
                 return new self($dir, false, null);
             }
 
@@ -67,6 +72,11 @@ final readonly class Project
         $result = \str_replace('\\', '/', $result);
 
         return $result === '' ? '.' : $result;
+    }
+
+    private static function hasConfig(Path $dir): bool
+    {
+        return $dir->join('opmin.yaml')->isFile() || $dir->join('opmin.yaml.dist')->isFile();
     }
 
     /**

@@ -376,13 +376,17 @@ Every week CI optimizes real packages in git package mode with Stage A (the four
 own tests on the patched code ([smoke-real-packages.yml](.github/workflows/smoke-real-packages.yml),
 `tests/Smoke/run.sh <package> <php>` locally). The tests must stay green: a red run is a bug of the verifier.
 
-| Package | Opcodes | Saved | Functions changed | Package's tests after the patch | Time |
-|---|---|---|---|---|---|
-| symfony/string 6.4.46 | 6 358 → 6 083 | −275 (−4.3%) | 45 | 2 410, green | 2.5 min |
-| league/csv 9.28.0 | 16 645 → 16 537 | −108 (−0.6%) | 26 | green (without `network`) | 1.5 min |
-| nesbot/carbon 3.14.2 | 27 422 → 26 170 | −1 252 (−4.6%) | 105 | 4 070, green (without `localization`) | 21 min |
+| Package | PHP | Opcodes | Saved | Functions changed | Package's tests after the patch | Time |
+|---|---|---|---|---|---|---|
+| symfony/string 6.4.46 | 8.1 | 5 940 → 5 863 | −77 (−1.3%) | 50 | green | 2.5 min |
+| | 8.5 | 6 358 → 6 083 | −275 (−4.3%) | 45 | green | 2.5 min |
+| league/csv 9.28.0 | 8.1 | 16 679 → 16 605 | −74 (−0.4%) | 24 | green (without `network`) | 5 min |
+| | 8.5 | 16 512 → 16 404 | −108 (−0.7%) | 26 | green (without `network`) | 1 min |
+| nesbot/carbon 3.14.2 | 8.1 | 26 823 → 26 630 | −193 (−0.7%) | 52 | green (without `localization`) | 7 min |
+| | 8.5 | 27 413 → 26 161 | −1 252 (−4.6%) | 105 | green (without `localization`) | 21 min |
 
-PHP 8.4, `php.target` 8.4. Most of the gain is `FullyQualifyGlobalCallsRector`: since PHP 8.4 an unqualified call of a
+`php.binary` and `php.target` are the PHP of the row; CI runners, the static binary. Most of the gain is
+`FullyQualifyGlobalCallsRector`, and the gap between 8.1 and 8.5 is its: since PHP 8.4 an unqualified call of a
 frameless function (`trim`, `str_replace`, `implode`…) in a namespace compiles into both the frameless call and the
 fallback, and `\trim()` removes the fallback.
 

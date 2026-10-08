@@ -37,6 +37,50 @@ final class ReportsTest
         Assert::null(JunitReport::read(self::FIXTURES . '/missing.xml'));
     }
 
+    public function readsJunitWithoutDomEscapesAndATruncatedFile(): void
+    {
+        $dir = (string) \realpath(\sys_get_temp_dir()) . '/opmin-junit-' . \bin2hex(\random_bytes(4));
+        \mkdir($dir);
+        $xml = <<<'XML'
+            <?xml version="1.0" encoding="UTF-8"?>
+            <testsuites>
+              <testsuite name="A &gt; B" tests="3">
+                <testcase name="testCompares with data set &quot;a &gt; b&quot;" class="Tests\CmpTest" time="0.5">
+                  <failure type="X">expected &lt;error&gt; tag</failure>
+                </testcase>
+                <testcase name='testQuoted' class='Tests\CmpTest' time='0.25'/>
+                <testcase name="testOut" class="Tests\CmpTest" time="0.25"><system-out>&lt;failure&gt;</system-out></testcase>
+              </testsuite>
+            </testsuites>
+            XML;
+        \file_put_contents("{$dir}/ok.xml", $xml);
+        \file_put_contents("{$dir}/cut.xml", \substr($xml, 0, -20));
+
+        $report = JunitReport::read("{$dir}/ok.xml");
+        $cut = JunitReport::read("{$dir}/cut.xml");
+        \exec('rm -rf ' . \escapeshellarg($dir));
+
+        Assert::same($report, ['tests' => 3, 'failed' => ['Tests\CmpTest::testCompares with data set "a > b"'], 'seconds' => 1.0]);
+        Assert::null($cut);
+    }
+
+    public function theOrchestratorReadsXmlWithoutExtensionsOfLibxml(): void
+    {
+        # The static binary has no libxml (see SPC extensions in .github/actions/binary): a class of ext-dom
+        # or ext-xml there is a fatal error only the binary shows.
+        $used = [];
+        $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(__DIR__ . '/../../../../src', \FilesystemIterator::SKIP_DOTS));
+        foreach ($files as $file) {
+            $code = (string) \file_get_contents((string) $file);
+            \preg_match_all('/\\\\?\b(DOM[A-Z]\w+|SimpleXML\w*|simplexml_\w+|XMLReader|XMLWriter|xml_parser_create\w*|libxml_\w+)\b/', $code, $m);
+            foreach ($m[1] as $name) {
+                $used[] = \basename((string) $file) . ': ' . $name;
+            }
+        }
+
+        Assert::same($used, []);
+    }
+
     public function readsTestsPerLineFromCoverageXml(): void
     {
         $map = CoverageXmlReport::read(self::FIXTURES . '/coverage-xml');

@@ -10,5 +10,9 @@
         <covered by="Tests\MathTest::testDivides with data set #0"/>
       </line>
     </coverage>
+    <source>
+      <line no="5"><token name="T_RETURN">return</token> <token name="T_LT">&lt;</token></line>
+      <line no="12"><token name="T_COMMENT">// &lt;line nr="12"&gt;</token></line>
+    </source>
   </file>
 </phpunit>

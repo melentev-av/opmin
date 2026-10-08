@@ -1,0 +1,111 @@
+---
+
+# Smoke test on real packages (brief, «Тестирование самой тулзы»; plan/M8): the static binary of this commit
+# optimizes real packages in git package mode, in the opmin image of the package's PHP, and the packages' own
+# tests must stay green after the patch. The best detector of «equivalent» changes that are not.
+# Weekly and by hand: it takes long and depends on foreign repositories.
+
+name: 🔥 Smoke on real packages
+
+on:  # yamllint disable-line rule:truthy
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  cancel-in-progress: true
+  group: smoke-real-packages-${{ github.ref }}
+
+jobs:
+  binary:
+    name: 📦 Static binary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: 📦 Build PHAR
+        uses: ./.github/actions/phar
+
+      - name: 🔨 Build the static binary
+        uses: ./.github/actions/binary
+        with:
+          target: linux-x86_64
+          spc: spc-linux-x86_64
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📤 Upload the binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: opmin-smoke-binary
+          path: dist/opmin
+          retention-days: 7
+          if-no-files-found: error
+
+  smoke:
+    name: 🔥 ${{ matrix.package }} on PHP ${{ matrix.php }}
+    needs: binary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - symfony-string
+          - league-csv
+          - carbon
+        # The oldest and the newest php.binary.
+        php:
+          - '8.1'
+          - '8.5'
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: 📥 Download the binary
+        uses: actions/download-artifact@v4
+        with:
+          name: opmin-smoke-binary
+          path: dist
+
+      - name: 🐳 Build the image with PHP ${{ matrix.php }}
+        run: |
+          chmod +x dist/opmin
+          docker build --pull --build-arg PHP=${{ matrix.php }} -t opmin:smoke-php${{ matrix.php }} -f docker/Dockerfile dist
+
+      - name: 🔥 Optimize and run the package's tests
+        env:
+          OPMIN: ${{ github.workspace }}/dist/opmin
+          SMOKE_DIR: ${{ runner.temp }}/smoke
+        run: tests/Smoke/run.sh ${{ matrix.package }} ${{ matrix.php }}
+
+      - name: 📝 Summary
+        if: always()
+        env:
+          SUMMARY: ${{ runner.temp }}/smoke/${{ matrix.package }}-php${{ matrix.php }}/summary.json
+        run: |
+          [ -f "$SUMMARY" ] || exit 0
+          php -r '
+            $s = json_decode(file_get_contents($argv[1]), true);
+            echo "| Package | PHP | Opcodes | Saved | Functions changed | Rolled back | Tests before / after | Time |\n";
+            echo "|---|---|---|---|---|---|---|---|\n";
+            printf("| %s %s | %s | %s → %s | %s%% | %s | %s | %s / %s | %d min |\n", $s["package"], $s["ref"], $s["php"],
+                $s["ops_before"] ?? "?", $s["ops_after"] ?? "?", $s["percent"] ?? "?", $s["functions_changed"] ?? "?",
+                $s["rolled_back"] ?? "?", $s["tests_before"], $s["tests_after"], intdiv($s["seconds"] + 59, 60));
+          ' "$SUMMARY" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 📤 Upload the report, the patch and the counterexamples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-${{ matrix.package }}-php${{ matrix.php }}
+          path: |
+            ${{ runner.temp }}/smoke/${{ matrix.package }}-php${{ matrix.php }}/run.log
+            ${{ runner.temp }}/smoke/${{ matrix.package }}-php${{ matrix.php }}/summary.json
+            ${{ runner.temp }}/smoke/${{ matrix.package }}-php${{ matrix.php }}/tests-*.log
+            ${{ runner.temp }}/smoke/${{ matrix.package }}-php${{ matrix.php }}/*.patch
+            ${{ runner.temp }}/smoke/${{ matrix.package }}-php${{ matrix.php }}/runs/
+          retention-days: 30
+          if-no-files-found: ignore
+...

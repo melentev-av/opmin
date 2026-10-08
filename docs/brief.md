@@ -641,7 +641,7 @@ check:
 
 ```yaml
 paths: [src]
-exclude: [vendor, tests]
+exclude: [vendor, tests, '*Test.php']   # name without a slash: any depth, any case, wildcards
 
 php:
   binary: php            # каким PHP компилировать и считать, должен совпадать с продом

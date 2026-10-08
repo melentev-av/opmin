@@ -75,13 +75,14 @@ final class ProjectTest
         Assert::same(\array_map($project->relative(...), $files), ['src/A.php', 'src/sub/B.php']);
     }
 
-    public function anExclusionWithoutASlashIgnoresTheCase(): void
+    public function anExclusionWithoutASlashIgnoresTheCaseAndTakesWildcards(): void
     {
         \mkdir("{$this->dir}/src/Tests");
         \file_put_contents("{$this->dir}/src/Tests/ATest.php", '<?php');
+        \file_put_contents("{$this->dir}/src/sub/BTest.php", '<?php');
         $project = new Project(Path::create($this->dir), true, null);
 
-        $files = (new FileFinder())->find($project, [Path::create("{$this->dir}/src")], ['tests', 'vendor', 'Legacy']);
+        $files = (new FileFinder())->find($project, [Path::create("{$this->dir}/src")], ['tests', 'vendor', 'Legacy', '*Test.php']);
 
         Assert::same(\array_map($project->relative(...), $files), ['src/A.php', 'src/sub/B.php']);
     }

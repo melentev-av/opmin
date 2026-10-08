@@ -21,9 +21,9 @@ final class Project
     public array $paths = ['src'];
 
     /** @var list<non-empty-string> */
-    #[ConfigKey('exclude', 'Directories and files to skip', list: true)]
+    #[ConfigKey('exclude', 'Directories and files to skip; a name without a slash matches at any depth, wildcards allowed', list: true)]
     #[InputOption('exclude')]
-    public array $exclude = ['vendor', 'tests'];
+    public array $exclude = ['vendor', 'tests', '*Test.php'];
 
     /** @var non-empty-string|null */
     #[ConfigKey('requires', 'opmin version the project expects (e.g. "^1.2"; .opmin-version works too); null — any')]

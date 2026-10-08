@@ -17,7 +17,7 @@
             ]
         },
         "exclude": {
-            "description": "Directories and files to skip",
+            "description": "Directories and files to skip; a name without a slash matches at any depth, wildcards allowed",
             "type": "array",
             "items": {
                 "type": "string",
@@ -25,7 +25,8 @@
             },
             "default": [
                 "vendor",
-                "tests"
+                "tests",
+                "*Test.php"
             ]
         },
         "requires": {

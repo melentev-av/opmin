@@ -442,7 +442,7 @@ interface TestRunnerAdapter
 Определение раннера: `opmin init` / `doctor` по `composer.json` (`require-dev`) и конфигам (`phpunit.xml(.dist)`, `tests/Pest.php`, конфиг Testo). Явное указание в конфиге:
 ```yaml
 tests:
-  runner: auto        # auto | phpunit | pest | testo | command
+  runner: auto        # auto | phpunit | pest | testo | command | none
   command: null       # для runner: command, или чтобы переопределить бинарник
 ```
 (Этот блок заменяет `commands.tests` и `commands.tests_filter` в конфиге.)
@@ -648,7 +648,7 @@ php:
   target: '8.3'          # по умолчанию из composer.json (config.platform.php → require.php)
 
 tests:
-  runner: auto           # auto | phpunit | pest | testo | command
+  runner: auto           # auto | phpunit | pest | testo | command | none
   command: null          # для runner: command, или чтобы переопределить бинарник
 
 commands:

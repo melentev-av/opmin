@@ -71,13 +71,14 @@
             "additionalProperties": false,
             "properties": {
                 "runner": {
-                    "description": "Test runner of the project: auto | phpunit | pest | testo | command",
+                    "description": "Test runner of the project: auto | phpunit | pest | testo | command | none",
                     "enum": [
                         "auto",
                         "phpunit",
                         "pest",
                         "testo",
-                        "command"
+                        "command",
+                        "none"
                     ],
                     "default": "auto"
                 },

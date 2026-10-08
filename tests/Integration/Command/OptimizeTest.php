@@ -213,6 +213,21 @@ final class OptimizeTest
         Assert::string((string) \file_get_contents($patch[0]))->contains('+        return \strlen($s)');
     }
 
+    public function redTestsOnTheOriginalStopTheRunWithTheReason(): void
+    {
+        \file_put_contents($this->dir . '/opmin.yaml', "tests:\n  runner: command\n  command: 'echo \"vendor/bin/phpunit: not found\"; exit 127'\n");
+
+        [$code, , $err] = $this->opmin('optimize', '--format=none');
+        [$none] = $this->opmin('optimize', '--format=none', '--dry-run', '--set=tests.runner=none');
+
+        Assert::same($code, 1);
+        Assert::string($err)->ignoringWhitespace(lineBreaks: true)
+            ->contains('The project\'s tests fail on the original code')
+            ->contains('vendor/bin/phpunit: not found');
+        Assert::same(\file_get_contents($this->dir . '/src/Text.php'), self::CODE);
+        Assert::same($none, 0);
+    }
+
     public function onlyTheGivenRule(): void
     {
         [$code] = $this->opmin('optimize', '--format=none', '--rector-rule=Opmin\Rector\Rule\HoistLoopInvariantCountRector');

@@ -104,7 +104,7 @@ final class ConfigSchemaTest
         Assert::same($schema['properties']['verification']['properties']['seed']['type'], 'integer');
         Assert::same(
             $schema['properties']['tests']['properties']['runner']['enum'],
-            ['auto', 'phpunit', 'pest', 'testo', 'command'],
+            ['auto', 'phpunit', 'pest', 'testo', 'command', 'none'],
         );
     }
 }

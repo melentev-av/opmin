@@ -24,6 +24,7 @@ use Opmin\Module\Optimize\Review\Reviewer;
 use Opmin\Module\Php\PhpBinary;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Report\RejectionKind;
+use Opmin\Module\Tests\TestResult;
 use Opmin\Module\Verification\CandidateReport;
 use Opmin\Module\Verification\Verifier;
 
@@ -297,6 +298,14 @@ final class Optimizer
                 $report->functions[$change['function']] ??= $this->familyNow($change['file'], $change['function']);
             }
         }
+    }
+
+    /**
+     * The project's tests on the original code when they are red: nothing can be verified with them.
+     */
+    public function failingTestsOnOriginal(): ?TestResult
+    {
+        return $this->verifier->failingTestsOnOriginal();
     }
 
     /**

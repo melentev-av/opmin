@@ -15,7 +15,7 @@ use Opmin\Module\Common\Internal\Attribute\InflectableConfig;
 #[InflectableConfig]
 final class Tests
 {
-    #[ConfigKey('tests.runner', 'Test runner of the project: auto | phpunit | pest | testo | command')]
+    #[ConfigKey('tests.runner', 'Test runner of the project: auto | phpunit | pest | testo | command | none')]
     public TestRunner $runner = TestRunner::Auto;
 
     /** @var non-empty-string|null */

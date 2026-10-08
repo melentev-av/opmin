@@ -23,6 +23,7 @@ use Opmin\Module\Php\PhpBinaryException;
 use Opmin\Module\Php\PhpBinaryProbe;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Project\Targets;
+use Opmin\Module\Verification\Verifier;
 use Opmin\Rector\Rule\AbstractExtractRepeatedReadRector;
 use Opmin\Rector\Rule\FullyQualifyGlobalCallsRector;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -220,6 +221,16 @@ final class Optimize extends Stage
             $input->isInteractive()
                 ? $optimizer->withReviewer(new ConsoleReviewer(new SymfonyStyle($input, $errorOutput)))
                 : $style->warning('--review needs an interactive session: every change that passes the checks is applied.');
+        }
+
+        # Red tests prove nothing about a change: every change would be rolled back, so stop before any.
+        $red = $optimizer->failingTestsOnOriginal();
+        if ($red !== null) {
+            $style->error([
+                'The project\'s tests fail on the original code: fix them first, or set tests.runner to none to verify with the differential tests only.',
+                Verifier::whyRed($red),
+            ]);
+            return Command::FAILURE;
         }
 
         $signalled = $this->onSignals($optimizer, $errorOutput);

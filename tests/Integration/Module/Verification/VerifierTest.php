@@ -133,13 +133,13 @@ final class VerifierTest
     {
         $tests = new Schema\Tests();
         $tests->runner = Schema\TestRunner::Command;
-        $tests->command = 'exit 1';
+        $tests->command = 'echo "phpunit: not found"; exit 1';
 
         $report = $this->verifier(tests: $tests)->verify($this->file(), self::ORIGINAL, withTests: true);
 
         Assert::false($report->accepted());
         Assert::same($report->functions, []);
-        Assert::same($report->notes[\count($report->notes) - 1], 'The project\'s tests fail on the original code: fix them first. Failed: ');
+        Assert::same($report->notes[\count($report->notes) - 1], 'The project\'s tests fail on the original code: fix them first. Output: phpunit: not found');
         Assert::same($report->runner, 'command');
     }
 

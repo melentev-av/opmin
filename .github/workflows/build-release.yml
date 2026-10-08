@@ -129,6 +129,8 @@ jobs:
         run: |
           VERSION="${RELEASE_TAG#v}"
           echo "VERSION=${VERSION:-dev}" >> "$GITHUB_ENV"
+          # A cache key cannot contain commas.
+          echo "SPC_CACHE_KEY=$(printf '%s' "$SPC_EXTENSIONS" | tr ',' '-')" >> "$GITHUB_ENV"
 
       - name: 📥 Download static-php-cli
         run: |
@@ -143,7 +145,7 @@ jobs:
             downloads
             buildroot
             pkgroot
-          key: spc-${{ matrix.target }}-php${{ env.SPC_PHP_VERSION }}-${{ env.SPC_EXTENSIONS }}
+          key: spc-${{ matrix.target }}-php${{ env.SPC_PHP_VERSION }}-${{ env.SPC_CACHE_KEY }}
 
       - name: 🔨 Build micro SAPI
         env:

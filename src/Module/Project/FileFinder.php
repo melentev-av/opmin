@@ -55,6 +55,20 @@ final class FileFinder
     }
 
     /**
+     * @param list<string> $segments
+     */
+    private static function anySegment(string $pattern, array $segments): bool
+    {
+        foreach ($segments as $segment) {
+            if (\fnmatch($pattern, $segment, \FNM_CASEFOLD)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * @param list<non-empty-string> $exclude
      */
     private function excluded(Project $project, Path $base, Path $path, array $exclude): bool
@@ -69,20 +83,6 @@ final class FileFinder
             if ((!$coversBase && ($relative === $pattern || \str_starts_with($relative, $pattern . '/')))
                 || (!\str_contains($pattern, '/') && self::anySegment($pattern, $segments))
             ) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * @param list<string> $segments
-     */
-    private static function anySegment(string $pattern, array $segments): bool
-    {
-        foreach ($segments as $segment) {
-            if (\fnmatch($pattern, $segment, \FNM_CASEFOLD)) {
                 return true;
             }
         }

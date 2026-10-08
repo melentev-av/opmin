@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Opmin\Module\Doctor;
 
 use Internal\Path;
+use Opmin\Module\Common\Cache\MemoryStore;
 use Opmin\Module\Common\FileSystem\FS;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Harness\Worker;
@@ -159,7 +160,7 @@ final readonly class Doctor
         try {
             $file = $dir->join('probe.php');
             \file_put_contents((string) $file, "<?php\nfunction opmin_doctor_probe(int \$x): int { return \$x * 2; }\n");
-            $result = (new OpcodeCounter(new OpcacheDumper($php, 1), new CountCache($dir->join('cache'), $php)))
+            $result = (new OpcodeCounter(new OpcacheDumper($php, 1), new CountCache(new MemoryStore(), $php)))
                 ->count(new Project($dir, false, null), [$file]);
             foreach ($result->functions as $function) {
                 if ($function->key === 'opmin_doctor_probe' && $function->opsOpt > 0) {

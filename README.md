@@ -118,6 +118,7 @@ opmin diff before.json after.json                   # per function: fewer / more
 - Counts are cached in `.opmin-cache/` by file content, PHP version, optimizer settings and opmin version:
   re-counting an unchanged project does not start PHP for compilation at all. A relative `cache.dir` is next to
   the config in use (the current directory without one), so in a monorepo the packages share the root's cache.
+  `cache.driver: memory` keeps counts and references for one run only, without a file per entry on disk.
 
 ## Verifying behavior
 

@@ -73,6 +73,7 @@ final class ConfigSchemaTest
             'check.max_ops_new_function',
             'check.base_ref',
             'cache.dir',
+            'cache.driver',
         );
     }
 

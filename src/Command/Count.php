@@ -81,7 +81,7 @@ final class Count extends Base
         }
 
         $cacheDir = $this->cacheDir();
-        $counter = new OpcodeCounter(new OpcacheDumper($php, Cpu::count()), new CountCache($cacheDir, $php));
+        $counter = new OpcodeCounter(new OpcacheDumper($php, Cpu::count()), new CountCache($this->cacheStore(), $php));
 
         $progress = null;
         if ($errorOutput->isDecorated() && !$output->isQuiet() && \count($files) > 1) {
@@ -100,7 +100,7 @@ final class Count extends Base
         $progress?->clear();
 
         # Flags a function gets from the rest of the project: called by name, inspected by reflection.
-        $functions = ReferenceIndex::build($project, $cacheDir)->apply($this->filter($result->functions, $input->getOption('filter')));
+        $functions = ReferenceIndex::build($project, $cacheDir, $this->cacheStore())->apply($this->filter($result->functions, $input->getOption('filter')));
         $report = CountReport::create(
             opmin: Info::version(),
             php: $php->version,

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Opmin\Tests\Integration\Rector;
 
 use Internal\Path;
+use Opmin\Module\Common\Cache\FileStore;
 use Opmin\Module\Opcode\CountCache;
 use Opmin\Module\Opcode\Dump\OpcacheDumper;
 use Opmin\Module\Opcode\OpcodeCounter;
@@ -74,7 +75,7 @@ final class RuleGainTest
         $file = $this->dir . "/{$name}.php";
         \file_put_contents($file, $code);
         $php = TestPhp::binary();
-        $counter = new OpcodeCounter(new OpcacheDumper($php, 1), new CountCache(Path::create($this->dir . '/.cache'), $php));
+        $counter = new OpcodeCounter(new OpcacheDumper($php, 1), new CountCache(new FileStore(Path::create($this->dir . '/.cache')), $php));
 
         $result = $counter->count(new Project(Path::create($this->dir), false, null), [Path::create($file)]);
 

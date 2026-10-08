@@ -9,6 +9,7 @@ use Opmin\Module\Analysis\FileReferences;
 use Opmin\Module\Analysis\Flag;
 use Opmin\Module\Analysis\ReferenceCollector;
 use Opmin\Module\Analysis\ReferenceIndex;
+use Opmin\Module\Common\Cache\FileStore;
 use Opmin\Module\Opcode\Locate\UnitKind;
 use Testo\Assert;
 use Testo\Codecov\Covers;
@@ -123,9 +124,9 @@ final class ReferenceIndexTest
         # A Latin-1 byte is a valid part of a PHP name, but not UTF-8.
         $code = "<?php call_user_func(\"App\\\\caf\xE9\"); \$bytes = \"\xFF\xFE\";";
 
-        $first = new ReferenceIndex(Path::create($cache));
+        $first = new ReferenceIndex(new FileStore(Path::create($cache)));
         $first->add('legacy.php', $code);
-        $second = new ReferenceIndex(Path::create($cache));
+        $second = new ReferenceIndex(new FileStore(Path::create($cache)));
         $second->add('legacy.php', $code);
 
         Assert::same($first->flagsFor("App\\caf\xE9", UnitKind::Function), [Flag::CalledDynamically]);

@@ -8,6 +8,9 @@ use Internal\Container\Container;
 use Internal\Path;
 use Opmin\Bootstrap;
 use Opmin\Info;
+use Opmin\Module\Common\Cache\FileStore;
+use Opmin\Module\Common\Cache\MemoryStore;
+use Opmin\Module\Common\Cache\Store;
 use Opmin\Module\Config\ConfigLoader;
 use Opmin\Module\Config\ConfigSchema;
 use Opmin\Module\Config\Exception\ConfigException;
@@ -57,6 +60,8 @@ abstract class Base extends Command
 
     /** @var Path Directory of the config file in use, the current directory without one. */
     protected Path $configDir;
+
+    private ?Store $cacheStore = null;
 
     public static function getCommandName(): ?string
     {
@@ -157,6 +162,21 @@ abstract class Base extends Command
         $cacheDir = Path::create($cacheConfig->dir);
 
         return $cacheDir->isAbsolute() ? $cacheDir : $this->configDir->join($cacheConfig->dir);
+    }
+
+    /**
+     * Storage of cached counts and references: one per command, so a `memory` cache outlives the
+     * counter and the index built from it.
+     */
+    protected function cacheStore(): Store
+    {
+        /** @var Schema\Cache $cacheConfig */
+        $cacheConfig = $this->container->get(Schema\Cache::class);
+
+        return $this->cacheStore ??= match ($cacheConfig->driver) {
+            Schema\CacheDriver::Files => new FileStore($this->cacheDir()),
+            Schema\CacheDriver::Memory => new MemoryStore(),
+        };
     }
 
     /**

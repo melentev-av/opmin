@@ -115,9 +115,9 @@ abstract class Stage extends Base
         return [$environment, $previous === null ? [] : $environment->changesSince($previous[1], $previous[0])];
     }
 
-    protected function counter(PhpBinary $php, Path $cacheDir): OpcodeCounter
+    protected function counter(PhpBinary $php): OpcodeCounter
     {
-        return new OpcodeCounter(new OpcacheDumper($php, Cpu::count()), new CountCache($cacheDir, $php));
+        return new OpcodeCounter(new OpcacheDumper($php, Cpu::count()), new CountCache($this->cacheStore(), $php));
     }
 
     /**
@@ -127,7 +127,7 @@ abstract class Stage extends Base
      */
     protected function countReport(Project $project, PhpBinary $php, array $files): CountReport
     {
-        $result = $files === [] ? null : $this->counter($php, $this->cacheDir())->count($project, $files);
+        $result = $files === [] ? null : $this->counter($php)->count($project, $files);
 
         return CountReport::create(
             opmin: Info::version(),
@@ -179,8 +179,8 @@ abstract class Stage extends Base
             $project,
             $php,
             $workspace,
-            $this->counter($php, $cacheDir),
-            ReferenceIndex::build($project, $cacheDir),
+            $this->counter($php),
+            ReferenceIndex::build($project, $cacheDir, $this->cacheStore()),
             new RectorRunner($project, $cacheDir, $phpTarget),
             Formatter::create($project, $php, $commands->format),
             new Verifier($project, $php, $verification, $commands, $tests, $cacheDir, $phpTarget, $verbose, $guardPerf),

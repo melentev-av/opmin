@@ -6,7 +6,7 @@ namespace Opmin\Module\Analysis;
 
 use Internal\Path;
 use Opmin\Info;
-use Opmin\Module\Common\FileSystem\FS;
+use Opmin\Module\Common\Cache\Store;
 use Opmin\Module\Opcode\FunctionCount;
 use Opmin\Module\Opcode\Locate\UnitKind;
 use Opmin\Module\Project\FileFinder;
@@ -21,7 +21,7 @@ use PhpParser\ParserFactory;
  * gets from other files — {@see Flag::CalledDynamically}, {@see Flag::Reflection}.
  *
  * Scans every `*.php` of the project except `vendor/` (tests and routes call application code by
- * name too). Per-file results are cached by content in `cache.dir/refs/`.
+ * name too). Per-file results are cached by content (`cache.driver`).
  *
  * @internal
  */
@@ -50,20 +50,22 @@ final class ReferenceIndex
     private readonly Parser $parser;
 
     /**
-     * @param Path|null $cacheDir `cache.dir`; null — no cache.
+     * @param Store|null $store null — no cache.
      */
     public function __construct(
-        private readonly ?Path $cacheDir = null,
+        private readonly ?Store $store = null,
     ) {
         $this->parser = (new ParserFactory())->createForNewestSupportedVersion();
     }
 
     /**
      * Scans the project.
+     *
+     * @param Path|null $cacheDir `cache.dir`, not scanned.
      */
-    public static function build(Project $project, ?Path $cacheDir): self
+    public static function build(Project $project, ?Path $cacheDir, ?Store $store): self
     {
-        $index = new self($cacheDir);
+        $index = new self($store);
         $skip = self::SKIP;
         $cacheDir === null or $cacheDir->isWithin($project->root) and $skip[] = $project->relative($cacheDir);
         foreach ((new FileFinder())->find($project, [$project->root], $skip) as $file) {
@@ -171,11 +173,10 @@ final class ReferenceIndex
     private function cached(string $file, string $content): FileReferences
     {
         $key = \hash('sha256', \serialize([self::FORMAT, $file, \hash('sha256', $content), Info::version()]));
-        $path = $this->cacheDir?->join('refs', \substr($key, 0, 2), $key . '.json');
-        if ($path !== null) {
-            $raw = @\file_get_contents((string) $path);
+        $raw = $this->store?->get('refs', $key);
+        if ($raw !== null) {
             /** @var mixed $data */
-            $data = $raw === false ? null : \json_decode($raw, true);
+            $data = \json_decode($raw, true);
             if (\is_array($data)) {
                 try {
                     return FileReferences::fromArray($data);
@@ -196,13 +197,8 @@ final class ReferenceIndex
         $references = (new ReferenceCollector())->collect($stmts);
         # A name that is not UTF-8 (Latin-1 bytes are valid in PHP names) cannot be JSON: such a file is
         # simply not cached — substituting the bytes would lose a reference.
-        $json = $path === null ? false : \json_encode($references->toArray(), \JSON_UNESCAPED_SLASHES);
-        if ($path !== null && $json !== false) {
-            FS::mkdir((string) $path->parent());
-            $tmp = (string) $path . '.' . \bin2hex(\random_bytes(4)) . '.tmp';
-            \file_put_contents($tmp, $json);
-            \rename($tmp, (string) $path);
-        }
+        $json = $this->store === null ? false : \json_encode($references->toArray(), \JSON_UNESCAPED_SLASHES);
+        $json === false or $this->store?->set('refs', $key, $json);
 
         return $references;
     }

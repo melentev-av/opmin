@@ -6,6 +6,7 @@ namespace Opmin\Module\Package;
 
 use Internal\Path;
 use Opmin\Info;
+use Opmin\Module\Common\FileSystem\FS;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Project\InitDetector;
 use Opmin\Module\Release\Installation;
@@ -68,9 +69,11 @@ final readonly class PackageRun
      *
      * @param non-empty-string $image
      * @param non-empty-string|null $user `uid:gid`.
+     * @param Path|null $composerCache Download cache of composer kept between runs (only downloads: the
+     *        anonymous downloads of a fresh cache hit the rate limit of GitHub).
      * @return list<string>
      */
-    public static function dockerRun(Path $workspace, string $image, bool $network, Schema\Package $config, ?string $user): array
+    public static function dockerRun(Path $workspace, string $image, bool $network, Schema\Package $config, ?string $user, ?Path $composerCache = null): array
     {
         $args = [
             'docker', 'run', '--rm', '--init',
@@ -81,6 +84,7 @@ final readonly class PackageRun
             '-v', (string) $workspace . ':/workspace',
             '-w', '/workspace/package',
         ];
+        $composerCache === null or \array_push($args, '-v', (string) $composerCache . ':/composer-cache', '-e', 'COMPOSER_CACHE_DIR=/composer-cache');
         $network or \array_push($args, '--network', 'none');
         # The Docker VM may have fewer cores than the host: without package.cpus the container gets all of the VM's.
         $config->cpus === null or \array_push($args, '--cpus', (string) $config->cpus);
@@ -96,16 +100,25 @@ final readonly class PackageRun
      */
     public static function composerProblem(string $output): string
     {
-        $lines = \explode("\n", \trim($output));
+        $lines = \array_values(\array_filter(\explode("\n", \trim($output)), static fn(string $l): bool => \trim($l) !== ''));
         $start = null;
-        foreach ($lines as $i => $line) {
-            if (\preg_match('/^\s*Problem \d+/', $line) === 1) {
-                $start = $i;
-                break;
+        foreach (['/^\s*Problem \d+/', '/^\s*In \S+ line \d+:/'] as $pattern) {
+            foreach ($lines as $i => $line) {
+                if (\preg_match($pattern, $line) === 1) {
+                    $start = $i;
+                    break 2;
+                }
             }
         }
 
         $lines = $start === null ? \array_slice($lines, -15) : \array_slice($lines, $start, 15);
+        # The synopsis of the command that composer prints after an exception says nothing.
+        foreach ($lines as $i => $line) {
+            if (\preg_match('/^\s*install \[/', $line) === 1) {
+                $lines = \array_slice($lines, 0, $i);
+                break;
+            }
+        }
 
         return \trim(\implode("\n", $lines));
     }
@@ -350,7 +363,13 @@ final readonly class PackageRun
     {
         $user = \function_exists('posix_getuid') && \function_exists('posix_getgid') ? \posix_getuid() . ':' . \posix_getgid() : null;
 
-        return self::dockerRun($checkout->workspace, $image, $network, $this->config, $user);
+        $cache = null;
+        if ($network) {
+            $cache = $this->workspaceRoot()->join('.composer-cache');
+            FS::mkdir((string) $cache);
+        }
+
+        return self::dockerRun($checkout->workspace, $image, $network, $this->config, $user, $cache);
     }
 
     /**

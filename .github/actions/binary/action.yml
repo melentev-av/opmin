@@ -1,0 +1,77 @@
+---
+
+# Combines .build/phar/opmin.phar with a static-php-cli micro SAPI into dist/opmin, on the runner of the
+# target's own OS and architecture. No PHP is installed: static-php-cli builds the embedded PHP itself.
+
+name: 🔨 Build the static binary
+description: Static opmin binary in dist/opmin from .build/phar/opmin.phar
+
+inputs:
+  target:
+    description: Platform of the binary (linux-x86_64, linux-aarch64, macos-x86_64, macos-arm64), part of the cache key.
+    required: true
+  spc:
+    description: Asset of static-php-cli for this runner (spc-linux-x86_64, ...).
+    required: true
+  github-token:
+    description: Token for the GitHub API calls of static-php-cli.
+    required: true
+  # Embedded PHP runs only the orchestrator; the analyzed code always runs under php.binary.
+  php-version:
+    description: PHP of the binary.
+    required: false
+    default: '8.4'
+  # zlib: the PHAR is GZ-compressed and self-update unpacks .tar.gz; openssl: HTTPS downloads and the
+  # release signature of self-update; pcntl/posix: process pool; the rest: Symfony and opmin itself.
+  # No iconv: symfony/string only uses it when present, and GNU libiconv (LGPL) would be linked statically.
+  # Each library linked into the binary is listed in LICENSE-THIRD-PARTY.md.
+  extensions:
+    description: Extensions of the embedded PHP.
+    required: false
+    default: 'ctype,filter,mbstring,openssl,pcntl,phar,posix,tokenizer,zlib'
+
+runs:
+  using: composite
+  steps:
+    - name: 📥 Download static-php-cli
+      shell: bash
+      run: |
+        mkdir -p .build/bin
+        curl -fsSL -o .build/bin/spc "https://dl.static-php.dev/static-php-cli/spc-bin/nightly/${{ inputs.spc }}"
+        chmod +x .build/bin/spc
+        # A cache key cannot contain commas.
+        echo "SPC_CACHE_KEY=$(printf '%s' '${{ inputs.extensions }}' | tr ',' '-')" >> "$GITHUB_ENV"
+
+    - name: 💾 Cache static-php-cli downloads and build
+      uses: actions/cache@v4
+      with:
+        path: |
+          downloads
+          buildroot
+          pkgroot
+        key: spc-${{ inputs.target }}-php${{ inputs.php-version }}-${{ env.SPC_CACHE_KEY }}
+
+    - name: 🔨 Build micro SAPI
+      shell: bash
+      env:
+        # spc downloads sources through the GitHub API: anonymous calls share the runner IP's
+        # 60 requests/hour and fail with 403; the job token lifts that limit.
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        SPC_PHP_VERSION: ${{ inputs.php-version }}
+        SPC_EXTENSIONS: ${{ inputs.extensions }}
+      run: |
+        # Mirrors of static-php-cli sometimes answer 500: retry downloads before failing.
+        retry() { for i in 1 2 3; do "$@" && return 0; echo "::warning::attempt $i failed: $*"; sleep $((i * 30)); done; return 1; }
+        retry .build/bin/spc doctor --auto-fix
+        [ -f buildroot/bin/micro.sfx ] || {
+          retry .build/bin/spc download --with-php="$SPC_PHP_VERSION" --for-extensions="$SPC_EXTENSIONS" --prefer-pre-built
+          .build/bin/spc build "$SPC_EXTENSIONS" --build-micro
+        }
+
+    - name: 🔗 Combine micro with the PHAR
+      shell: bash
+      run: |
+        chmod +x .build/phar/opmin.phar
+        mkdir -p dist
+        .build/bin/spc micro:combine .build/phar/opmin.phar --output=dist/opmin
+        chmod +x dist/opmin

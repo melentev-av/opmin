@@ -1,0 +1,44 @@
+---
+
+# Builds the scoped PHAR into .build/phar/opmin.phar: used by the release and by the smoke test on real
+# packages, so both test and ship the same build.
+
+name: 📦 Build the PHAR
+description: Scoped PHAR of opmin in .build/phar/opmin.phar
+
+inputs:
+  version:
+    description: Release tag written into resources/version.json (a leading v is dropped); empty — keep the one in the repository.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: 🛠️ Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.4'
+        ini-values: 'memory_limit=-1, phar.readonly=0'
+        tools: composer, box
+        coverage: none
+
+    - name: 🏷️ Write version
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        [ -z "$VERSION" ] || printf '{".": "%s"}\n' "${VERSION#v}" > resources/version.json
+
+    - name: 📥 Install dependencies with composer
+      uses: ramsey/composer-install@v3
+      with:
+        composer-options: "--no-dev"
+
+    - name: 📦 Build PHAR
+      shell: bash
+      run: |
+        box validate box.json.dist --ansi
+        box compile --no-parallel
+        box info .build/phar/opmin.phar --ansi
+        .build/phar/opmin.phar --version

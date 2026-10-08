@@ -1,0 +1,241 @@
+
+$_main:
+     ; (lines=2, args=0, vars=0, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Arrow.php:1-41
+     ; return  [] RANGE[0..0]
+0000 DECLARE_CLASS string("fixture\count\arrow")
+0001 RETURN int(1)
+
+Fixture\Count\Arrow::lastArgument:
+     ; (lines=18, args=2, vars=2, tmps=4)
+     ; (before optimizer)
+     ; /fixtures/Arrow.php:12-18
+     ; return  [] RANGE[0..0]
+0000 CV0($records) = RECV 1
+0001 CV1($offset) = RECV 2
+0002 INIT_FCALL 2 112 string("array_map")
+0003 INIT_FCALL 2 112 string("array_filter")
+0004 SEND_VAR CV0($records) 1
+0005 T2 = DECLARE_LAMBDA_FUNCTION 0
+0006 BIND_LEXICAL T2 CV1($offset)
+0007 SEND_VAL T2 2
+0008 V3 = DO_ICALL
+0009 SEND_VAR V3 1
+0010 T4 = DECLARE_LAMBDA_FUNCTION 1
+0011 BIND_LEXICAL T4 CV1($offset)
+0012 SEND_VAL T4 2
+0013 V5 = DO_ICALL
+0014 VERIFY_RETURN_TYPE V5
+0015 RETURN V5
+0016 VERIFY_RETURN_TYPE
+0017 RETURN null
+LIVE RANGES:
+     2: 0006 - 0007 (tmp/var)
+     4: 0011 - 0012 (tmp/var)
+     5: 0014 - 0015 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=7, args=1, vars=2, tmps=1)
+     ; (before optimizer)
+     ; /fixtures/Arrow.php:15-15
+     ; return  [] RANGE[0..0]
+0000 CV0($record) = RECV 1
+0001 BIND_STATIC CV1($offset)
+0002 T2 = ISSET_ISEMPTY_DIM_OBJ (isset) CV0($record) CV1($offset)
+0003 VERIFY_RETURN_TYPE T2
+0004 RETURN T2
+0005 VERIFY_RETURN_TYPE
+0006 RETURN null
+LIVE RANGES:
+     2: 0003 - 0004 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=5, args=1, vars=2, tmps=1)
+     ; (before optimizer)
+     ; /fixtures/Arrow.php:16-17
+     ; return  [] RANGE[0..0]
+0000 CV0($record) = RECV 1
+0001 BIND_STATIC CV1($offset)
+0002 T2 = FETCH_DIM_R CV0($record) CV1($offset)
+0003 RETURN T2
+0004 RETURN null
+
+Fixture\Count\Arrow::multiline:
+     ; (lines=5, args=0, vars=0, tmps=2)
+     ; (before optimizer)
+     ; /fixtures/Arrow.php:20-29
+     ; return  [] RANGE[0..0]
+0000 INIT_FCALL 1 96 string("set_error_handler")
+0001 T0 = DECLARE_LAMBDA_FUNCTION 0
+0002 SEND_VAL T0 1
+0003 DO_ICALL
+0004 RETURN null
+
+Fixture\Count\{closure}:
+     ; (lines=14, args=1, vars=1, tmps=4)
+     ; (before optimizer)
+     ; /fixtures/Arrow.php:23-28
+     ; return  [] RANGE[0..0]
+0000 CV0($errno) = RECV 1
+0001 T1 = IN_ARRAY 1 CV0($errno) array(...)
+0002 JMPZ T1 0009
+0003 V2 = NEW 1 string("ErrorException")
+0004 SEND_VAL_EX string("warning") 1
+0005 DO_FCALL
+0006 THROW V2
+0007 T4 = QM_ASSIGN bool(true)
+0008 JMP 0010
+0009 T4 = QM_ASSIGN bool(false)
+0010 VERIFY_RETURN_TYPE T4
+0011 RETURN T4
+0012 VERIFY_RETURN_TYPE
+0013 RETURN null
+LIVE RANGES:
+     2: 0004 - 0006 (new)
+     4: 0010 - 0011 (tmp/var)
+
+Fixture\Count\Arrow::sameLine:
+     ; (lines=5, args=0, vars=0, tmps=1)
+     ; (before optimizer)
+     ; /fixtures/Arrow.php:31-34
+     ; return  [] RANGE[0..0]
+0000 T0 = DECLARE_LAMBDA_FUNCTION 0
+0001 VERIFY_RETURN_TYPE T0
+0002 RETURN T0
+0003 VERIFY_RETURN_TYPE
+0004 RETURN null
+LIVE RANGES:
+     0: 0001 - 0002 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=6, args=1, vars=1, tmps=1)
+     ; (before optimizer)
+     ; /fixtures/Arrow.php:33-33
+     ; return  [] RANGE[0..0]
+0000 CV0($x) = RECV 1
+0001 T1 = MUL CV0($x) int(2)
+0002 VERIFY_RETURN_TYPE T1
+0003 RETURN T1
+0004 VERIFY_RETURN_TYPE
+0005 RETURN null
+LIVE RANGES:
+     1: 0002 - 0003 (tmp/var)
+
+Fixture\Count\Arrow::after:
+     ; (lines=6, args=1, vars=1, tmps=1)
+     ; (before optimizer)
+     ; /fixtures/Arrow.php:36-39
+     ; return  [] RANGE[0..0]
+0000 CV0($x) = RECV 1
+0001 T1 = ADD CV0($x) int(1)
+0002 VERIFY_RETURN_TYPE T1
+0003 RETURN T1
+0004 VERIFY_RETURN_TYPE
+0005 RETURN null
+LIVE RANGES:
+     1: 0002 - 0003 (tmp/var)
+
+$_main:
+     ; (lines=2, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Arrow.php:1-41
+0000 DECLARE_CLASS string("fixture\count\arrow")
+0001 RETURN int(1)
+
+Fixture\Count\Arrow::lastArgument:
+     ; (lines=15, args=2, vars=2, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Arrow.php:12-18
+0000 CV0($records) = RECV 1
+0001 CV1($offset) = RECV 2
+0002 INIT_FCALL 2 112 string("array_map")
+0003 INIT_FCALL 2 112 string("array_filter")
+0004 SEND_VAR CV0($records) 1
+0005 T2 = DECLARE_LAMBDA_FUNCTION 0
+0006 BIND_LEXICAL T2 CV1($offset)
+0007 SEND_VAL T2 2
+0008 V2 = DO_ICALL
+0009 SEND_VAR V2 1
+0010 T2 = DECLARE_LAMBDA_FUNCTION 1
+0011 BIND_LEXICAL T2 CV1($offset)
+0012 SEND_VAL T2 2
+0013 V2 = DO_ICALL
+0014 RETURN V2
+LIVE RANGES:
+     2: 0006 - 0007 (tmp/var)
+     2: 0011 - 0012 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=4, args=1, vars=2, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Arrow.php:15-15
+0000 CV0($record) = RECV 1
+0001 BIND_STATIC CV1($offset)
+0002 T2 = ISSET_ISEMPTY_DIM_OBJ (isset) CV0($record) CV1($offset)
+0003 RETURN T2
+
+Fixture\Count\{closure}:
+     ; (lines=4, args=1, vars=2, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Arrow.php:16-17
+0000 CV0($record) = RECV 1
+0001 BIND_STATIC CV1($offset)
+0002 T2 = FETCH_DIM_R CV0($record) CV1($offset)
+0003 RETURN T2
+
+Fixture\Count\Arrow::multiline:
+     ; (lines=5, args=0, vars=0, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Arrow.php:20-29
+0000 INIT_FCALL 1 96 string("set_error_handler")
+0001 T0 = DECLARE_LAMBDA_FUNCTION 0
+0002 SEND_VAL T0 1
+0003 DO_ICALL
+0004 RETURN null
+
+Fixture\Count\{closure}:
+     ; (lines=11, args=1, vars=1, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Arrow.php:23-28
+0000 CV0($errno) = RECV 1
+0001 T1 = IN_ARRAY 1 CV0($errno) array(...)
+0002 JMPZ T1 0009
+0003 V1 = NEW 1 string("ErrorException")
+0004 SEND_VAL_EX string("warning") 1
+0005 DO_FCALL
+0006 THROW V1
+0007 T1 = QM_ASSIGN bool(true)
+0008 JMP 0010
+0009 T1 = QM_ASSIGN bool(false)
+0010 RETURN T1
+LIVE RANGES:
+     1: 0004 - 0006 (new)
+
+Fixture\Count\Arrow::sameLine:
+     ; (lines=3, args=0, vars=0, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Arrow.php:31-34
+0000 T0 = DECLARE_LAMBDA_FUNCTION 0
+0001 VERIFY_RETURN_TYPE T0
+0002 RETURN T0
+LIVE RANGES:
+     0: 0001 - 0002 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=4, args=1, vars=1, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Arrow.php:33-33
+0000 CV0($x) = RECV 1
+0001 T1 = ADD CV0($x) CV0($x)
+0002 VERIFY_RETURN_TYPE T1
+0003 RETURN T1
+
+Fixture\Count\Arrow::after:
+     ; (lines=4, args=1, vars=1, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Arrow.php:36-39
+0000 CV0($x) = RECV 1
+0001 T1 = ADD CV0($x) int(1)
+0002 VERIFY_RETURN_TYPE T1
+0003 RETURN T1

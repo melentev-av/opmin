@@ -151,9 +151,34 @@ final class FunctionLocator
         $key = $this->unique("{$parentKey}::{closure:{$n}}");
 
         return [
-            new CodeUnit($key, UnitKind::Closure, null, $node->getStartLine(), $node->getEndLine(), flags: $this->detector->detect($node, $this->class), node: $node, class: $this->class),
+            new CodeUnit(
+                $key,
+                UnitKind::Closure,
+                null,
+                $node->getStartLine(),
+                $node->getEndLine(),
+                flags: $this->detector->detect($node, $this->class),
+                node: $node,
+                class: $this->class,
+                dumpEndLine: $node instanceof ArrowFunction ? $this->lineOfNextToken($node->getEndTokenPos()) : null,
+            ),
             ...$this->scan($node instanceof Closure ? [$node->params, $node->stmts] : [$node->params, $node->expr], $key),
         ];
+    }
+
+    /**
+     * Line of the first token after `$position` that the parser of PHP sees (not whitespace or a comment).
+     */
+    private function lineOfNextToken(int $position): ?int
+    {
+        $tokens = $this->parser->getTokens();
+        for ($i = $position + 1, $count = \count($tokens); $i < $count; ++$i) {
+            if (!$tokens[$i]->isIgnorable()) {
+                return $tokens[$i]->line;
+            }
+        }
+
+        return null;
     }
 
     /**

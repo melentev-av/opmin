@@ -131,7 +131,7 @@ final class DumpMatcher
                 $unit->key,
                 $unit->kind->value,
                 $unit->line,
-                $unit->endLine,
+                $unit->dumpEndLine ?? $unit->endLine,
             ));
             $pairs[$unit->key] = [$unit, $block];
             $block->isClosure() and $paired[] = $block;
@@ -158,7 +158,7 @@ final class DumpMatcher
             return $block->isMain();
         }
 
-        if ($block->lineEnd !== $unit->endLine) {
+        if ($block->lineEnd !== ($unit->dumpEndLine ?? $unit->endLine)) {
             return false;
         }
 

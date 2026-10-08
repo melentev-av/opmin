@@ -89,12 +89,25 @@ $framelessBefore84 = [
     'Fixture\Count\Frameless::nested::{closure:1}' => 14,
     'Fixture\Count\Frameless::qualified' => 14,
 ] + $frameless;
+# The second closure of lastArgument and the closure of multiline end on the line of the next token.
+$arrow = [
+    '<main>' => 2,
+    'Fixture\Count\Arrow::lastArgument' => 15,
+    'Fixture\Count\Arrow::lastArgument::{closure:1}' => 4,
+    'Fixture\Count\Arrow::lastArgument::{closure:2}' => 4,
+    'Fixture\Count\Arrow::multiline' => 5,
+    'Fixture\Count\Arrow::multiline::{closure:1}' => 11,
+    'Fixture\Count\Arrow::sameLine' => 2,
+    'Fixture\Count\Arrow::sameLine::{closure:1}' => 4,
+    'Fixture\Count\Arrow::after' => 4,
+];
+$arrowBefore84 = ['Fixture\Count\Arrow::sameLine' => 3] + $arrow;
 
 return [
-    '8.1' => ['Basic.php' => $basicBefore84, 'Strings.php' => $strings81, 'Frameless.php' => $framelessBefore84],
-    '8.2' => ['Basic.php' => $basicBefore84, 'Readonly.php' => $readonly, 'Strings.php' => $strings, 'Frameless.php' => $framelessBefore84],
-    '8.3' => ['Basic.php' => $basicBefore84, 'Readonly.php' => $readonly, 'Strings.php' => $strings, 'Frameless.php' => $framelessBefore84],
-    '8.4' => ['Basic.php' => $basic, 'Readonly.php' => $readonly, 'Hooks.php' => $hooks, 'Strings.php' => $strings, 'Frameless.php' => $frameless],
+    '8.1' => ['Basic.php' => $basicBefore84, 'Strings.php' => $strings81, 'Frameless.php' => $framelessBefore84, 'Arrow.php' => $arrowBefore84],
+    '8.2' => ['Basic.php' => $basicBefore84, 'Readonly.php' => $readonly, 'Strings.php' => $strings, 'Frameless.php' => $framelessBefore84, 'Arrow.php' => $arrowBefore84],
+    '8.3' => ['Basic.php' => $basicBefore84, 'Readonly.php' => $readonly, 'Strings.php' => $strings, 'Frameless.php' => $framelessBefore84, 'Arrow.php' => $arrowBefore84],
+    '8.4' => ['Basic.php' => $basic, 'Readonly.php' => $readonly, 'Hooks.php' => $hooks, 'Strings.php' => $strings, 'Frameless.php' => $frameless, 'Arrow.php' => $arrow],
     # 8.5 drops VERIFY_RETURN_TYPE of `new self` returned as `self`.
     '8.5' => [
         'Basic.php' => $basic,
@@ -102,5 +115,6 @@ return [
         'Hooks.php' => $hooks,
         'Strings.php' => $strings,
         'Frameless.php' => $frameless,
+        'Arrow.php' => $arrow,
     ],
 ];

@@ -352,6 +352,40 @@ opmin optimize git@github.com:vendor/package.git src/Parser --ref=main --dry-run
 
 `package.docker_image` (`ghcr.io/melentev-av/opmin:{version}-php{php}`) selects another image.
 
+The package's tests must be green on the original code without network, or optimize stops before changing
+anything. Exclude the tests that need network, or verify with the differential tests only:
+
+```bash
+opmin optimize https://github.com/thephpleague/csv.git --ref=9.28.0 \
+  '--set=tests.command=vendor/bin/phpunit --exclude-group=network'
+opmin optimize https://github.com/symfony/string.git --ref=v6.4.46 --set=tests.runner=none  # no PHPUnit of its own
+```
+
+On macOS the workspace lives on the case-insensitive file system Docker shares with its VM: a dependency whose
+archive has names that differ only in case (phpstan/phpstan) cannot be installed there. Run opmin inside the image
+instead, with the workspace on the file system of the container:
+
+```bash
+docker run --rm -v "$PWD:/out" ghcr.io/melentev-av/opmin:php8.4 sh -c \
+  'cd /tmp && opmin optimize https://github.com/briannesbitt/Carbon.git --ref=3.14.2 --no-docker --yes -n; cp -r runs *.patch /out/'
+```
+
+## Results on real packages
+
+Every week CI optimizes real packages in git package mode with Stage A (the four own Rector rules) and runs their
+own tests on the patched code ([smoke-real-packages.yml](.github/workflows/smoke-real-packages.yml),
+`tests/Smoke/run.sh <package> <php>` locally). The tests must stay green: a red run is a bug of the verifier.
+
+| Package | Opcodes | Saved | Functions changed | Package's tests after the patch | Time |
+|---|---|---|---|---|---|
+| symfony/string 6.4.46 | 6 358 → 6 083 | −275 (−4.3%) | 45 | 2 410, green | 2.5 min |
+| league/csv 9.28.0 | 16 645 → 16 537 | −108 (−0.6%) | 26 | green (without `network`) | 1.5 min |
+| nesbot/carbon 3.14.2 | 27 422 → 26 170 | −1 252 (−4.6%) | 105 | 4 070, green (without `localization`) | 21 min |
+
+PHP 8.4, `php.target` 8.4. Most of the gain is `FullyQualifyGlobalCallsRector`: since PHP 8.4 an unqualified call of a
+frameless function (`trim`, `str_replace`, `implode`…) in a namespace compiles into both the frameless call and the
+fallback, and `\trim()` removes the fallback.
+
 ## Configuration
 
 `opmin.yaml` (or `opmin.yaml.dist`) in the project root; `opmin init` generates it with all keys. Unknown keys and

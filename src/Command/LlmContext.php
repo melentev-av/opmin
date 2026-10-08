@@ -57,7 +57,7 @@ final class LlmContext extends LlmStage
                 "`{$key}` is not a target of the session {$project->relative($session->runDir)}: see `opmin llm:targets`.",
             );
             $file = $project->root->join($target->file);
-            $cacheDir = $this->cacheDir($project);
+            $cacheDir = $this->cacheDir();
             $counter = $this->counter($php, $cacheDir);
             $result = $counter->count($project, [$file]);
             $result->errors === [] or throw new \RuntimeException(\implode("\n", $result->errors));

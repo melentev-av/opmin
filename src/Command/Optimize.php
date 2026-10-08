@@ -181,7 +181,7 @@ final class Optimize extends Stage
             return Command::INVALID;
         }
 
-        $cacheDir = $this->cacheDir($project);
+        $cacheDir = $this->cacheDir();
         $runDir = $state?->runDir ?? $this->newRunDir($project);
         $dryRun = (bool) ($options['dry_run'] ?? false);
         try {

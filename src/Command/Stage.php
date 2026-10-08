@@ -79,15 +79,6 @@ abstract class Stage extends Base
         return $dir;
     }
 
-    protected function cacheDir(Project $project): Path
-    {
-        /** @var Schema\Cache $cacheConfig */
-        $cacheConfig = $this->container->get(Schema\Cache::class);
-        $cacheDir = Path::create($cacheConfig->dir);
-
-        return $cacheDir->isAbsolute() ? $cacheDir : $project->root->join($cacheConfig->dir);
-    }
-
     /**
      * @return non-empty-string|null
      */
@@ -107,7 +98,7 @@ abstract class Stage extends Base
     protected function ignoredPaths(Project $project): array
     {
         # The review writes opmin.baseline.yaml and commits it at the end of the run.
-        return \array_values(\array_unique(['runs', $project->relative($this->cacheDir($project)), Declined::FILE]));
+        return \array_values(\array_unique(['runs', $project->relative($this->cacheDir()), Declined::FILE]));
     }
 
     /**
@@ -136,7 +127,7 @@ abstract class Stage extends Base
      */
     protected function countReport(Project $project, PhpBinary $php, array $files): CountReport
     {
-        $result = $files === [] ? null : $this->counter($php, $this->cacheDir($project))->count($project, $files);
+        $result = $files === [] ? null : $this->counter($php, $this->cacheDir())->count($project, $files);
 
         return CountReport::create(
             opmin: Info::version(),
@@ -156,7 +147,7 @@ abstract class Stage extends Base
         bool $allowPublicSignatures,
     ): Optimizer {
         $errorOutput = $output instanceof ConsoleOutputInterface ? $output->getErrorOutput() : $output;
-        $cacheDir = $this->cacheDir($project);
+        $cacheDir = $this->cacheDir();
         $phpTarget = $this->phpTarget($project);
         /** @var Schema\Verification $verification */
         $verification = $this->container->get(Schema\Verification::class);

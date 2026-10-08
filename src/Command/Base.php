@@ -12,6 +12,7 @@ use Opmin\Module\Config\ConfigLoader;
 use Opmin\Module\Config\ConfigSchema;
 use Opmin\Module\Config\Exception\ConfigException;
 use Opmin\Module\Config\Schema;
+use Opmin\Module\Project\Targets;
 use Opmin\Module\Release\ProjectVersion;
 use Opmin\Service\Logger;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -53,6 +54,9 @@ abstract class Base extends Command
 
     /** @var Container IoC container with services */
     protected Container $container;
+
+    /** @var Path Directory of the config file in use, the current directory without one. */
+    protected Path $configDir;
 
     public static function getCommandName(): ?string
     {
@@ -104,6 +108,9 @@ abstract class Base extends Command
         OutputInterface $output,
     ): int {
         $this->logger = new Logger($output);
+        $config = $this->getConfigFile($input);
+        $cwd = Path::create((string) \getcwd());
+        $this->configDir = $config === null ? $cwd : Targets::absolute($config, $cwd)->parent();
 
         /** @var list<string> $overrides */
         $overrides = $input->getOption('set');
@@ -112,7 +119,7 @@ abstract class Base extends Command
         /** @var array<string, mixed> $arguments */
         $arguments = $input->getArguments();
         $this->container = $container = Bootstrap::init()->withConfig(
-            file: $this->getConfigFile($input),
+            file: $config,
             inputOptions: $options,
             inputArguments: $arguments,
             environment: \getenv(),
@@ -133,11 +140,23 @@ abstract class Base extends Command
         if (static::CHECK_VERSION) {
             /** @var Schema\Project $project */
             $project = $container->get(Schema\Project::class);
-            $config = $this->getConfigFile($input);
-            ProjectVersion::check(Info::version(), $project->requires, Path::create($config === null ? (string) \getcwd() : \dirname($config)));
+            ProjectVersion::check(Info::version(), $project->requires, $this->configDir);
         }
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * `cache.dir`, absolute. A relative one resolves next to the config, not in the project root: in a
+     * monorepo the root is the package of the analyzed paths, and every package would get a cache.
+     */
+    protected function cacheDir(): Path
+    {
+        /** @var Schema\Cache $cacheConfig */
+        $cacheConfig = $this->container->get(Schema\Cache::class);
+        $cacheDir = Path::create($cacheConfig->dir);
+
+        return $cacheDir->isAbsolute() ? $cacheDir : $this->configDir->join($cacheConfig->dir);
     }
 
     /**

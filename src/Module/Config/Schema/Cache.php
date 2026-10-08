@@ -16,6 +16,6 @@ use Opmin\Module\Common\Internal\Attribute\InflectableConfig;
 final class Cache
 {
     /** @var non-empty-string */
-    #[ConfigKey('cache.dir', 'Cache directory (add it to .gitignore)')]
+    #[ConfigKey('cache.dir', 'Cache directory; a relative one is next to the config file, or in the current directory without one (add it to .gitignore)')]
     public string $dir = '.opmin-cache';
 }

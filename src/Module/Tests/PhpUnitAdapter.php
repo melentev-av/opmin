@@ -19,6 +19,9 @@ use Symfony\Component\Process\Process;
  */
 class PhpUnitAdapter implements TestRunnerAdapter
 {
+    /** Longest `--filter`, in bytes. */
+    public const int MAX_FILTER = 65536;
+
     /**
      * @param non-empty-string|null $binary `tests.command`: overrides the runner binary.
      * @param positive-int $timeoutSeconds
@@ -62,6 +65,32 @@ class PhpUnitAdapter implements TestRunnerAdapter
         return \trim($process->getOutput()) === '1';
     }
 
+    /**
+     * {@see self::filter()} that fits into one argument of a process (Linux limits it to 128 KiB): a
+     * change of a widely used function selects thousands of tests (Carbon). Too long — the whole classes of
+     * the tests, still too long — null, all tests. More tests than needed, never fewer.
+     *
+     * @param non-empty-list<non-empty-string> $testIds
+     */
+    public static function boundedFilter(array $testIds): ?string
+    {
+        $filter = static::filter($testIds);
+        if (\strlen($filter) <= self::MAX_FILTER) {
+            return $filter;
+        }
+
+        $classes = [];
+        foreach ($testIds as $id) {
+            $class = \strstr($id, '::', true);
+            # Pest names its generated classes `P\Tests\…`, the filter matches them without `P\`.
+            $class === false or $classes[(string) \preg_replace('/^P\\\\/', '', $class)] = true;
+        }
+
+        $filter = '/^(?:' . \implode('|', \array_map(static fn(string $c): string => \preg_quote($c . '::', '/'), \array_keys($classes))) . ')/';
+
+        return \strlen($filter) <= self::MAX_FILTER ? $filter : null;
+    }
+
     public function name(): string
     {
         return 'phpunit';
@@ -78,7 +107,9 @@ class PhpUnitAdapter implements TestRunnerAdapter
             return new TestResult(true);
         }
 
-        return $this->runJunit(['--filter', static::filter($testIds)]);
+        $filter = static::boundedFilter($testIds);
+
+        return $this->runJunit($filter === null ? [] : ['--filter', $filter]);
     }
 
     public function collectCoverageMap(): ?CoverageMap

@@ -61,6 +61,29 @@ final class ReportsTest
         Assert::same(\preg_match($filter, 'Other\MathTest::testAdds'), 0);
     }
 
+    public function aFilterOfThousandsOfTestsFallsBackToTheirClassesThenToAll(): void
+    {
+        $few = ['Tests\MathTest::testAdds'];
+        $manyMethods = [];
+        for ($i = 0; $i < 3000; ++$i) {
+            $manyMethods[] = 'Tests\Math' . ($i % 3) . 'Test::testCase' . $i . ' with data set #' . $i;
+        }
+        $manyClasses = [];
+        for ($i = 0; $i < 3000; ++$i) {
+            $manyClasses[] = 'Tests\Generated\Class' . $i . 'WithALongEnoughNameTest::testOne';
+        }
+
+        $byClass = (string) PhpUnitAdapter::boundedFilter($manyMethods);
+        $pest = (string) PestAdapter::boundedFilter(\array_map(static fn(string $id): string => 'P\\' . $id, $manyMethods));
+
+        Assert::same(PhpUnitAdapter::boundedFilter($few), PhpUnitAdapter::filter($few));
+        Assert::true(\strlen(PhpUnitAdapter::filter($manyMethods)) > PhpUnitAdapter::MAX_FILTER);
+        Assert::same(\preg_match($byClass, 'Tests\Math2Test::testAnything'), 1);
+        Assert::same(\preg_match($byClass, 'Tests\Other::testCase1'), 0);
+        Assert::same(\preg_match($pest, 'Tests\Math1Test::it works'), 1);
+        Assert::null(PhpUnitAdapter::boundedFilter($manyClasses));
+    }
+
     public function pestFilterRestoresDescriptionsFromEvaluableNames(): void
     {
         $filter = PestAdapter::filter([

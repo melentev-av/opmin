@@ -57,7 +57,10 @@ final class TestoAdapter implements TestRunnerAdapter
             return new TestResult(true);
         }
 
-        return $this->run(\array_map(static fn(string $id): string => '--filter=' . $id, $testIds));
+        $args = \array_map(static fn(string $id): string => '--filter=' . $id, $testIds);
+
+        # Thousands of selected tests do not fit into a command line: then all of them run.
+        return $this->run(\strlen(\implode(' ', $args)) <= PhpUnitAdapter::MAX_FILTER ? $args : []);
     }
 
     public function collectCoverageMap(): ?CoverageMap

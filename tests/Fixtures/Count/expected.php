@@ -102,12 +102,20 @@ $arrow = [
     'Fixture\Count\Arrow::after' => 4,
 ];
 $arrowBefore84 = ['Fixture\Count\Arrow::sameLine' => 3] + $arrow;
+# The closures of dead() on line 12 are never compiled: only the one on line 13 is counted.
+$dead = [
+    '<main>' => 1,
+    'Fixture\Count\dead' => 8,
+    'Fixture\Count\dead::{closure:3}' => 3,
+    'Fixture\Count\alive' => 3,
+    'Fixture\Count\alive::{closure:1}' => 1,
+];
 
 return [
-    '8.1' => ['Basic.php' => $basicBefore84, 'Strings.php' => $strings81, 'Frameless.php' => $framelessBefore84, 'Arrow.php' => $arrowBefore84],
-    '8.2' => ['Basic.php' => $basicBefore84, 'Readonly.php' => $readonly, 'Strings.php' => $strings, 'Frameless.php' => $framelessBefore84, 'Arrow.php' => $arrowBefore84],
-    '8.3' => ['Basic.php' => $basicBefore84, 'Readonly.php' => $readonly, 'Strings.php' => $strings, 'Frameless.php' => $framelessBefore84, 'Arrow.php' => $arrowBefore84],
-    '8.4' => ['Basic.php' => $basic, 'Readonly.php' => $readonly, 'Hooks.php' => $hooks, 'Strings.php' => $strings, 'Frameless.php' => $frameless, 'Arrow.php' => $arrow],
+    '8.1' => ['Basic.php' => $basicBefore84, 'Strings.php' => $strings81, 'Frameless.php' => $framelessBefore84, 'Arrow.php' => $arrowBefore84, 'Dead.php' => $dead],
+    '8.2' => ['Basic.php' => $basicBefore84, 'Readonly.php' => $readonly, 'Strings.php' => $strings, 'Frameless.php' => $framelessBefore84, 'Arrow.php' => $arrowBefore84, 'Dead.php' => $dead],
+    '8.3' => ['Basic.php' => $basicBefore84, 'Readonly.php' => $readonly, 'Strings.php' => $strings, 'Frameless.php' => $framelessBefore84, 'Arrow.php' => $arrowBefore84, 'Dead.php' => $dead],
+    '8.4' => ['Basic.php' => $basic, 'Readonly.php' => $readonly, 'Hooks.php' => $hooks, 'Strings.php' => $strings, 'Frameless.php' => $frameless, 'Arrow.php' => $arrow, 'Dead.php' => $dead],
     # 8.5 drops VERIFY_RETURN_TYPE of `new self` returned as `self`.
     '8.5' => [
         'Basic.php' => $basic,
@@ -116,5 +124,6 @@ return [
         'Strings.php' => $strings,
         'Frameless.php' => $frameless,
         'Arrow.php' => $arrow,
+        'Dead.php' => $dead,
     ],
 ];

@@ -7,9 +7,11 @@ namespace Opmin\Tests\Integration\Module\Opcode;
 use Opmin\Module\Opcode\Dump\DumpParser;
 use Opmin\Module\Opcode\Dump\FileDump;
 use Opmin\Module\Opcode\Dump\OpcacheDumper;
-use Opmin\Module\Opcode\Locate\CodeUnit;
+use Opmin\Module\Opcode\FunctionCount;
 use Opmin\Module\Opcode\Locate\DumpMatcher;
 use Opmin\Module\Opcode\Locate\FunctionLocator;
+use Opmin\Module\Opcode\Locate\MatchException;
+use Opmin\Module\Opcode\Locate\UnitKind;
 use Opmin\Tests\Integration\TestPhp;
 use Rasuvaeff\PropertyTesting\ArbitraryInterface;
 use Rasuvaeff\PropertyTesting\Gen;
@@ -21,7 +23,7 @@ use Testo\Test;
 /**
  * Generated valid PHP (8.1 syntax) goes through the whole attribution chain under `php.binary`:
  * the dump parses, every block is paired with a function of the source, and every function of the
- * source gets a count. Nested closures, anonymous classes and several closures on one line are the
+ * source gets a count — except closures the compiler drops in expressions it evaluates. Nested closures, anonymous classes and several closures on one line are the
  * cases where pairing by position could go wrong.
  */
 #[Test]
@@ -85,13 +87,28 @@ final class CountPropertyTest
             Gen::note('code', $code);
             Assert::null($dump?->error);
             $units = (new FunctionLocator())->locate($code, 'gen.php::<main>');
-            $counts = (new DumpMatcher())->match($units, (new DumpParser())->parse((string) $dump?->dump), 'gen.php');
+            try {
+                $counts = (new DumpMatcher())->match($units, (new DumpParser())->parse((string) $dump?->dump), 'gen.php');
+            } catch (MatchException $e) {
+                # A closure the compiler dropped next to a compiled one on the same line: no count, no guess.
+                Assert::string($e->getMessage())->contains('Cannot tell which closure on line');
+                return;
+            }
         } finally {
             @\unlink($file);
         }
 
-        $concrete = \array_values(\array_filter($units, static fn(CodeUnit $u): bool => !$u->abstract));
-        Assert::count($counts, \count($concrete));
+        $counted = \array_map(static fn(FunctionCount $c): string => $c->key, $counts);
+        $missing = [];
+        foreach ($units as $unit) {
+            $unit->abstract || \in_array($unit->key, $counted, true) or $missing[] = $unit;
+        }
+
+        Assert::same(\count(\array_unique($counted)), \count($counted));
+        # Only closures the compiler dropped (`[null ? fn() => 1 : null]`) and what is inside them have no count.
+        foreach ($missing as $unit) {
+            Assert::true($unit->kind === UnitKind::Closure || \str_contains($unit->key, '::{closure:'), $unit->key);
+        }
     }
 
     /**

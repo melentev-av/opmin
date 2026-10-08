@@ -86,18 +86,30 @@ jobs:
           # `binary` is what `file` must report for the result: a build that silently ran on the
           # wrong architecture (e.g. under Rosetta) fails instead of being published.
           - target: linux-x86_64
+            # php.binary of the smoke tests; 8.1, the oldest supported, on Linux only: setup-php has no
+            # prebuilt old PHP for macOS on Intel and gives up after half an hour of compiling it.
+            php: '8.1'
             runner: ubuntu-24.04
             spc: spc-linux-x86_64
             binary: x86-64
           - target: linux-aarch64
+            # php.binary of the smoke tests; 8.1, the oldest supported, on Linux only: setup-php has no
+            # prebuilt old PHP for macOS on Intel and gives up after half an hour of compiling it.
+            php: '8.1'
             runner: ubuntu-24.04-arm
             spc: spc-linux-aarch64
             binary: aarch64
           - target: macos-x86_64
+            # php.binary of the smoke tests; 8.1, the oldest supported, on Linux only: setup-php has no
+            # prebuilt old PHP for macOS on Intel and gives up after half an hour of compiling it.
+            php: '8.4'
             runner: macos-15-intel
             spc: spc-macos-x86_64
             binary: x86_64
           - target: macos-arm64
+            # php.binary of the smoke tests; 8.1, the oldest supported, on Linux only: setup-php has no
+            # prebuilt old PHP for macOS on Intel and gives up after half an hour of compiling it.
+            php: '8.4'
             runner: macos-26
             spc: spc-macos-aarch64
             binary: arm64
@@ -180,12 +192,12 @@ jobs:
           mkdir -p "$RUNNER_TEMP/smoke" && cd "$RUNNER_TEMP/smoke" && "$GITHUB_WORKSPACE/dist/opmin" init --no-interaction
           test -s "$RUNNER_TEMP/smoke/opmin.yaml"
 
-      # The oldest PHP opmin supports as php.binary: the harness is extracted from the binary and runs under
-      # it, while the orchestrator runs on the embedded PHP.
-      - name: 🛠️ Setup PHP 8.1 as php.binary
+      # An external php.binary: the harness is extracted from the binary and runs under it, while the
+      # orchestrator runs on the embedded PHP.
+      - name: 🛠️ Setup PHP ${{ matrix.php }} as php.binary
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.1'
+          php-version: ${{ matrix.php }}
           extensions: opcache
           coverage: none
 

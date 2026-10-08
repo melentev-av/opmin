@@ -37,7 +37,11 @@ final class InitDetector
         $project->phpTarget === null or $found['php.target'] = [$project->phpTarget, 'composer.json'];
 
         $dirs = \array_values(\array_filter(self::CODE_DIRS, static fn(string $dir): bool => $root->join($dir)->isDir()));
-        $dirs === [] or $found['paths'] = [$dirs, 'directories ' . \implode(', ', \array_map(static fn(string $d): string => "{$d}/", $dirs))];
+        if ($dirs !== []) {
+            $found['paths'] = [$dirs, 'directories ' . \implode(', ', \array_map(static fn(string $d): string => "{$d}/", $dirs))];
+        } elseif ($hasComposer && ($autoload = self::autoloadPaths($root)) !== []) {
+            $found['paths'] = [$autoload, 'autoload of composer.json'];
+        }
 
         $runner = match (true) {
             PestAdapter::detect($project) => TestRunner::Pest,
@@ -56,5 +60,41 @@ final class InitDetector
         $phpstan or $found['commands.phpstan'] = [null, 'no PHPStan in the project'];
 
         return $found;
+    }
+
+    /**
+     * Existing paths of `autoload` (psr-4, psr-0, classmap; not autoload-dev): a package without `src/`
+     * often maps its namespace to the root (`"Symfony\\Component\\String\\": ""`), which is `.` here.
+     *
+     * @return list<non-empty-string>
+     */
+    private static function autoloadPaths(Path $root): array
+    {
+        /** @var mixed $json */
+        $json = \json_decode((string) \file_get_contents((string) $root->join('composer.json')), true);
+        /** @var array<array-key, mixed> $autoload */
+        $autoload = \is_array($json) && \is_array($json['autoload'] ?? null) ? $json['autoload'] : [];
+        $paths = [];
+        foreach (['psr-4', 'psr-0', 'classmap'] as $type) {
+            /** @var array<array-key, mixed> $map */
+            $map = \is_array($autoload[$type] ?? null) ? $autoload[$type] : [];
+            \array_walk_recursive($map, static function (mixed $path) use (&$paths, $root): void {
+                if (!\is_string($path)) {
+                    return;
+                }
+
+                $path = \trim(\str_replace('\\', '/', $path), '/');
+                $path === '' and $path = '.';
+                $root->join($path)->exists() and $paths[$path] = true;
+            });
+        }
+
+        $paths = \array_keys($paths);
+        # The root covers everything else.
+        \in_array('.', $paths, true) and $paths = ['.'];
+        \sort($paths);
+
+        /** @var list<non-empty-string> */
+        return $paths;
     }
 }

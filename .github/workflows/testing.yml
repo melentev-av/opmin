@@ -1,6 +1,6 @@
 ---
 
-# Tests run on every push to develop and on every pull request into master.
+# Tests run on every push to develop and on every pull request into develop (contributions) and master (releases).
 # Nothing runs on a push to master: master only receives release merges.
 
 name: 🧪 Testing
@@ -11,6 +11,7 @@ on:  # yamllint disable-line rule:truthy
       - develop
   pull_request:
     branches:
+      - develop
       - master
   workflow_dispatch:
 

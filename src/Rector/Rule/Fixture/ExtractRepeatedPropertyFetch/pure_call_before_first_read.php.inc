@@ -2,9 +2,9 @@
 
 namespace Opmin\Tests\Fixture\PropertyFetch;
 
-final readonly class Request27
+final class Request27
 {
-    public function __construct(public string $target, public float $receivedAt) {}
+    public function __construct(public readonly string $target, public readonly float $receivedAt) {}
 }
 
 function serverParams27(Request27 $request, string $query): array
@@ -24,9 +24,9 @@ function serverParams27(Request27 $request, string $query): array
 
 namespace Opmin\Tests\Fixture\PropertyFetch;
 
-final readonly class Request27
+final class Request27
 {
-    public function __construct(public string $target, public float $receivedAt) {}
+    public function __construct(public readonly string $target, public readonly float $receivedAt) {}
 }
 
 function serverParams27(Request27 $request, string $query): array

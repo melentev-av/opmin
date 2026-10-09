@@ -16,7 +16,7 @@ use Opmin\Module\Opcode\FunctionCount;
  * kind (closure or named), the name of a named unit and the last line. Any disagreement is an
  * error — never a guess: a count attributed to the wrong function is worse than no count. The only
  * blocks without a unit are exact copies of a closure (see {@see self::isCopy()}); the only units
- * without a block are closures in branches the compiler drops.
+ * without a block are closures and methods of anonymous classes in branches the compiler drops.
  *
  * @internal
  */
@@ -105,7 +105,7 @@ final class DumpMatcher
     {
         $pairs = [];
         $paired = [];
-        $closureLines = [];
+        $anonymousLines = [];
         $dead = null;
         $i = 0;
         foreach ($units as $unit) {
@@ -126,13 +126,15 @@ final class DumpMatcher
                 continue;
             }
 
-            if ($unit->kind === UnitKind::Closure && ($block === null || !$this->matches($unit, $block))) {
-                # A closure in an expression the compiler evaluates (`false && fn() => 1`, a ternary in an
-                # array literal) is never compiled: neither it nor anything inside it has a block. The blocks
-                # that follow must still match; another closure on its line could have taken its block.
+            $anonymous = $unit->kind === UnitKind::Closure || $unit->isAnonymousClassMethod();
+            if ($anonymous && ($block === null || !$this->matches($unit, $block))) {
+                # A closure or an anonymous class in an expression the compiler evaluates (`false && fn() => 1`,
+                # a ternary in an array literal) is never compiled: neither it nor anything inside it has a block.
+                # The blocks that follow must still match; another closure or anonymous class on its line could
+                # have taken its block.
                 $line = $unit->dumpEndLine ?? $unit->endLine;
-                isset($closureLines[$line]) and throw new MatchException(\sprintf(
-                    'Cannot tell which closure on line %d the compiler dropped: `%s` has no block.',
+                isset($anonymousLines[$line]) and throw new MatchException(\sprintf(
+                    'Cannot tell which closure or anonymous class on line %d the compiler dropped: `%s` has no block.',
                     $line,
                     $unit->key,
                 ));
@@ -156,10 +158,8 @@ final class DumpMatcher
                 $unit->dumpEndLine ?? $unit->endLine,
             ));
             $pairs[$unit->key] = [$unit, $block];
-            if ($block->isClosure()) {
-                $paired[] = $block;
-                $closureLines[$block->lineEnd] = true;
-            }
+            $block->isClosure() and $paired[] = $block;
+            $anonymous and $anonymousLines[$block->lineEnd] = true;
             ++$i;
         }
 

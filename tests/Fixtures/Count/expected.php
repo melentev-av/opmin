@@ -103,12 +103,14 @@ $arrow = [
 ];
 $arrowBefore84 = ['Fixture\Count\Arrow::sameLine' => 3] + $arrow;
 # The closures of dead() on line 12 are never compiled: only the one on line 13 is counted.
+# Neither is the anonymous class of deadClass(), nor its method and the closure inside it.
 $dead = [
     '<main>' => 1,
     'Fixture\Count\dead' => 8,
     'Fixture\Count\dead::{closure:3}' => 3,
     'Fixture\Count\alive' => 3,
     'Fixture\Count\alive::{closure:1}' => 1,
+    'Fixture\Count\deadClass' => 4,
 ];
 
 return [

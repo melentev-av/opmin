@@ -20,8 +20,8 @@ use PhpParser\ParserFactory;
  * Project-wide index of dynamic references ({@see FileReferences}): gives a function the flags it
  * gets from other files — {@see Flag::CalledDynamically}, {@see Flag::Reflection}.
  *
- * Scans every `*.php` of the project except `vendor/` (tests and routes call application code by
- * name too). Per-file results are cached by content (`cache.driver`).
+ * Scans every `*.php` of the project except `vendor/`, hidden entries and `cache.dir` (tests and
+ * routes call application code by name too). Per-file results are cached by content (`cache.driver`).
  *
  * @internal
  */
@@ -30,8 +30,13 @@ final class ReferenceIndex
     /** Bump when the collected data changes. */
     private const FORMAT = 1;
 
-    /** Directories never scanned. */
-    private const SKIP = ['vendor', 'node_modules', '.git', 'runs', 'playground'];
+    /**
+     * Never scanned. `.*` is every hidden entry — VCS, IDE, agent and CI tooling (`.agents/`,
+     * `.github/`), a stale `.opmin-cache/` of another root: their scripts do not run as the
+     * application, yet one `new \ReflectionClass($class)` or `$f()` there flags every method. Not the
+     * config's `exclude`: it lists `tests` by default, and tests call application code by name.
+     */
+    private const SKIP = ['vendor', 'node_modules', '.*', 'runs', 'playground'];
 
     /** @var array<lowercase-string, true> */
     private array $functions = [];

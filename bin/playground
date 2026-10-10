@@ -162,6 +162,7 @@ function init(array $names, bool $reset): int
             'git-package-real' => buildRealPackage(),
         };
 
+        $name === 'git-package' or ensureConfig(scenarioDir($name));
         $name === 'vanilla' or $name === 'git-package' or gitInit(scenarioDir($name));
         if ($name !== 'git-package' && !testScenario($name)) {
             throw new \RuntimeException("{$name}: tests are red on the original code");
@@ -412,6 +413,8 @@ function run(array $args): int
         step("{$name}: running the full cycle");
 
         $dir = scenarioDir($name);
+        # Scenarios created before opmin required a config get one now.
+        $name === 'git-package' or ensureConfig($dir, commit: true);
         # The package runs in the image of this build (the release image of this version does not exist);
         # with the tool from sources or the PHAR without Docker, after the confirmation --yes.
         $target = $name === 'git-package'
@@ -933,6 +936,19 @@ function phpunitXml(string $tests, string $source): string
         </phpunit>
 
         XML;
+}
+
+/**
+ * opmin refuses to analyze a project without opmin.yaml: a scenario without its own gets opmin's defaults.
+ */
+function ensureConfig(string $dir, bool $commit = false): void
+{
+    if (\is_file($dir . '/opmin.yaml') || \is_file($dir . '/opmin.yaml.dist')) {
+        return;
+    }
+
+    \file_put_contents($dir . '/opmin.yaml', "# Playground scenario: opmin's defaults.\n");
+    $commit && \is_dir($dir . '/.git') and sh(GIT . ' add opmin.yaml && ' . GIT . " commit -q -m 'Add opmin.yaml'", $dir);
 }
 
 function gitInit(string $dir, string $message = 'Initial commit'): void

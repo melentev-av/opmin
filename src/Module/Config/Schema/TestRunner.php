@@ -16,4 +16,9 @@ enum TestRunner: string
     case Pest = 'pest';
     case Testo = 'testo';
     case Command = 'command';
+
+    /**
+     * The project's tests are not run: only the differential tests verify a change.
+     */
+    case None = 'none';
 }

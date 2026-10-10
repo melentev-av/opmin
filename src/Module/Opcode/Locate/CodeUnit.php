@@ -26,6 +26,8 @@ final readonly class CodeUnit
      * @param list<Flag> $flags Flags of the dynamic scope detector found in the unit's own body.
      * @param Node\FunctionLike|null $node The AST of the unit (null for main code).
      * @param Node\Stmt\ClassLike|null $class The class of a method or hook, or the class a closure is defined in.
+     * @param int|null $dumpEndLine The last line in the dump when it is not {@see self::$endLine}: PHP ends an
+     *        arrow function on the line of the token after its body (the lookahead of its parser).
      */
     public function __construct(
         public string $key,
@@ -37,6 +39,7 @@ final readonly class CodeUnit
         public array $flags = [],
         public ?Node\FunctionLike $node = null,
         public ?Node\Stmt\ClassLike $class = null,
+        public ?int $dumpEndLine = null,
     ) {}
 
     public function isAnonymousClassMethod(): bool

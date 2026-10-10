@@ -88,6 +88,25 @@ final class WorkerFailuresTest
         }
     }
 
+    public function aLongRequestDoesNotDeadlockWithOutputOfTheWorker(): void
+    {
+        # The worker floods stdout (a buffered php://output flushed by a destructor) before it reads the
+        # next request, while the request is longer than a pipe buffer: both sides would wait forever.
+        $worker = new Worker($this->fake(<<<'SH'
+            echo "$token {\"ok\":true,\"ready\":true}"
+            head -c 1048576 /dev/zero | tr "\0" x; echo
+            read line
+            echo "$token {\"ok\":true,\"length\":${#line}}"
+            sleep 1
+            SH), new WorkerOptions(timeoutMs: 10000, loadTimeoutMs: 3000));
+        $worker->start();
+
+        $response = $worker->request(['cmd' => 'ping', 'pad' => \str_repeat('a', 300000)]);
+
+        Assert::true($response['ok']);
+        Assert::true($response['length'] > 300000);
+    }
+
     public function stoppedWorkerRefusesRequests(): void
     {
         $worker = new Worker(TestPhp::binary(), new WorkerOptions(loadTimeoutMs: 30000, timeoutMs: 10000));

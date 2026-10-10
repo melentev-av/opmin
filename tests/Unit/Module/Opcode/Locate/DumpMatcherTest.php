@@ -99,6 +99,20 @@ final class DumpMatcherTest
         (new DumpMatcher())->match($units, self::blocks('8.5', 'Basic'), 'x.php');
     }
 
+    public function refusesToGuessWhichClosureOnALineWasDropped(): never
+    {
+        Expect::exception(MatchException::class)->withMessageContaining('Cannot tell which closure or anonymous class on line 13');
+
+        # The dropped closure moves to the line of the compiled one: the block cannot be told apart.
+        $code = \str_replace(
+            ", false && (fn(): int => 1),\n        fn(): int => \$a];",
+            ",\n        false && (fn(): int => 1), fn(): int => \$a];",
+            (string) \file_get_contents(self::FIXTURES . '/Count/Dead.php'),
+        );
+        $units = (new FunctionLocator())->locate($code, 'x.php::<main>');
+        (new DumpMatcher())->match($units, self::blocks('8.5', 'Dead'), 'x.php');
+    }
+
     /**
      * @return list<FunctionCount>
      */

@@ -8,6 +8,7 @@ use Internal\Path;
 use Opmin\Module\Analysis\ReferenceIndex;
 use Opmin\Module\Common\Cpu;
 use Opmin\Module\Config\Schema;
+use Opmin\Module\Config\Schema\RequireClean;
 use Opmin\Module\Opcode\CountCache;
 use Opmin\Module\Opcode\Dump\OpcacheDumper;
 use Opmin\Info;
@@ -26,6 +27,8 @@ use Opmin\Module\Project\Project;
 use Opmin\Module\Project\Targets;
 use Opmin\Module\Report\Environment;
 use Opmin\Module\Verification\Verifier;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
@@ -37,6 +40,9 @@ use Symfony\Component\Console\Output\OutputInterface;
  */
 abstract class Stage extends Base
 {
+    /** Turns on the clean check of the run's files when `git.require_clean` is `off`. */
+    protected const string WITH_GIT = 'with-git';
+
     /**
      * The target files without excluded, ignored, vendor and generated ones.
      *
@@ -79,15 +85,6 @@ abstract class Stage extends Base
         return $dir;
     }
 
-    protected function cacheDir(Project $project): Path
-    {
-        /** @var Schema\Cache $cacheConfig */
-        $cacheConfig = $this->container->get(Schema\Cache::class);
-        $cacheDir = Path::create($cacheConfig->dir);
-
-        return $cacheDir->isAbsolute() ? $cacheDir : $project->root->join($cacheConfig->dir);
-    }
-
     /**
      * @return non-empty-string|null
      */
@@ -107,7 +104,45 @@ abstract class Stage extends Base
     protected function ignoredPaths(Project $project): array
     {
         # The review writes opmin.baseline.yaml and commits it at the end of the run.
-        return \array_values(\array_unique(['runs', $project->relative($this->cacheDir($project)), Declined::FILE]));
+        return \array_values(\array_unique(['runs', $project->relative($this->cacheDir()), Declined::FILE]));
+    }
+
+    #[\Override]
+    protected function requiresConfig(InputInterface $input): bool
+    {
+        return true;
+    }
+
+    /**
+     * Adds `--with-git` to a command that commits its steps ({@see self::workspace()}).
+     */
+    protected function addWithGitOption(): void
+    {
+        $this->addOption(self::WITH_GIT, null, InputOption::VALUE_NONE, 'Require the files of the run to be committed (git.require_clean: targets)');
+    }
+
+    /**
+     * @param list<Path> $targets The files the run may change.
+     * @throws \RuntimeException When the files `git.require_clean` (or `--with-git`) asks for are not clean.
+     */
+    protected function workspace(Project $project, Path $runDir, bool $dryRun, array $targets): Workspace
+    {
+        /** @var Schema\Git $git */
+        $git = $this->container->get(Schema\Git::class);
+        /** @var InputInterface $input */
+        $input = $this->container->get(InputInterface::class);
+        $requireClean = $git->requireClean === RequireClean::Off && $input->hasOption(self::WITH_GIT) && $input->getOption(self::WITH_GIT)
+            ? RequireClean::Targets
+            : $git->requireClean;
+
+        return Workspace::create(
+            $project,
+            $runDir,
+            $dryRun,
+            $this->ignoredPaths($project),
+            $requireClean,
+            \array_map($project->relative(...), $targets),
+        );
     }
 
     /**
@@ -124,9 +159,9 @@ abstract class Stage extends Base
         return [$environment, $previous === null ? [] : $environment->changesSince($previous[1], $previous[0])];
     }
 
-    protected function counter(PhpBinary $php, Path $cacheDir): OpcodeCounter
+    protected function counter(PhpBinary $php): OpcodeCounter
     {
-        return new OpcodeCounter(new OpcacheDumper($php, Cpu::count()), new CountCache($cacheDir, $php));
+        return new OpcodeCounter(new OpcacheDumper($php, Cpu::count()), new CountCache($this->cacheStore(), $php));
     }
 
     /**
@@ -136,7 +171,7 @@ abstract class Stage extends Base
      */
     protected function countReport(Project $project, PhpBinary $php, array $files): CountReport
     {
-        $result = $files === [] ? null : $this->counter($php, $this->cacheDir($project))->count($project, $files);
+        $result = $files === [] ? null : $this->counter($php)->count($project, $files);
 
         return CountReport::create(
             opmin: Info::version(),
@@ -156,7 +191,7 @@ abstract class Stage extends Base
         bool $allowPublicSignatures,
     ): Optimizer {
         $errorOutput = $output instanceof ConsoleOutputInterface ? $output->getErrorOutput() : $output;
-        $cacheDir = $this->cacheDir($project);
+        $cacheDir = $this->cacheDir();
         $phpTarget = $this->phpTarget($project);
         /** @var Schema\Verification $verification */
         $verification = $this->container->get(Schema\Verification::class);
@@ -188,8 +223,8 @@ abstract class Stage extends Base
             $project,
             $php,
             $workspace,
-            $this->counter($php, $cacheDir),
-            ReferenceIndex::build($project, $cacheDir),
+            $this->counter($php),
+            ReferenceIndex::build($project, $cacheDir, $this->cacheStore()),
             new RectorRunner($project, $cacheDir, $phpTarget),
             Formatter::create($project, $php, $commands->format),
             new Verifier($project, $php, $verification, $commands, $tests, $cacheDir, $phpTarget, $verbose, $guardPerf),

@@ -138,12 +138,12 @@ final class Check extends Stage
         $rectorConfig = $this->container->get(Schema\Rector::class);
         /** @var Schema\RectorStandard $standard */
         $standard = $this->container->get(Schema\RectorStandard::class);
-        $cacheDir = $this->cacheDir($project);
+        $cacheDir = $this->cacheDir();
         $phpTarget = $this->phpTarget($project);
 
         return new Suggester(
             $project,
-            $this->counter($php, $cacheDir),
+            $this->counter($php),
             new RectorRunner($project, $cacheDir, $phpTarget),
             RuleCatalog::build($rectorConfig, $standard, null, [], $phpTarget),
             $cacheDir->join('tmp'),

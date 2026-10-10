@@ -130,7 +130,7 @@ final class OptimizeTest
         }
 
         Assert::string($reasons['App\Text::upper'] ?? '')->contains('excluded by the user');
-        Assert::string($reasons['App\Text::encode'] ?? '')->contains('min_gain');
+        Assert::same($reasons['App\Text::encode'] ?? '', 'saves no opcodes');
         Assert::string($reasons['App\Text::save'] ?? '')->contains('not proven');
         # The rule itself respects `@opmin-ignore`: nothing to roll back.
         Assert::false(isset($reasons['App\Text::untouched']));
@@ -145,11 +145,18 @@ final class OptimizeTest
         $this->git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init');
         \file_put_contents($this->dir . '/src/Text.php', self::CODE . "\n");
 
-        [$code, , $err] = $this->opmin('optimize');
+        [$code, , $err] = $this->opmin('optimize', '--with-git');
 
         Assert::same($code, 2);
-        Assert::string($err)->ignoringWhitespace(lineBreaks: true)->contains('The git working tree is not clean')->contains('src/Text.php');
+        Assert::string($err)->ignoringWhitespace(lineBreaks: true)->contains('Files of the run have uncommitted changes')->contains('src/Text.php');
         Assert::same(\file_get_contents($this->dir . '/src/Text.php'), self::CODE . "\n");
+        # git.require_clean: all — any file blocks the run, not only a target.
+        $this->git('checkout', '--', 'src/Text.php');
+        \file_put_contents($this->dir . '/notes.txt', "mine\n");
+        [$allCode, , $allErr] = $this->opmin('optimize', '--set=git.require_clean=all');
+        Assert::same($allCode, 2);
+        Assert::string($allErr)->ignoringWhitespace(lineBreaks: true)->contains('The git working tree is not clean')->contains('notes.txt');
+        \file_put_contents($this->dir . '/src/Text.php', self::CODE . "\n");
         # A dry run commits nothing: a dirty tree is fine.
         [$dryCode] = $this->opmin('optimize', '--dry-run', '--format=none');
         Assert::same($dryCode, 0);
@@ -211,6 +218,21 @@ final class OptimizeTest
         $patch = \glob($this->dir . '/runs/*/opmin.patch') ?: [];
         Assert::count($patch, 1);
         Assert::string((string) \file_get_contents($patch[0]))->contains('+        return \strlen($s)');
+    }
+
+    public function redTestsOnTheOriginalStopTheRunWithTheReason(): void
+    {
+        \file_put_contents($this->dir . '/opmin.yaml', "tests:\n  runner: command\n  command: 'echo \"vendor/bin/phpunit: not found\"; exit 127'\n");
+
+        [$code, , $err] = $this->opmin('optimize', '--format=none');
+        [$none] = $this->opmin('optimize', '--format=none', '--dry-run', '--set=tests.runner=none');
+
+        Assert::same($code, 1);
+        Assert::string($err)->ignoringWhitespace(lineBreaks: true)
+            ->contains('The project\'s tests fail on the original code')
+            ->contains('vendor/bin/phpunit: not found');
+        Assert::same(\file_get_contents($this->dir . '/src/Text.php'), self::CODE);
+        Assert::same($none, 0);
     }
 
     public function onlyTheGivenRule(): void
@@ -293,7 +315,9 @@ final class OptimizeTest
 
     public function guardPerfMeasuresTheKeptChanges(): void
     {
-        [$code, $out, $err] = $this->opmin('optimize', '--format=none', '--guard-perf');
+        # The timing of a tiny function on a shared runner is noise: a huge allowed slowdown keeps the change,
+        # so its measurement lands in the report however the run went.
+        [$code, $out, $err] = $this->opmin('optimize', '--format=none', '--guard-perf', '--set=guard_perf.max_regression_percent=1000000');
 
         Assert::same($code, 0, $out . $err);
         $report = $this->report();

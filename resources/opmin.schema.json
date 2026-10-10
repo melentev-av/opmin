@@ -17,7 +17,7 @@
             ]
         },
         "exclude": {
-            "description": "Directories and files to skip",
+            "description": "Directories and files to skip; a name without a slash matches at any depth, wildcards allowed",
             "type": "array",
             "items": {
                 "type": "string",
@@ -25,7 +25,8 @@
             },
             "default": [
                 "vendor",
-                "tests"
+                "tests",
+                "*Test.php"
             ]
         },
         "requires": {
@@ -71,13 +72,14 @@
             "additionalProperties": false,
             "properties": {
                 "runner": {
-                    "description": "Test runner of the project: auto | phpunit | pest | testo | command",
+                    "description": "Test runner of the project: auto | phpunit | pest | testo | command | none",
                     "enum": [
                         "auto",
                         "phpunit",
                         "pest",
                         "testo",
-                        "command"
+                        "command",
+                        "none"
                     ],
                     "default": "auto"
                 },
@@ -459,15 +461,45 @@
                 }
             }
         },
+        "git": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "require_clean": {
+                    "description": "off — no check (--with-git turns on targets for one run); targets — the files the run may change must be clean; all — the whole tree",
+                    "enum": [
+                        "targets",
+                        "all",
+                        "off"
+                    ],
+                    "default": "off"
+                }
+            }
+        },
         "cache": {
             "type": "object",
             "additionalProperties": false,
             "properties": {
                 "dir": {
-                    "description": "Cache directory (add it to .gitignore)",
+                    "description": "Cache directory; a relative one is next to the config file (add it to .gitignore)",
                     "type": "string",
                     "minLength": 1,
                     "default": ".opmin-cache"
+                },
+                "driver": {
+                    "description": "Storage of opcode counts and references: auto (sqlite when the PHP running opmin has pdo_sqlite, files otherwise) | sqlite (one database cache.sqlite in cache.dir, kept between runs; a config error without pdo_sqlite) | files (a JSON file per entry in cache.dir, kept between runs) | memory (this run only)",
+                    "enum": [
+                        "auto",
+                        "sqlite",
+                        "files",
+                        "memory"
+                    ],
+                    "default": "auto"
+                },
+                "recreate_corrupt": {
+                    "description": "Delete a corrupt SQLite cache and start an empty one; off: the run works without the cache, opmin doctor reports the file to delete",
+                    "type": "boolean",
+                    "default": false
                 }
             }
         }

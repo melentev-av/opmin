@@ -158,6 +158,34 @@ enum Flag: string
     }
 
     /**
+     * What the flag means, for the report.
+     */
+    public function description(): string
+    {
+        return match ($this) {
+            self::Compact => 'reads variables by name (`compact()`)',
+            self::Extract => 'creates variables by name (`extract()`)',
+            self::VariableVariable => 'uses variable variables (`$$name`)',
+            self::DefinedVars => 'reads the set of its local variables (`get_defined_vars()`)',
+            self::FuncArgs => 'reads its arguments by position (`func_get_args()`)',
+            self::Backtrace => 'reads the call stack (`debug_backtrace()`)',
+            self::MagicConstant => 'uses `__LINE__`, `__FUNCTION__` or `__METHOD__`',
+            self::Eval => 'runs `eval()`',
+            self::Include => 'includes a file that sees its local variables',
+            self::StaticVar => 'keeps state between calls (`static $var`)',
+            self::Global => 'uses global variables',
+            self::CalledDynamically => 'may be called by name: the project calls functions or methods through a '
+                . 'string or a variable (`$fn()`, `[$obj, \'m\']`), so its name must stay',
+            self::Magic => 'involves magic members (`__get`, `__call`, `ArrayAccess`…)',
+            self::Reflection => 'is inspected through Reflection somewhere in the project',
+            self::Io => 'does I/O (files, network, processes, output headers)',
+            self::Time => 'reads the current time',
+            self::Random => 'uses randomness',
+            self::Environment => 'reads the process environment (`getenv()`, memory usage, object ids)',
+        };
+    }
+
+    /**
      * @return list<Restriction>
      */
     public function restrictions(): array

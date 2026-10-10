@@ -94,7 +94,7 @@
             "rule": "Opmin\\Rector\\Rule\\FullyQualifyGlobalCallsRector",
             "pass": 1,
             "kind": "no_gain",
-            "reason": "gain 0 is below readability.min_gain"
+            "reason": "saves no opcodes"
         },
         {
             "file": "src/Cart.php",
@@ -121,7 +121,7 @@
             "rule": "Opmin\\Module\\Optimize\\LlmCandidate",
             "pass": 1,
             "kind": "readability",
-            "reason": "cyclomatic complexity grew by 1"
+            "reason": "cyclomatic complexity grew by 1 (more branches; readability.max_cyclomatic_increase is 0)"
         }
     ],
     "counterexamples": [],
@@ -159,7 +159,7 @@
                 {
                     "file": "src/Cart.php",
                     "function": "App\\Cart::name",
-                    "reason": "gain 0 is below readability.min_gain"
+                    "reason": "saves no opcodes"
                 },
                 {
                     "file": "src/Cart.php",
@@ -253,7 +253,7 @@
                 {
                     "file": "src/Cart.php",
                     "function": "App\\Cart::total",
-                    "reason": "cyclomatic complexity grew by 1"
+                    "reason": "cyclomatic complexity grew by 1 (more branches; readability.max_cyclomatic_increase is 0)"
                 }
             ]
         }

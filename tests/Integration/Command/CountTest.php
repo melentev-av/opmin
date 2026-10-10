@@ -9,6 +9,7 @@ use Opmin\Command\Diff;
 use Opmin\Tests\Integration\TestPhp;
 use Testo\Assert;
 use Testo\Codecov\Covers;
+use Testo\Data\DataSet;
 use Testo\Lifecycle\AfterTest;
 use Testo\Lifecycle\BeforeTest;
 use Testo\Test;
@@ -31,6 +32,7 @@ final class CountTest
         $this->dir = (string) \realpath(\sys_get_temp_dir()) . '/opmin-count-' . \bin2hex(\random_bytes(4));
         \mkdir($this->dir . '/src', 0777, true);
         \file_put_contents($this->dir . '/composer.json', '{"require": {"php": ">=8.1"}}');
+        \file_put_contents($this->dir . '/opmin.yaml', '');
     }
 
     #[AfterTest]
@@ -66,7 +68,14 @@ final class CountTest
         Assert::same($report['totals']['files'], \count($files));
     }
 
-    public function secondRunTakesCountsFromCacheWithoutCompiling(): void
+    /**
+     * @param non-empty-string $driver
+     * @param non-empty-string $stored What the cache keeps in `.opmin-cache/`.
+     * @param non-empty-string $absent
+     */
+    #[DataSet(['files', 'count', 'cache.sqlite'], 'files')]
+    #[DataSet(['sqlite', 'cache.sqlite', 'count'], 'sqlite')]
+    public function secondRunTakesCountsFromCacheWithoutCompiling(string $driver, string $stored, string $absent): void
     {
         \copy(self::FIXTURES . '/Basic.php', "{$this->dir}/src/Basic.php");
         \file_put_contents("{$this->dir}/src/Other.php", "<?php\nfunction other(\$a) { return \$a + 1; }\n");
@@ -79,19 +88,72 @@ final class CountTest
         ));
         \chmod("{$this->dir}/php", 0755);
         $env = ['OPMIN_PHP_BINARY' => "{$this->dir}/php"];
+        $set = "--set=cache.driver={$driver}";
 
-        [, $first] = $this->opminWithEnv($env, 'count', '--format=json');
+        [, $first] = $this->opminWithEnv($env, 'count', '--format=json', $set);
         $compiledFirst = \count(\file($log) ?: []);
-        [, $second] = $this->opminWithEnv($env, 'count', '--format=json');
+        [, $second] = $this->opminWithEnv($env, 'count', '--format=json', $set);
         $compiledSecond = \count(\file($log) ?: []);
         \file_put_contents("{$this->dir}/src/Other.php", "<?php\nfunction other(\$a) { return \$a + 2; }\n");
-        $this->opminWithEnv($env, 'count');
+        $this->opminWithEnv($env, 'count', $set);
         $compiledThird = \count(\file($log) ?: []);
 
+        Assert::true(\file_exists("{$this->dir}/.opmin-cache/{$stored}"));
+        Assert::false(\file_exists("{$this->dir}/.opmin-cache/{$absent}"));
         Assert::same($compiledFirst, 1);
         Assert::same($compiledSecond, 1);
         Assert::same($second, $first);
         Assert::same($compiledThird, 2);
+    }
+
+    public function refusesToRunWithoutConfig(): void
+    {
+        \unlink($this->dir . '/opmin.yaml');
+        \file_put_contents("{$this->dir}/src/A.php", "<?php\nfunction a() { return 1; }\n");
+
+        [$code, , $err] = $this->opmin('count');
+
+        Assert::same($code, 2);
+        Assert::string($err)->ignoringWhitespace(lineBreaks: true)->contains('No opmin.yaml in')->contains('opmin init');
+        Assert::false(\file_exists("{$this->dir}/.opmin-cache"));
+    }
+
+    public function cacheOfPackageInMonorepoIsNextToTheConfig(): void
+    {
+        \mkdir("{$this->dir}/packages/http/src", 0777, true);
+        \file_put_contents("{$this->dir}/packages/http/composer.json", '{}');
+        \file_put_contents("{$this->dir}/packages/http/src/A.php", "<?php\nfunction a() { return 1; }\n");
+
+        [$code] = $this->opmin('count', 'packages/http/src');
+
+        Assert::same($code, 0);
+        Assert::true(self::hasCache("{$this->dir}/.opmin-cache"));
+        Assert::false(\file_exists("{$this->dir}/packages/http/.opmin-cache"));
+    }
+
+    public function cacheIsNextToExplicitConfig(): void
+    {
+        \mkdir("{$this->dir}/conf");
+        \file_put_contents("{$this->dir}/conf/opmin.yaml", "cache:\n  dir: .cache\n");
+        \file_put_contents("{$this->dir}/src/A.php", "<?php\nfunction a() { return 1; }\n");
+
+        [$code] = $this->opmin('count', '--config=conf/opmin.yaml', 'src');
+
+        Assert::same($code, 0);
+        Assert::true(self::hasCache("{$this->dir}/conf/.cache"));
+        Assert::false(\file_exists("{$this->dir}/.cache"));
+    }
+
+    public function memoryDriverWritesNoEntries(): void
+    {
+        \file_put_contents("{$this->dir}/src/A.php", "<?php\nfunction a() { return call_user_func('b'); }\n");
+
+        [$code, $json] = $this->opmin('count', '--format=json', '--set=cache.driver=memory');
+
+        Assert::same($code, 0);
+        Assert::array(self::decode($json)['functions'])->hasKeys('a');
+        Assert::false(self::hasCache("{$this->dir}/.opmin-cache"));
+        Assert::false(\file_exists("{$this->dir}/.opmin-cache/refs"));
     }
 
     public function reportsFilesThatCannotBeCompiledAndCountsTheRest(): void
@@ -184,6 +246,14 @@ final class CountTest
     /**
      * @return array{php: string, php_target: string, totals: array{files: int}, functions: array<string, array{file: string, ops_opt: int}>, errors: array<string, string>}
      */
+    /**
+     * Entries of the default `auto` driver: a database with pdo_sqlite in the PHP running opmin, files otherwise.
+     */
+    private static function hasCache(string $dir): bool
+    {
+        return \is_file("{$dir}/cache.sqlite") || \is_dir("{$dir}/count");
+    }
+
     private static function decode(string $json): array
     {
         /** @var array{php: string, php_target: string, totals: array{files: int}, functions: array<string, array{file: string, ops_opt: int}>, errors: array<string, string>} */

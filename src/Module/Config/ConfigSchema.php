@@ -36,6 +36,7 @@ final class ConfigSchema
         Schema\GuardPerf::class,
         Schema\Check::class,
         Schema\Package::class,
+        Schema\Git::class,
         Schema\Cache::class,
     ];
 

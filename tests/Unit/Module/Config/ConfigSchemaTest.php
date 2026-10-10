@@ -72,7 +72,10 @@ final class ConfigSchemaTest
             'check.tolerance',
             'check.max_ops_new_function',
             'check.base_ref',
+            'git.require_clean',
             'cache.dir',
+            'cache.driver',
+            'cache.recreate_corrupt',
         );
     }
 
@@ -104,7 +107,7 @@ final class ConfigSchemaTest
         Assert::same($schema['properties']['verification']['properties']['seed']['type'], 'integer');
         Assert::same(
             $schema['properties']['tests']['properties']['runner']['enum'],
-            ['auto', 'phpunit', 'pest', 'testo', 'command'],
+            ['auto', 'phpunit', 'pest', 'testo', 'command', 'none'],
         );
     }
 }

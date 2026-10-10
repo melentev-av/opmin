@@ -116,7 +116,15 @@ opmin diff before.json after.json                   # per function: fewer / more
 - Counts depend on the PHP version: reports carry `php` and `optimizer_hash`, and `diff` refuses to compare
   reports taken with different ones.
 - Counts are cached in `.opmin-cache/` by file content, PHP version, optimizer settings and opmin version:
-  re-counting an unchanged project does not start PHP for compilation at all.
+  re-counting an unchanged project does not start PHP for compilation at all. A relative `cache.dir` is next to
+  the config in use, so in a monorepo the packages share the root's cache.
+  `cache.driver` picks the storage: `auto` (default) is one SQLite database `.opmin-cache/cache.sqlite` when the
+  PHP running opmin has `pdo_sqlite` (the static binary and most PHP builds do) and a JSON file per entry
+  otherwise; `sqlite` insists on the database (a config error, exit code 2, without `pdo_sqlite`); `files` is
+  always a file per entry; `memory` keeps counts and references for one run only, nothing on disk. Both disk
+  stores are shared by parallel runs; a corrupt or locked database only costs the cache, never the run
+  (`opmin doctor` names it — delete the file and the next run creates it anew, or set
+  `cache.recreate_corrupt: true` to let runs do it).
 
 ## Verifying behavior
 
@@ -156,9 +164,13 @@ opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
   `--format=none`), `php -l`, a count. A changed function is kept only when it saves opcodes, the gain is worth
   the changed lines (`readability.*`), complexity and nesting do not grow and its signature stays as
   `signatures.*` allow; then it is verified on all three levels. Everything else is taken back.
-- In a git working tree (must be clean) every accepted step is a commit; outside git the originals are copied to
+- In a git working tree every accepted step is a commit of its files; outside git the originals are copied to
   `runs/<ts>/original/`; `--dry-run` restores everything. Each run writes the report (below), the counts before
   and after and `opmin.patch`, and ends with a full run of the project's tests.
+- Under git opmin does not check the tree by default: its commits and rollbacks name their paths, so other dirty
+  files stay as they are, but your own uncommitted edits of a file the run changes go into opmin's commit.
+  `--with-git` (or `git.require_clean: targets`) requires the files the run may change to be committed, and
+  `git.require_clean: all` asks for a clean tree.
 - `--review` shows each change that passed every check — the diff of the function, `−N opcodes, rule X, checks:
   diff-tested 96% (210 inputs) ✓` — and asks `y` (apply), `n` (roll back and never propose again), `a` (apply this
   and the rest of the rule), `q` (roll back and end the run). Declined changes go to `opmin.baseline.yaml`
@@ -178,7 +190,9 @@ opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
   `FullyQualifyGlobalCallsRector` (`strlen()` → `\strlen()`, only when no namespaced function or test mock —
   php-mock, ClockMock — can shadow it), `ExtractRepeatedPropertyFetchRector` (readonly properties across calls,
   mutable ones while no user code runs, no `__get`/hooks), `ExtractRepeatedArrayDimFetchRector` (only keys proven to
-  exist), `HoistLoopInvariantCountRector` (`\count()` of an unchanged local array out of a `for` condition).
+  exist), `HoistLoopInvariantCountRector` (`\count()` of an unchanged local array out of a `for` condition). For the
+  two extraction rules, a call of a known pure built-in function (`\explode()`, `\strlen()`, `\abs()`…) with
+  arguments of scalar native types runs no user code (`Opmin\Rector\Support\PureFunctionCall`).
 - Code can be excluded from every rule or from some: see [Excluding code](#excluding-code).
 - Which standard Rector rules save opcodes: [docs/standard-rules.md](docs/standard-rules.md).
 
@@ -204,7 +218,7 @@ opmin llm:finish                               # the full test run (taking back 
 - At most `llm.attempts_per_function` attempts per function. `#[\Opmin\Ignore(rules: ['llm'])]` /
   `@opmin-ignore llm` keeps a function away from this stage only.
 - The patterns the skill knows are measured on PHP 8.1–8.5 (`bin/bench --only=patterns`), including the ones that
-  usually give nothing: [resources/skills/opcode-minimize/SKILL.md](resources/skills/opcode-minimize/SKILL.md).
+  usually give nothing: [resources/skills/opcode-minimize/PATTERNS.md](resources/skills/opcode-minimize/PATTERNS.md).
 
 ## The report
 
@@ -352,9 +366,51 @@ opmin optimize git@github.com:vendor/package.git src/Parser --ref=main --dry-run
 
 `package.docker_image` (`ghcr.io/melentev-av/opmin:{version}-php{php}`) selects another image.
 
+The package's tests must be green on the original code without network, or optimize stops before changing
+anything. Exclude the tests that need network, or verify with the differential tests only:
+
+```bash
+opmin optimize https://github.com/thephpleague/csv.git --ref=9.28.0 \
+  '--set=tests.command=vendor/bin/phpunit --exclude-group=network'
+opmin optimize https://github.com/symfony/string.git --ref=v6.4.46 --set=tests.runner=none  # no PHPUnit of its own
+```
+
+On macOS the workspace lives on the case-insensitive file system Docker shares with its VM: a dependency whose
+archive has names that differ only in case (phpstan/phpstan) cannot be installed there. Run opmin inside the image
+instead, with the workspace on the file system of the container:
+
+```bash
+docker run --rm -v "$PWD:/out" ghcr.io/melentev-av/opmin:php8.4 sh -c \
+  'cd /tmp && opmin optimize https://github.com/briannesbitt/Carbon.git --ref=3.14.2 --no-docker --yes -n; cp -r runs *.patch /out/'
+```
+
+## Results on real packages
+
+An example: real packages optimized in git package mode with Stage A (the four own Rector rules), then their own
+tests run on the patched code and stay green. Measured on 2026-10-08 with opmin 0.2 in CI; the run can be repeated by
+hand ([smoke-real-packages.yml](.github/workflows/smoke-real-packages.yml), or `tests/Smoke/run.sh <package> <php>`
+locally).
+
+| Package | PHP | Opcodes | Saved | Functions changed | Package's tests after the patch | Time |
+|---|---|---|---|---|---|---|
+| symfony/string 6.4.46 | 8.1 | 5 940 → 5 863 | −77 (−1.3%) | 50 | green | 2.5 min |
+| | 8.5 | 6 358 → 6 083 | −275 (−4.3%) | 45 | green | 2.5 min |
+| league/csv 9.28.0 | 8.1 | 16 679 → 16 605 | −74 (−0.4%) | 24 | green (without `network`) | 5 min |
+| | 8.5 | 16 512 → 16 404 | −108 (−0.7%) | 26 | green (without `network`) | 1 min |
+| nesbot/carbon 3.14.2 | 8.1 | 26 823 → 26 630 | −193 (−0.7%) | 52 | green (without `localization`) | 7 min |
+| | 8.5 | 27 413 → 26 161 | −1 252 (−4.6%) | 105 | green (without `localization`) | 21 min |
+
+`php.binary` and `php.target` are the PHP of the row; CI runners, the static binary. Most of the gain is
+`FullyQualifyGlobalCallsRector`, and the gap between 8.1 and 8.5 is its: since PHP 8.4 an unqualified call of a
+frameless function (`trim`, `str_replace`, `implode`…) in a namespace compiles into both the frameless call and the
+fallback, and `\trim()` removes the fallback.
+
 ## Configuration
 
-`opmin.yaml` (or `opmin.yaml.dist`) in the project root; `opmin init` generates it with all keys. Unknown keys and
+`opmin.yaml` (or `opmin.yaml.dist`) in the project root; `opmin init` generates it with all keys. The commands that
+analyze a project (`count`, `verify`, `optimize`, `check`, `baseline`, `llm:*`, `apply-candidate`) refuse to run
+without it (exit code 2): they read their settings from it and keep the cache next to it. A git package
+(`opmin optimize <git-url>`) without its own config gets an empty one beside the clone. Unknown keys and
 wrong types are errors naming the key. Any key can be overridden for one run:
 
 ```bash

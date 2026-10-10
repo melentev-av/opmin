@@ -66,11 +66,57 @@ final class ProjectTest
         Assert::same($project->relative(Path::create("{$this->dir}/src/sub/B.php")), 'sub/B.php');
     }
 
+    public function aPackageOfAMonorepoBelowTheConfigIsNotTheRoot(): void
+    {
+        \file_put_contents("{$this->dir}/composer.json", '{"require": {"php": "^8.3"}}');
+        \file_put_contents("{$this->dir}/opmin.yaml", '');
+        \file_put_contents("{$this->dir}/src/composer.json", '{}');
+
+        $project = Project::detect(Path::create("{$this->dir}/src/sub/B.php"), Path::create($this->dir));
+
+        Assert::same((string) $project->root, (string) Path::create($this->dir));
+        Assert::same($project->phpTarget, '8.3');
+    }
+
+    public function aPackageWithItsOwnConfigIsTheRoot(): void
+    {
+        \file_put_contents("{$this->dir}/opmin.yaml", '');
+        \file_put_contents("{$this->dir}/src/composer.json", '{}');
+        \file_put_contents("{$this->dir}/src/opmin.yaml", '');
+
+        $project = Project::detect(Path::create("{$this->dir}/src/sub/B.php"), Path::create($this->dir));
+
+        Assert::same((string) $project->root, (string) Path::create("{$this->dir}/src"));
+        Assert::true($project->composer);
+    }
+
+    public function aPackageIsTheRootWithoutAConfigInTheCurrentDirectory(): void
+    {
+        \file_put_contents("{$this->dir}/composer.json", '{}');
+        \file_put_contents("{$this->dir}/src/composer.json", '{}');
+
+        $project = Project::detect(Path::create("{$this->dir}/src/sub/B.php"), Path::create($this->dir));
+
+        Assert::same((string) $project->root, (string) Path::create("{$this->dir}/src"));
+    }
+
     public function findsPhpFilesAndAppliesExclusions(): void
     {
         $project = new Project(Path::create($this->dir), true, null);
 
         $files = (new FileFinder())->find($project, [Path::create($this->dir)], ['vendor', 'tests', 'src/Legacy']);
+
+        Assert::same(\array_map($project->relative(...), $files), ['src/A.php', 'src/sub/B.php']);
+    }
+
+    public function anExclusionWithoutASlashIgnoresTheCaseAndTakesWildcards(): void
+    {
+        \mkdir("{$this->dir}/src/Tests");
+        \file_put_contents("{$this->dir}/src/Tests/ATest.php", '<?php');
+        \file_put_contents("{$this->dir}/src/sub/BTest.php", '<?php');
+        $project = new Project(Path::create($this->dir), true, null);
+
+        $files = (new FileFinder())->find($project, [Path::create("{$this->dir}/src")], ['tests', 'vendor', 'Legacy', '*Test.php']);
 
         Assert::same(\array_map($project->relative(...), $files), ['src/A.php', 'src/sub/B.php']);
     }

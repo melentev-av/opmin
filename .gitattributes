@@ -19,5 +19,7 @@
 
 /src             -export-ignore
 /src/**          -export-ignore
+/harness         -export-ignore
+/harness/**      -export-ignore
 /resources       -export-ignore
 /resources/**    -export-ignore

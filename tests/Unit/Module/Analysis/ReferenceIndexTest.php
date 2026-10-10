@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Opmin\Tests\Unit\Module\Analysis;
 
+use Internal\Path;
 use Opmin\Module\Analysis\FileReferences;
 use Opmin\Module\Analysis\Flag;
 use Opmin\Module\Analysis\ReferenceCollector;
 use Opmin\Module\Analysis\ReferenceIndex;
+use Opmin\Module\Common\Cache\FileStore;
 use Opmin\Module\Opcode\Locate\UnitKind;
+use Opmin\Module\Project\Project;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Data\DataProvider;
@@ -116,11 +119,72 @@ final class ReferenceIndexTest
         Assert::same($index->flagsFor('App\Other::run', UnitKind::Method), []);
     }
 
+    public function aFileWithNonUtf8StringsIsIndexedWithoutTheCache(): void
+    {
+        $cache = (string) \realpath(\sys_get_temp_dir()) . '/opmin-refs-' . \bin2hex(\random_bytes(4));
+        # A Latin-1 byte is a valid part of a PHP name, but not UTF-8.
+        $code = "<?php call_user_func(\"App\\\\caf\xE9\"); \$bytes = \"\xFF\xFE\";";
+
+        $first = new ReferenceIndex(new FileStore(Path::create($cache)));
+        $first->add('legacy.php', $code);
+        $second = new ReferenceIndex(new FileStore(Path::create($cache)));
+        $second->add('legacy.php', $code);
+
+        Assert::same($first->flagsFor("App\\caf\xE9", UnitKind::Function), [Flag::CalledDynamically]);
+        Assert::same($second->flagsFor("App\\caf\xE9", UnitKind::Function), [Flag::CalledDynamically]);
+        \exec('rm -rf ' . \escapeshellarg($cache));
+    }
+
     public function unparsableFileIsSkipped(): void
     {
         $index = new ReferenceIndex();
         $index->add('broken.php', '<?php call_user_func("App\\\\helper"');
 
         Assert::same($index->flagsFor('App\helper', UnitKind::Function), []);
+    }
+
+    public function hiddenDirectoriesAreNotScanned(): void
+    {
+        $dir = self::project([
+            'src/Svc.php' => '<?php namespace App; class Svc { function run() {} function other() {} }',
+            'tests/SvcTest.php' => '<?php $f = $svc->run(...);',
+            '.agents/skills/scan.php' => '<?php new \ReflectionClass($class); $fn(); $object->$method();',
+        ]);
+
+        $index = ReferenceIndex::build(new Project(Path::create($dir), true, null), null, null);
+
+        Assert::same($index->flagsFor('App\Svc::run', UnitKind::Method), [Flag::CalledDynamically]);
+        Assert::same($index->flagsFor('App\Svc::other', UnitKind::Method), []);
+        Assert::same($index->flagsFor('App\helper', UnitKind::Function), []);
+        \exec('rm -rf ' . \escapeshellarg($dir));
+    }
+
+    public function cacheDirIsNotScanned(): void
+    {
+        $dir = self::project([
+            'src/Svc.php' => '<?php namespace App; class Svc { function run() {} }',
+            'build/opmin/rector/cache/entry.php' => '<?php new \ReflectionClass($class); $fn();',
+        ]);
+
+        $index = ReferenceIndex::build(new Project(Path::create($dir), true, null), Path::create("{$dir}/build/opmin"), null);
+
+        Assert::same($index->flagsFor('App\Svc::run', UnitKind::Method), []);
+        Assert::same($index->flagsFor('App\helper', UnitKind::Function), []);
+        \exec('rm -rf ' . \escapeshellarg($dir));
+    }
+
+    /**
+     * @param array<non-empty-string, string> $files Contents by path relative to the project root.
+     * @return non-empty-string The project root.
+     */
+    private static function project(array $files): string
+    {
+        $dir = (string) \realpath(\sys_get_temp_dir()) . '/opmin-refs-' . \bin2hex(\random_bytes(4));
+        foreach ($files as $file => $content) {
+            @\mkdir(\dirname("{$dir}/{$file}"), 0777, true);
+            \file_put_contents("{$dir}/{$file}", $content);
+        }
+
+        return $dir;
     }
 }

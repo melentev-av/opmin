@@ -46,6 +46,7 @@ final class Verifier
     private \Closure $log;
 
     private bool $baselineDone = false;
+    private bool $originalTested = false;
 
     /** Tests on the original code when they are red. */
     private ?TestResult $red = null;
@@ -77,6 +78,21 @@ final class Verifier
         private readonly ?Schema\GuardPerf $guardPerf = null,
     ) {
         $this->log = $log ?? static function (string $message): void {};
+    }
+
+    /**
+     * The failed tests, or — when the runner reported none (it did not start, the config is broken) —
+     * the end of its output.
+     */
+    public static function whyRed(TestResult $result): string
+    {
+        if ($result->failed !== []) {
+            return 'Failed: ' . \implode(', ', \array_slice($result->failed, 0, 10)) . (\count($result->failed) > 10 ? '…' : '');
+        }
+
+        $lines = \array_values(\array_filter(\array_map(\trim(...), \explode("\n", $result->output)), static fn(string $l): bool => $l !== ''));
+
+        return $lines === [] ? 'The runner reported no failed test and printed nothing.' : 'Output: ' . \implode(' / ', \array_slice($lines, -5));
     }
 
     /**
@@ -177,6 +193,31 @@ final class Verifier
         FS::mkdir((string) $work);
 
         return $this->runner($work)?->name();
+    }
+
+    /**
+     * The project's tests on the original code, run once per instance.
+     *
+     * @return TestResult|null The red result; null when they pass or the project has no tests.
+     */
+    public function failingTestsOnOriginal(): ?TestResult
+    {
+        $work = $this->cacheDir->join('tmp');
+        FS::mkdir((string) $work);
+        $runner = $this->runner($work);
+        if ($runner === null || $this->originalTested) {
+            return $this->red;
+        }
+
+        $this->originalTested = true;
+        ($this->log)("Project tests on the original code ({$runner->name()})");
+        $result = $runner->runAll();
+        if (!$result->success) {
+            $this->red = $result;
+            $this->baselineNotes[] = 'The project\'s tests fail on the original code: fix them first. ' . self::whyRed($result);
+        }
+
+        return $this->red;
     }
 
     private static function source(string $code, CodeUnit $unit): string
@@ -286,12 +327,7 @@ final class Verifier
         }
 
         $this->baselineDone = true;
-        ($this->log)("Project tests on the original code ({$runner->name()})");
-        $baseline = $runner->runAll();
-        if (!$baseline->success) {
-            $this->red = $baseline;
-            $this->baselineNotes[] = 'The project\'s tests fail on the original code: fix them first. Failed: ' . \implode(', ', \array_slice($baseline->failed, 0, 10));
-
+        if ($this->failingTestsOnOriginal() !== null) {
             return;
         }
 

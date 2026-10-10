@@ -49,6 +49,7 @@ PHP
 printf '<?php\nfunction twice(int $x): int { return $x * 2; }\n' > a.php
 printf '<?php\nfunction twice(int $x): int { return $x + $x; }\n' > same.php
 printf '<?php\nfunction twice(int $x): int { return $x * 3; }\n' > other.php
+printf 'paths: [src]\n' > opmin.yaml
 
 composer install --no-interaction --no-progress --quiet
 composer require --dev --no-interaction --no-progress 'melentev-av/opmin:*@dev'

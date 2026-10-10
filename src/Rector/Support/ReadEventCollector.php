@@ -41,12 +41,15 @@ final class ReadEventCollector
      * @param \Closure(Expr\PropertyFetch): bool $plainProperty Reading the property runs no user code.
      * @param \Closure(Expr\CallLike, int): ?bool $byReference Whether the argument at the position is
      *        passed by reference; null — unknown.
+     * @param \Closure(Expr\FuncCall): bool $pureCall The call runs no user code and changes nothing
+     *        but its result.
      */
     public function __construct(
         private readonly ReadSpec $spec,
         private readonly \Closure $neverObject,
         private readonly \Closure $plainProperty,
         private readonly \Closure $byReference,
+        private readonly \Closure $pureCall,
     ) {}
 
     /**
@@ -486,7 +489,7 @@ final class ReadEventCollector
             $this->expr($arg->value, self::MODE_WRITE);
         }
 
-        $this->emit(ReadEvent::IMPURE);
+        $call instanceof Expr\FuncCall && ($this->pureCall)($call) or $this->emit(ReadEvent::IMPURE);
     }
 
     private function referable(Expr $expr): bool

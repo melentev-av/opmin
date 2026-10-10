@@ -38,6 +38,9 @@
         "testo/testo": "0.10.55",
         "vimeo/psalm": "^6.10 || ^7.0"
     },
+    "suggest": {
+        "ext-pdo_sqlite": "Keeps the cache in one SQLite database (cache.driver: auto) instead of a file per entry"
+    },
     "minimum-stability": "dev",
     "prefer-stable": true,
     "autoload": {
@@ -60,6 +63,7 @@
         "platform": {
             "php": "8.3.16"
         },
+        "process-timeout": 0,
         "sort-packages": true,
         "allow-plugins": {
             "infection/extension-installer": true

@@ -16,9 +16,9 @@ LABEL org.opencontainers.image.source="https://github.com/melentev-av/opmin" \
 
 # opcache is a shared extension of the official images up to 8.4 and built in since 8.5.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git unzip libzip-dev \
+    && apt-get install -y --no-install-recommends git unzip libzip-dev libicu-dev \
     && rm -rf /var/lib/apt/lists/* \
-    && docker-php-ext-install pcntl zip \
+    && docker-php-ext-install bcmath intl pcntl zip \
     && (php -m | grep -qx 'Zend OPcache' || docker-php-ext-enable opcache) \
     && pecl install pcov \
     && docker-php-ext-enable pcov \

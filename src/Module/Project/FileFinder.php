@@ -10,8 +10,9 @@ use Internal\Path;
  * Collects the PHP files to analyze.
  *
  * Directories are searched recursively for `*.php`. An exclusion is a path relative to the project
- * root (`src/Legacy`); one without a slash also matches a directory of that name at any depth
- * (`vendor`, `tests`). Exclusions apply only below a given path: `opmin count tests/Fixtures` counts
+ * root (`src/Legacy`); one without a slash also matches a directory or a file of that name at any
+ * depth, in any case and with wildcards (`vendor`, `tests` — and `Tests/` of Symfony packages,
+ * `*Test.php` next to the code). Exclusions apply only below a given path: `opmin count tests/Fixtures` counts
  * the fixtures even with `exclude: [tests]`, and a file given explicitly is always taken.
  *
  * @internal
@@ -54,6 +55,20 @@ final class FileFinder
     }
 
     /**
+     * @param list<string> $segments
+     */
+    private static function anySegment(string $pattern, array $segments): bool
+    {
+        foreach ($segments as $segment) {
+            if (\fnmatch($pattern, $segment, \FNM_CASEFOLD)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * @param list<non-empty-string> $exclude
      */
     private function excluded(Project $project, Path $base, Path $path, array $exclude): bool
@@ -66,7 +81,7 @@ final class FileFinder
             $pattern = \trim(\str_replace('\\', '/', $pattern), '/');
             $coversBase = $baseRelative === $pattern || \str_starts_with($baseRelative, $pattern . '/');
             if ((!$coversBase && ($relative === $pattern || \str_starts_with($relative, $pattern . '/')))
-                || (!\str_contains($pattern, '/') && \in_array($pattern, $segments, true))
+                || (!\str_contains($pattern, '/') && self::anySegment($pattern, $segments))
             ) {
                 return true;
             }

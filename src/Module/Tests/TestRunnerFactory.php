@@ -13,7 +13,7 @@ use Opmin\Module\Project\Project;
 /**
  * Picks the test runner of the project: `tests.runner`, or for `auto` the first one detected by
  * `composer.json` and config files — Pest (runs on PHPUnit, so checked first), PHPUnit, Testo — and
- * `tests.command` when none is.
+ * `tests.command` when none is; `none` runs no tests of the project.
  *
  * @internal
  */
@@ -35,6 +35,7 @@ final class TestRunnerFactory
                 $project,
                 $command ?? throw new \InvalidArgumentException('tests.runner is `command`, but tests.command is not set.'),
             ),
+            TestRunner::None => null,
             TestRunner::Auto => match (true) {
                 PestAdapter::detect($project) => new PestAdapter($project, $php, $workDir, $command),
                 PhpUnitAdapter::detect($project) => new PhpUnitAdapter($project, $php, $workDir, $command),

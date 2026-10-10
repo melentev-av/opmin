@@ -178,6 +178,7 @@ final class OptimizeResumeTest
         \file_put_contents($dir . '/composer.json', '{"require": {"php": ">=8.1"}, "autoload": {"psr-4": {"App\\\\": "src/"}}}');
         \file_put_contents($dir . '/src/Text.php', self::CODE);
         \file_put_contents($dir . '/.gitignore', "/runs/\n/.opmin-cache/\n");
+        \file_put_contents($dir . '/opmin.yaml', '');
         $this->git($dir, 'init', '-q');
         $this->git($dir, 'add', '.');
         $this->git($dir, 'commit', '-q', '-m', 'init');

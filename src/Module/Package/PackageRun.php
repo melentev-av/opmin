@@ -6,6 +6,7 @@ namespace Opmin\Module\Package;
 
 use Internal\Path;
 use Opmin\Info;
+use Opmin\Module\Common\FileSystem\FS;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Project\InitDetector;
 use Opmin\Module\Release\Installation;
@@ -68,9 +69,11 @@ final readonly class PackageRun
      *
      * @param non-empty-string $image
      * @param non-empty-string|null $user `uid:gid`.
+     * @param Path|null $composerCache Download cache of composer kept between runs (only downloads: the
+     *        anonymous downloads of a fresh cache hit the rate limit of GitHub).
      * @return list<string>
      */
-    public static function dockerRun(Path $workspace, string $image, bool $network, Schema\Package $config, ?string $user): array
+    public static function dockerRun(Path $workspace, string $image, bool $network, Schema\Package $config, ?string $user, ?Path $composerCache = null): array
     {
         $args = [
             'docker', 'run', '--rm', '--init',
@@ -81,6 +84,7 @@ final readonly class PackageRun
             '-v', (string) $workspace . ':/workspace',
             '-w', '/workspace/package',
         ];
+        $composerCache === null or \array_push($args, '-v', (string) $composerCache . ':/composer-cache', '-e', 'COMPOSER_CACHE_DIR=/composer-cache');
         $network or \array_push($args, '--network', 'none');
         # The Docker VM may have fewer cores than the host: without package.cpus the container gets all of the VM's.
         $config->cpus === null or \array_push($args, '--cpus', (string) $config->cpus);
@@ -88,6 +92,35 @@ final readonly class PackageRun
         $args[] = $image;
 
         return $args;
+    }
+
+    /**
+     * The reason of a failed `composer install`: its «Problem» lines (a missing extension, a PHP version)
+     * come first and are followed by long hints, so the tail alone would lose the reason.
+     */
+    public static function composerProblem(string $output): string
+    {
+        $lines = \array_values(\array_filter(\explode("\n", \trim($output)), static fn(string $l): bool => \trim($l) !== ''));
+        $start = null;
+        foreach (['/^\s*Problem \d+/', '/^\s*In \S+ line \d+:/'] as $pattern) {
+            foreach ($lines as $i => $line) {
+                if (\preg_match($pattern, $line) === 1) {
+                    $start = $i;
+                    break 2;
+                }
+            }
+        }
+
+        $lines = $start === null ? \array_slice($lines, -15) : \array_slice($lines, $start, 15);
+        # The synopsis of the command that composer prints after an exception says nothing.
+        foreach ($lines as $i => $line) {
+            if (\preg_match('/^\s*install \[/', $line) === 1) {
+                $lines = \array_slice($lines, 0, $i);
+                break;
+            }
+        }
+
+        return \trim(\implode("\n", $lines));
     }
 
     /**
@@ -145,6 +178,11 @@ final readonly class PackageRun
         foreach ($entries === false ? [] : $entries as $entry) {
             $entry === '.' || $entry === '..' or self::copyTree("{$from}/{$entry}", "{$to}/{$entry}");
         }
+    }
+
+    private static function configured(Checkout $checkout): bool
+    {
+        return $checkout->dir->join('opmin.yaml')->isFile() || $checkout->dir->join('opmin.yaml.dist')->isFile();
     }
 
     /**
@@ -271,7 +309,8 @@ final readonly class PackageRun
      */
     private function install(Checkout $checkout, ?string $image): void
     {
-        $args = ['composer', 'install', '--no-interaction', '--no-progress', '--prefer-dist'];
+        # Packages require Xdebug for the coverage of their tests (league/csv); opmin takes it with pcov.
+        $args = ['composer', 'install', '--no-interaction', '--no-progress', '--prefer-dist', '--ignore-platform-req=ext-xdebug'];
         $this->allowScripts or \array_push($args, '--no-scripts', '--no-plugins');
         # The network is on here: dependencies are downloaded. It is off for the tests.
         $process = new Process($image === null ? $args : [...$this->docker($checkout, $image, network: true), ...$args], (string) $checkout->dir);
@@ -283,7 +322,7 @@ final readonly class PackageRun
 
         throw new PackageException(\sprintf(
             "composer install of the package failed:\n%s%s",
-            \trim(\implode("\n", \array_slice(\explode("\n", \trim($process->getErrorOutput() . "\n" . $process->getOutput())), -15))),
+            self::composerProblem($process->getErrorOutput() . "\n" . $process->getOutput()),
             $this->allowScripts ? '' : "\nIf the package needs its composer scripts or plugins, rerun with --allow-scripts (they are foreign code too).",
         ));
     }
@@ -293,7 +332,7 @@ final readonly class PackageRun
      */
     private function paths(Checkout $checkout): array
     {
-        if ($this->paths !== [] || $checkout->dir->join('opmin.yaml')->isFile() || $checkout->dir->join('opmin.yaml.dist')->isFile()) {
+        if ($this->paths !== [] || self::configured($checkout)) {
             return $this->paths;
         }
 
@@ -309,7 +348,15 @@ final readonly class PackageRun
      */
     private function optimize(Checkout $checkout, ?string $image, array $paths): int
     {
-        $arguments = [...$this->innerOptions, '--', ...$paths];
+        $config = [];
+        if (!self::configured($checkout)) {
+            # opmin needs a config; the package has none: an empty one next to the clone, so the patch and the
+            # work tree of the package stay clean, and the cache lands in the workspace with it.
+            \file_put_contents((string) $checkout->workspace->join('opmin.yaml'), "# Written by opmin: the package has no config of its own.\n");
+            $config[] = '--config=../opmin.yaml';
+        }
+
+        $arguments = [...$this->innerOptions, ...$config, '--', ...$paths];
         $command = $image === null
             ? [...Installation::current()->command(), 'optimize', ...$arguments]
             : [...$this->docker($checkout, $image, network: false), 'opmin', 'optimize', ...$arguments];
@@ -329,7 +376,13 @@ final readonly class PackageRun
     {
         $user = \function_exists('posix_getuid') && \function_exists('posix_getgid') ? \posix_getuid() . ':' . \posix_getgid() : null;
 
-        return self::dockerRun($checkout->workspace, $image, $network, $this->config, $user);
+        $cache = null;
+        if ($network) {
+            $cache = $this->workspaceRoot()->join('.composer-cache');
+            FS::mkdir((string) $cache);
+        }
+
+        return self::dockerRun($checkout->workspace, $image, $network, $this->config, $user, $cache);
     }
 
     /**

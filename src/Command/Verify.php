@@ -48,6 +48,12 @@ final class Verify extends Base
         $this->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table | json', 'table');
     }
 
+    #[\Override]
+    protected function requiresConfig(InputInterface $input): bool
+    {
+        return true;
+    }
+
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         parent::execute($input, $output);
@@ -71,8 +77,6 @@ final class Verify extends Base
 
         /** @var Schema\Php $phpConfig */
         $phpConfig = $this->container->get(Schema\Php::class);
-        /** @var Schema\Cache $cacheConfig */
-        $cacheConfig = $this->container->get(Schema\Cache::class);
         try {
             $php = (new PhpBinaryProbe())->probe($phpConfig->binary);
         } catch (PhpBinaryException $e) {
@@ -81,8 +85,7 @@ final class Verify extends Base
         }
 
         $project = Project::detect($file, $cwd);
-        $cacheDir = Path::create($cacheConfig->dir);
-        $cacheDir->isAbsolute() or $cacheDir = $project->root->join($cacheConfig->dir);
+        $cacheDir = $this->cacheDir();
         /** @var Schema\Verification $verification */
         $verification = $this->container->get(Schema\Verification::class);
         /** @var Schema\Commands $commands */

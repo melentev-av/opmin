@@ -14,7 +14,9 @@ use Opmin\Module\Opcode\FunctionCount;
  *
  * Both lists are in dump order, so they are walked side by side, and every pair is checked: the
  * kind (closure or named), the name of a named unit and the last line. Any disagreement is an
- * error — never a guess: a count attributed to the wrong function is worse than no count.
+ * error — never a guess: a count attributed to the wrong function is worse than no count. The only
+ * blocks without a unit are exact copies of a closure (see {@see self::isCopy()}); the only units
+ * without a block are closures and methods of anonymous classes in branches the compiler drops.
  *
  * @internal
  */
@@ -70,6 +72,31 @@ final class DumpMatcher
     }
 
     /**
+     * PHP 8.4+ compiles an unqualified call of a frameless function (`trim`, `str_replace`…) in a
+     * namespace twice — the frameless call and the fallback to a namespaced function — so a closure
+     * among its arguments is dumped once more, opcode for opcode. Such a copy is the same function of
+     * the source: it is not counted again.
+     *
+     * @param list<DumpBlock> $paired Closure blocks already attributed.
+     */
+    private static function isCopy(DumpBlock $block, array $paired): bool
+    {
+        if (!$block->isClosure()) {
+            return false;
+        }
+
+        foreach ($paired as $original) {
+            if ($original->name === $block->name && $original->lineStart === $block->lineStart
+                && $original->lineEnd === $block->lineEnd && $original->listing === $block->listing
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * @param list<CodeUnit> $units
      * @param list<DumpBlock> $blocks One phase.
      * @return array<non-empty-string, array{CodeUnit, DumpBlock}> By unit key, without abstract units.
@@ -77,12 +104,41 @@ final class DumpMatcher
     private function pair(array $units, array $blocks): array
     {
         $pairs = [];
+        $paired = [];
+        $anonymousLines = [];
+        $dead = null;
         $i = 0;
         foreach ($units as $unit) {
+            if ($dead !== null && \str_starts_with($unit->key, $dead . '::')) {
+                continue;
+            }
+
+            $dead = null;
             $block = $blocks[$i] ?? null;
+            # A copy is skipped only when it is not the unit expected here (two equal closures on one line).
+            while ($block !== null && !$this->matches($unit, $block) && self::isCopy($block, $paired)) {
+                $block = $blocks[++$i] ?? null;
+            }
+
             if ($unit->abstract) {
                 # PHP 8.1 dumps abstract methods, newer versions do not.
                 $block !== null && $this->matches($unit, $block) and ++$i;
+                continue;
+            }
+
+            $anonymous = $unit->kind === UnitKind::Closure || $unit->isAnonymousClassMethod();
+            if ($anonymous && ($block === null || !$this->matches($unit, $block))) {
+                # A closure or an anonymous class in an expression the compiler evaluates (`false && fn() => 1`,
+                # a ternary in an array literal) is never compiled: neither it nor anything inside it has a block.
+                # The blocks that follow must still match; another closure or anonymous class on its line could
+                # have taken its block.
+                $line = $unit->dumpEndLine ?? $unit->endLine;
+                isset($anonymousLines[$line]) and throw new MatchException(\sprintf(
+                    'Cannot tell which closure or anonymous class on line %d the compiler dropped: `%s` has no block.',
+                    $line,
+                    $unit->key,
+                ));
+                $dead = $unit->key;
                 continue;
             }
 
@@ -99,9 +155,15 @@ final class DumpMatcher
                 $unit->key,
                 $unit->kind->value,
                 $unit->line,
-                $unit->endLine,
+                $unit->dumpEndLine ?? $unit->endLine,
             ));
             $pairs[$unit->key] = [$unit, $block];
+            $block->isClosure() and $paired[] = $block;
+            $anonymous and $anonymousLines[$block->lineEnd] = true;
+            ++$i;
+        }
+
+        while (isset($blocks[$i]) && self::isCopy($blocks[$i], $paired)) {
             ++$i;
         }
 
@@ -121,7 +183,7 @@ final class DumpMatcher
             return $block->isMain();
         }
 
-        if ($block->lineEnd !== $unit->endLine) {
+        if ($block->lineEnd !== ($unit->dumpEndLine ?? $unit->endLine)) {
             return false;
         }
 

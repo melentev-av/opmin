@@ -41,7 +41,8 @@ final class SkillTest
         Assert::same((string) $file, $this->dir . '/opcode-minimize/SKILL.md');
         Assert::same(Skill::installedVersion($skills), Info::version());
         $content = (string) \file_get_contents((string) $file);
-        Assert::string($content)->contains("name: opcode-minimize\n")->contains('`opmin --version` must print `' . Info::version() . '`')->notContains('{{version}}');
+        Assert::string($content)->contains("name: opcode-minimize\n")->contains('`opmin --version` must print `' . Info::version() . '`')->notContains('{{version}}')->contains('[PATTERNS.md](PATTERNS.md)');
+        Assert::string((string) \file_get_contents($this->dir . '/opcode-minimize/PATTERNS.md'))->contains('## Reading the listing');
         \file_put_contents((string) $file, "---\nname: opcode-minimize\n---\nOld.\n");
         Assert::same(Skill::installedVersion($skills), 'unknown');
     }

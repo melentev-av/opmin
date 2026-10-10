@@ -28,12 +28,13 @@ Packages bundled into the opmin PHAR and binary (`composer licenses --no-dev`). 
 ## The static binary
 
 The binary is the PHAR above glued to a static PHP built by [static-php-cli](https://static-php.dev)
-(`SPC_EXTENSIONS` in `.github/workflows/build-release.yml`). Besides the packages above it contains:
+(`extensions` in `.github/actions/binary/action.yml`). Besides the packages above it contains:
 
 | Component | License |
 |---|---|
-| PHP (the `micro` SAPI and the extensions ctype, filter, mbstring, openssl, pcntl, phar, posix, tokenizer, zlib) | PHP License 3.01 |
+| PHP (the `micro` SAPI and the extensions ctype, filter, mbstring, openssl, pcntl, pdo, pdo_sqlite, phar, posix, sqlite3, tokenizer, zlib) | PHP License 3.01 |
 | OpenSSL | Apache-2.0 |
+| SQLite | Public domain |
 | zlib | Zlib |
 | musl libc (Linux binaries) | MIT |
 

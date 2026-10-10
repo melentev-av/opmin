@@ -22,13 +22,6 @@ on:  # yamllint disable-line rule:truthy
 
 env:
   RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
-  # Embedded PHP runs only the orchestrator; the analyzed code always runs under php.binary.
-  SPC_PHP_VERSION: '8.4'
-  # zlib: the PHAR is GZ-compressed and self-update unpacks .tar.gz; openssl: HTTPS downloads and the
-  # release signature of self-update; pcntl/posix: process pool; the rest: Symfony and opmin itself.
-  # No iconv: symfony/string only uses it when present, and GNU libiconv (LGPL) would be linked statically.
-  # Each library linked into the binary is listed in LICENSE-THIRD-PARTY.md.
-  SPC_EXTENSIONS: 'ctype,filter,mbstring,openssl,pcntl,phar,posix,tokenizer,zlib'
 
 jobs:
   # The PHAR is the same for every platform: build it once, on Linux.
@@ -40,29 +33,10 @@ jobs:
       - name: 📦 Check out the codebase
         uses: actions/checkout@v5
 
-      - name: 🛠️ Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.4'
-          ini-values: 'memory_limit=-1, phar.readonly=0'
-          tools: composer, box
-          coverage: none
-
-      - name: 🏷️ Write version
-        run: |
-          [ -z "$RELEASE_TAG" ] || printf '{".": "%s"}\n' "${RELEASE_TAG#v}" > resources/version.json
-
-      - name: 📥 Install dependencies with composer
-        uses: ramsey/composer-install@v3
-        with:
-          composer-options: "--no-dev"
-
       - name: 📦 Build PHAR
-        run: |
-          box validate box.json.dist --ansi
-          box compile --no-parallel
-          box info .build/phar/opmin.phar --ansi
-          .build/phar/opmin.phar --version
+        uses: ./.github/actions/phar
+        with:
+          version: ${{ env.RELEASE_TAG }}
 
       - name: 📤 Upload PHAR
         uses: actions/upload-artifact@v4
@@ -138,44 +112,13 @@ jobs:
         run: |
           VERSION="${RELEASE_TAG#v}"
           echo "VERSION=${VERSION:-dev}" >> "$GITHUB_ENV"
-          # A cache key cannot contain commas.
-          echo "SPC_CACHE_KEY=$(printf '%s' "$SPC_EXTENSIONS" | tr ',' '-')" >> "$GITHUB_ENV"
 
-      - name: 📥 Download static-php-cli
-        run: |
-          mkdir -p .build/bin
-          curl -fsSL -o .build/bin/spc "https://dl.static-php.dev/static-php-cli/spc-bin/nightly/${{ matrix.spc }}"
-          chmod +x .build/bin/spc
-
-      - name: 💾 Cache static-php-cli downloads and build
-        uses: actions/cache@v4
+      - name: 🔨 Build the static binary
+        uses: ./.github/actions/binary
         with:
-          path: |
-            downloads
-            buildroot
-            pkgroot
-          key: spc-${{ matrix.target }}-php${{ env.SPC_PHP_VERSION }}-${{ env.SPC_CACHE_KEY }}
-
-      - name: 🔨 Build micro SAPI
-        env:
-          # spc downloads sources through the GitHub API: anonymous calls share the runner IP's
-          # 60 requests/hour and fail with 403; the job token lifts that limit.
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Mirrors of static-php-cli sometimes answer 500: retry downloads before failing the release.
-          retry() { for i in 1 2 3; do "$@" && return 0; echo "::warning::attempt $i failed: $*"; sleep $((i * 30)); done; return 1; }
-          retry .build/bin/spc doctor --auto-fix
-          [ -f buildroot/bin/micro.sfx ] || {
-            retry .build/bin/spc download --with-php="$SPC_PHP_VERSION" --for-extensions="$SPC_EXTENSIONS" --prefer-pre-built
-            .build/bin/spc build "$SPC_EXTENSIONS" --build-micro
-          }
-
-      - name: 🔗 Combine micro with the PHAR
-        run: |
-          chmod +x .build/phar/opmin.phar
-          mkdir -p dist
-          .build/bin/spc micro:combine .build/phar/opmin.phar --output=dist/opmin
-          chmod +x dist/opmin
+          target: ${{ matrix.target }}
+          spc: ${{ matrix.spc }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 🔍 Check binary architecture
         run: |
@@ -215,6 +158,7 @@ jobs:
         if: matrix.php != ''
         run: |
           mkdir -p "$RUNNER_TEMP/rector/src" && cd "$RUNNER_TEMP/rector"
+          printf 'paths: [src]\n' > opmin.yaml
           printf '<?php\nnamespace Acme;\nfinal class Text\n{\n    public function size(string $s): int\n    {\n        return strlen($s) + strlen(trim($s));\n    }\n}\n' > src/Text.php
           "$GITHUB_WORKSPACE/dist/opmin" optimize --dry-run --no-interaction --set=commands.phpstan=null src | tee optimize.log
           grep -q 'opcodes (-' optimize.log || { echo "::error::optimize did not apply a rule"; exit 1; }
@@ -286,6 +230,7 @@ jobs:
       - name: 🐳 Build, test and push
         run: |
           mkdir -p "$RUNNER_TEMP/smoke/src"
+          printf 'paths: [src]\n' > "$RUNNER_TEMP/smoke/opmin.yaml"
           printf '<?php\nfunction twice(int $x): int { return $x * 2; }\n' > "$RUNNER_TEMP/smoke/src/a.php"
           printf '<?php\nfunction twice(int $x): int { return $x * 3; }\n' > "$RUNNER_TEMP/smoke/other.php"
           for php in 8.1 8.2 8.3 8.4 8.5; do

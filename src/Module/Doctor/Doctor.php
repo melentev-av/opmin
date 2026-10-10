@@ -5,7 +5,11 @@ declare(strict_types=1);
 namespace Opmin\Module\Doctor;
 
 use Internal\Path;
+use Opmin\Module\Common\Cache\MemoryStore;
+use Opmin\Module\Common\Cache\SqliteStore;
+use Opmin\Module\Common\Cache\StoreFactory;
 use Opmin\Module\Common\FileSystem\FS;
+use Opmin\Module\Config\Exception\ConfigException;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Harness\Worker;
 use Opmin\Module\Lint\PhpStanRunner;
@@ -59,6 +63,9 @@ final readonly class Doctor
         private Schema\Tests $tests,
         private Schema\Commands $commands,
         private Installation $installation,
+        private Schema\Cache $cache,
+        private Path $cacheDir,
+        private StoreFactory $stores,
         private bool $runTests = false,
     ) {}
 
@@ -159,7 +166,7 @@ final readonly class Doctor
         try {
             $file = $dir->join('probe.php');
             \file_put_contents((string) $file, "<?php\nfunction opmin_doctor_probe(int \$x): int { return \$x * 2; }\n");
-            $result = (new OpcodeCounter(new OpcacheDumper($php, 1), new CountCache($dir->join('cache'), $php)))
+            $result = (new OpcodeCounter(new OpcacheDumper($php, 1), new CountCache(new MemoryStore(), $php)))
                 ->count(new Project($dir, false, null), [$file]);
             foreach ($result->functions as $function) {
                 if ($function->key === 'opmin_doctor_probe' && $function->opsOpt > 0) {
@@ -378,6 +385,7 @@ final readonly class Doctor
                 : ', the project is not a git work tree: optimize keeps a copy of the originals in runs/'));
         }
 
+        $checks[] = $this->cacheStore();
         if ($project === null) {
             return $checks;
         }
@@ -392,5 +400,45 @@ final readonly class Doctor
         );
 
         return $checks;
+    }
+
+    /**
+     * The store `cache.driver` gives under the PHP running opmin (not php.binary): `auto` depends on its
+     * `pdo_sqlite`. An existing database is opened, a missing one is left for the first count to create.
+     */
+    private function cacheStore(): Check
+    {
+        try {
+            $driver = $this->stores->driver($this->cache->driver);
+        } catch (ConfigException $e) {
+            return Check::error('cache', $e->getMessage(), 'Install pdo_sqlite for the PHP running opmin or set cache.driver: auto.');
+        }
+
+        $auto = $this->cache->driver === Schema\CacheDriver::Auto
+            ? ($driver === Schema\CacheDriver::Sqlite ? ' (auto)' : ' (auto: the PHP running opmin has no pdo_sqlite)')
+            : '';
+        if ($driver === Schema\CacheDriver::Memory) {
+            return Check::info('cache', 'memory: every run compiles and parses the project anew');
+        }
+
+        if ($driver === Schema\CacheDriver::Files) {
+            return Check::info('cache', "files in {$this->cacheDir}{$auto}");
+        }
+
+        $store = new SqliteStore($this->cacheDir);
+        if (!$store->file()->exists()) {
+            return Check::ok('cache', "SQLite, {$store->file()}{$auto}: created by the first count");
+        }
+
+        $error = $store->error();
+
+        return $error === null
+            ? Check::ok('cache', "SQLite, {$store->file()}{$auto}")
+            : Check::warning(
+                'cache',
+                "the SQLite database cannot be used, runs work without the cache: {$error}",
+                "Delete {$store->file()} (the next run creates it anew), set cache.recreate_corrupt: true to let runs "
+                . 'do it, or set cache.driver: files.',
+            );
     }
 }

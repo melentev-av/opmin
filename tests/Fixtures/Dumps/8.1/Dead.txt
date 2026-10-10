@@ -1,0 +1,137 @@
+
+$_main:
+     ; (lines=1, args=0, vars=0, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Dead.php:1-25
+     ; return  [] RANGE[0..0]
+0000 RETURN int(1)
+
+Fixture\Count\dead:
+     ; (lines=11, args=1, vars=1, tmps=2)
+     ; (before optimizer)
+     ; /fixtures/Dead.php:10-14
+     ; return  [] RANGE[0..0]
+0000 CV0($a) = RECV 1
+0001 T1 = INIT_ARRAY 4 (packed) CV0($a) NEXT
+0002 T1 = ADD_ARRAY_ELEMENT null NEXT
+0003 T1 = ADD_ARRAY_ELEMENT bool(false) NEXT
+0004 T2 = DECLARE_LAMBDA_FUNCTION 0
+0005 BIND_LEXICAL T2 CV0($a)
+0006 T1 = ADD_ARRAY_ELEMENT T2 NEXT
+0007 VERIFY_RETURN_TYPE T1
+0008 RETURN T1
+0009 VERIFY_RETURN_TYPE
+0010 RETURN null
+LIVE RANGES:
+     1: 0002 - 0008 (tmp/var)
+     2: 0005 - 0006 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=5, args=0, vars=1, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Dead.php:13-13
+     ; return  [] RANGE[0..0]
+0000 BIND_STATIC CV0($a)
+0001 VERIFY_RETURN_TYPE CV0($a)
+0002 RETURN CV0($a)
+0003 VERIFY_RETURN_TYPE
+0004 RETURN null
+
+Fixture\Count\alive:
+     ; (lines=12, args=1, vars=1, tmps=3)
+     ; (before optimizer)
+     ; /fixtures/Dead.php:16-19
+     ; return  [] RANGE[0..0]
+0000 CV0($a) = RECV 1
+0001 JMPZ bool(true) 0004
+0002 T1 = QM_ASSIGN CV0($a)
+0003 JMP 0008
+0004 T2 = DECLARE_LAMBDA_FUNCTION 0
+0005 INIT_DYNAMIC_CALL 0 T2
+0006 V3 = DO_FCALL
+0007 T1 = QM_ASSIGN V3
+0008 VERIFY_RETURN_TYPE T1
+0009 RETURN T1
+0010 VERIFY_RETURN_TYPE
+0011 RETURN null
+LIVE RANGES:
+     1: 0008 - 0009 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=3, args=0, vars=0, tmps=0)
+     ; (before optimizer)
+     ; /fixtures/Dead.php:18-18
+     ; return  [] RANGE[0..0]
+0000 RETURN int(2)
+0001 VERIFY_RETURN_TYPE
+0002 RETURN null
+
+Fixture\Count\deadClass:
+     ; (lines=7, args=1, vars=1, tmps=1)
+     ; (before optimizer)
+     ; /fixtures/Dead.php:21-24
+     ; return  [] RANGE[0..0]
+0000 CV0($a) = RECV 1
+0001 T1 = INIT_ARRAY 2 (packed) CV0($a) NEXT
+0002 T1 = ADD_ARRAY_ELEMENT null NEXT
+0003 VERIFY_RETURN_TYPE T1
+0004 RETURN T1
+0005 VERIFY_RETURN_TYPE
+0006 RETURN null
+LIVE RANGES:
+     1: 0002 - 0004 (tmp/var)
+
+$_main:
+     ; (lines=1, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Dead.php:1-25
+0000 RETURN int(1)
+
+Fixture\Count\dead:
+     ; (lines=8, args=1, vars=1, tmps=2)
+     ; (after optimizer)
+     ; /fixtures/Dead.php:10-14
+0000 CV0($a) = RECV 1
+0001 T1 = INIT_ARRAY 4 (packed) CV0($a) NEXT
+0002 T1 = ADD_ARRAY_ELEMENT null NEXT
+0003 T1 = ADD_ARRAY_ELEMENT bool(false) NEXT
+0004 T2 = DECLARE_LAMBDA_FUNCTION 0
+0005 BIND_LEXICAL T2 CV0($a)
+0006 T1 = ADD_ARRAY_ELEMENT T2 NEXT
+0007 RETURN T1
+LIVE RANGES:
+     1: 0002 - 0007 (tmp/var)
+     2: 0005 - 0006 (tmp/var)
+
+Fixture\Count\{closure}:
+     ; (lines=3, args=0, vars=1, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Dead.php:13-13
+0000 BIND_STATIC CV0($a)
+0001 VERIFY_RETURN_TYPE CV0($a)
+0002 RETURN CV0($a)
+
+Fixture\Count\alive:
+     ; (lines=3, args=1, vars=1, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Dead.php:16-19
+0000 CV0($a) = RECV 1
+0001 T1 = QM_ASSIGN CV0($a)
+0002 RETURN T1
+
+Fixture\Count\{closure}:
+     ; (lines=1, args=0, vars=0, tmps=0)
+     ; (after optimizer)
+     ; /fixtures/Dead.php:18-18
+0000 RETURN int(2)
+
+Fixture\Count\deadClass:
+     ; (lines=4, args=1, vars=1, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Dead.php:21-24
+0000 CV0($a) = RECV 1
+0001 T1 = INIT_ARRAY 2 (packed) CV0($a) NEXT
+0002 T1 = ADD_ARRAY_ELEMENT null NEXT
+0003 RETURN T1
+LIVE RANGES:
+     1: 0002 - 0003 (tmp/var)

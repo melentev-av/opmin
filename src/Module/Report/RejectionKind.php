@@ -46,7 +46,8 @@ enum RejectionKind: string
         'dynamic' => ['eval or include', 'line numbers'],
         'signature' => ['changes the signature', 'changes the docblock', 'native types'],
         'readability' => ['min_gain_per_line', 'cyclomatic complexity', 'nesting grew', 'introduces '],
-        'no_gain' => ['below readability.min_gain', 'opcodes grew', 'does not change', 'changes outside functions only'],
+        # `below readability.min_gain`: the wording of earlier versions, still found in older reports.
+        'no_gain' => ['saves no opcodes', 'saves only ', 'below readability.min_gain', 'opcodes grew', 'does not change', 'changes outside functions only'],
     ];
 
     public static function fromReason(string $reason): self
@@ -77,7 +78,7 @@ enum RejectionKind: string
     {
         return match ($this) {
             self::NoGain => 'no opcodes saved',
-            self::Readability => 'readability thresholds',
+            self::Readability => 'not worth the code change',
             self::Dynamic => 'dynamic constructs',
             self::Signature => 'signature rules',
             self::Ignored => 'excluded by the user',
@@ -88,6 +89,37 @@ enum RejectionKind: string
             self::Performance => 'slower (guard-perf)',
             self::Review => 'declined in the review',
             self::Other => 'other',
+        };
+    }
+
+    /**
+     * What the group means, for a reader who has not read the config.
+     */
+    public function description(): string
+    {
+        return match ($this) {
+            self::DiffTest => 'The original and the changed function were called with the same generated inputs, and on '
+                . 'some input they behaved differently (result, output, exception, warning or changed arguments). '
+                . 'A counterexample below shows such an input.',
+            self::Tests => 'The project\'s tests failed with the change.',
+            self::StaticCheck => 'The changed code does not parse, Rector failed on it, or PHPStan found a new error.',
+            self::NotProven => 'Nothing proved that the function behaves as before: the generated inputs reached too little of '
+                . 'its code (verification.min_branch_coverage), it has side effects or is nondeterministic, and no '
+                . 'project test runs it. `--allow-unverified` keeps such changes.',
+            self::Performance => '`--guard-perf` measured the changed function as slower than '
+                . 'guard_perf.max_regression_percent allows.',
+            self::Signature => 'The change would alter the signature or the docblock of the function, which the '
+                . '`signatures.*` settings do not allow.',
+            self::Dynamic => 'The function uses something that makes any rewrite unsafe (eval, include, line numbers, '
+                . 'a call stack), so it is never changed.',
+            self::Readability => 'The change saved opcodes and behaved the same, but it makes the code harder to read than '
+                . 'the gain is worth (`readability.*`): too few opcodes saved per changed line, more branches or deeper '
+                . 'nesting, or a forbidden construct.',
+            self::NoGain => 'The change saved no opcodes, or added some.',
+            self::Ignored => 'The function is excluded from optimization by the config (`ignore.*`) or a mark in the code '
+                . '(`@opmin-ignore`, `#[\\Opmin\\Ignore]`).',
+            self::Review => 'Declined in `--review`; opmin.baseline.yaml remembers it, and it is not proposed again.',
+            self::Other => 'Other reasons, as the column says.',
         };
     }
 }

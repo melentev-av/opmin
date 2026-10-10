@@ -52,6 +52,12 @@ final class Count extends Base
         $this->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table | json', 'table');
     }
 
+    #[\Override]
+    protected function requiresConfig(InputInterface $input): bool
+    {
+        return true;
+    }
+
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         parent::execute($input, $output);
@@ -68,8 +74,6 @@ final class Count extends Base
         $phpConfig = $this->container->get(Schema\Php::class);
         /** @var Schema\Project $projectConfig */
         $projectConfig = $this->container->get(Schema\Project::class);
-        /** @var Schema\Cache $cacheConfig */
-        $cacheConfig = $this->container->get(Schema\Cache::class);
 
         try {
             $php = (new PhpBinaryProbe())->probe($phpConfig->binary);
@@ -82,9 +86,8 @@ final class Count extends Base
             return Command::INVALID;
         }
 
-        $cacheDir = Path::create($cacheConfig->dir);
-        $cacheDir->isAbsolute() or $cacheDir = $project->root->join($cacheConfig->dir);
-        $counter = new OpcodeCounter(new OpcacheDumper($php, Cpu::count()), new CountCache($cacheDir, $php));
+        $cacheDir = $this->cacheDir();
+        $counter = new OpcodeCounter(new OpcacheDumper($php, Cpu::count()), new CountCache($this->cacheStore(), $php));
 
         $progress = null;
         if ($errorOutput->isDecorated() && !$output->isQuiet() && \count($files) > 1) {
@@ -103,7 +106,7 @@ final class Count extends Base
         $progress?->clear();
 
         # Flags a function gets from the rest of the project: called by name, inspected by reflection.
-        $functions = ReferenceIndex::build($project, $cacheDir)->apply($this->filter($result->functions, $input->getOption('filter')));
+        $functions = ReferenceIndex::build($project, $cacheDir, $this->cacheStore())->apply($this->filter($result->functions, $input->getOption('filter')));
         $report = CountReport::create(
             opmin: Info::version(),
             php: $php->version,

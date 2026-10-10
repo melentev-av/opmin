@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.3.0](https://github.com/melentev-av/opmin/compare/v0.2.0...v0.3.0) (2026-10-10)
+
+
+### Features
+
+* **config:** cache.driver memory keeps counts and references for one run ([#17](https://github.com/melentev-av/opmin/issues/17)) ([4c08fd5](https://github.com/melentev-av/opmin/commit/4c08fd55ab715062d538298a8c721faed1c99068))
+* **config:** cache.driver sqlite, used automatically when pdo_sqlite is loaded ([d0d0815](https://github.com/melentev-av/opmin/commit/d0d08154b3a54df060964105142857215fa53e80)), closes [#9](https://github.com/melentev-av/opmin/issues/9)
+* **config:** cache.recreate_corrupt deletes a corrupt SQLite cache and starts anew ([421a2f5](https://github.com/melentev-av/opmin/commit/421a2f5bd8f109603241a385ad9b95cc859807b7))
+* **config:** the commands that analyze a project need opmin.yaml ([fc34ebc](https://github.com/melentev-av/opmin/commit/fc34ebcf90213afc799c6d3bd1d19324147df05d))
+* **optimize:** stop when the project's tests fail on the original code ([add2ac9](https://github.com/melentev-av/opmin/commit/add2ac9001f93801ba4385c7fd7beb33aa5b986a))
+* **optimize:** the git clean check is off by default and covers only the run's files ([#15](https://github.com/melentev-av/opmin/issues/15)) ([70f2daf](https://github.com/melentev-av/opmin/commit/70f2daf657a2c5898c4597029cfb76d728f78c64)), closes [#12](https://github.com/melentev-av/opmin/issues/12)
+* **report:** explain every section, column and reason of report.md ([7bc7a5b](https://github.com/melentev-av/opmin/commit/7bc7a5bb3234b69f2d1c6e369c2b94db45e5586a))
+
+
+### Bug Fixes
+
+* **analysis:** index files with names that are not utf-8 ([cd06802](https://github.com/melentev-av/opmin/commit/cd0680297782e8a5663547418ce38da8e48f714c))
+* **analysis:** keep hidden directories out of the reference index ([#19](https://github.com/melentev-av/opmin/issues/19)) ([9bf9746](https://github.com/melentev-av/opmin/commit/9bf97463c64c5127fc6d9ff3efe0e53f2d726fc4)), closes [#18](https://github.com/melentev-av/opmin/issues/18)
+* **config:** resolve a relative cache.dir next to the config in use ([#16](https://github.com/melentev-av/opmin/issues/16)) ([b7f3f81](https://github.com/melentev-av/opmin/commit/b7f3f81bb55d7146d7fbfa1fe2b21a9ea6fa5bc3))
+* **count:** an arrow function ends on the line of the next token ([f6bea2b](https://github.com/melentev-av/opmin/commit/f6bea2b14546f207b59600882c7c9e80b43a31a5))
+* **count:** anonymous classes the compiler drops have no block in the dump ([#23](https://github.com/melentev-av/opmin/issues/23)) ([c8b7925](https://github.com/melentev-av/opmin/commit/c8b7925aabb2e93ebe44820dacbc3e9c65c417e8))
+* **count:** closures of frameless calls are dumped twice ([8a100be](https://github.com/melentev-av/opmin/commit/8a100be0341dbb0ef07b9221ed426c17cc7ec972))
+* **count:** closures the compiler drops have no block in the dump ([591342e](https://github.com/melentev-av/opmin/commit/591342e45a28a1a0f4a74fdda59d34f09995dfc7))
+* **docker:** intl and bcmath in the image ([a7ab7a5](https://github.com/melentev-av/opmin/commit/a7ab7a529f0b13c231dee86c98575b7d20a28dc5))
+* **harness:** no deadlock between a long request and output of the worker ([bdd5321](https://github.com/melentev-av/opmin/commit/bdd53217e68d9410d874c072492f119b2674e816))
+* **harness:** read the tail of stderr before reporting a crash ([#22](https://github.com/melentev-av/opmin/issues/22)) ([447b440](https://github.com/melentev-av/opmin/commit/447b440b42d624efbbf2728f32d461ad9ccbcb91))
+* **harness:** talk to the worker over sockets on Windows ([#11](https://github.com/melentev-av/opmin/issues/11)) ([f4afaec](https://github.com/melentev-av/opmin/commit/f4afaecc14f91f739a5069778ed0a01402fde1a7)), closes [#10](https://github.com/melentev-av/opmin/issues/10)
+* **init:** take the code paths from the autoload of composer.json ([708a116](https://github.com/melentev-av/opmin/commit/708a116390874c8e4c8e7a746a4f60b9106a2cc4))
+* **package:** keep the download cache of composer between runs ([346a75e](https://github.com/melentev-av/opmin/commit/346a75e2215d4e975fae836884863bce1adf0192))
+* **package:** ship harness/ in the composer dist archive ([#13](https://github.com/melentev-av/opmin/issues/13)) ([ecf5975](https://github.com/melentev-av/opmin/commit/ecf59751a2bb2eac84c9121244fbb1efef90c367))
+* **package:** show why composer install of a package failed ([56e6432](https://github.com/melentev-av/opmin/commit/56e643291eacf11b7847ef5628b5c1a779ed2604))
+* **project:** keep the config's directory as the root of a monorepo package ([#14](https://github.com/melentev-av/opmin/issues/14)) ([4e04ea9](https://github.com/melentev-av/opmin/commit/4e04ea9ab877d9fa9a9680b66fce295882e92d17))
+* **project:** skip test files next to the code by default ([38ebac1](https://github.com/melentev-av/opmin/commit/38ebac1f2f0ad91dea3964bde19948322e5a4e89))
+* **rector:** let a call of a known pure built-in function count as pure ([#21](https://github.com/melentev-av/opmin/issues/21)) ([d2737a1](https://github.com/melentev-av/opmin/commit/d2737a18e115d0485e41cf4c1134443e235549ec)), closes [#20](https://github.com/melentev-av/opmin/issues/20)
+* **self-update:** end the process right after the file is replaced ([06e0ebc](https://github.com/melentev-av/opmin/commit/06e0ebc927f6074a50ddd069e39a23e7ec9d314e))
+* **skill:** opcode-minimize — unrendered version, run branch, patterns in PATTERNS.md ([#7](https://github.com/melentev-av/opmin/issues/7)) ([9d7e5e8](https://github.com/melentev-av/opmin/commit/9d7e5e8cb6b658b63e926dd0f431a94dbbc19df5))
+* **tests:** a filter of thousands of tests fits into the command line ([c7cf4b0](https://github.com/melentev-av/opmin/commit/c7cf4b09160275091137af036b98bf139dd9b2d6))
+* **tests:** read junit and coverage reports without ext-dom ([ea0eea5](https://github.com/melentev-av/opmin/commit/ea0eea5496b453959d261a28861cfda5d9c8ee80))
+
+
+### Documentation
+
+* **readme:** results on real packages, their tests without network ([827cf27](https://github.com/melentev-av/opmin/commit/827cf270b5f5dff7fb6822dd59c542d3e2f61289))
+* **readme:** smoke results from CI with php.binary 8.1 and 8.5 ([dfb4f6e](https://github.com/melentev-av/opmin/commit/dfb4f6e2050af51bc7ad88a6b587fd126ce33d02))
+
 ## [0.2.0](https://github.com/melentev-av/opmin/compare/v0.1.0...v0.2.0) (2026-10-08)
 
 

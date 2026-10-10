@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Opmin\Command;
 
 use Internal\Path;
+use Opmin\Module\Common\Cache\StoreFactory;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Doctor\Check;
 use Opmin\Module\Doctor\Doctor as Checks;
@@ -19,7 +20,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 /**
  * Checks the environment before the first run and in CI: `php.binary` (first — nothing works without it),
  * OPcache and the harness under it, the PHP version against `php.target`, files with syntax newer than
- * `php.binary`, the coverage driver, the test runner, PHPStan, git, the formatter. Prints what is wrong and
+ * `php.binary`, the coverage driver, the test runner, PHPStan, git, the cache store, the formatter. Prints what is wrong and
  * how to fix it.
  *
  * ```bash
@@ -62,6 +63,8 @@ final class Doctor extends Base
         $tests = $this->container->get(Schema\Tests::class);
         /** @var Schema\Commands $commands */
         $commands = $this->container->get(Schema\Commands::class);
+        /** @var Schema\Cache $cache */
+        $cache = $this->container->get(Schema\Cache::class);
 
         $cwd = Path::create((string) \getcwd());
         $config = $this->getConfigFile($input);
@@ -77,6 +80,9 @@ final class Doctor extends Base
             $tests,
             $commands,
             Installation::current(),
+            $cache,
+            $this->cacheDir(),
+            StoreFactory::forThisPhp(),
             (bool) $input->getOption('with-tests'),
         ))->run()];
 

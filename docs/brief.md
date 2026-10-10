@@ -720,6 +720,7 @@ git:
 
 cache:
   dir: .opmin-cache      # добавить в .gitignore при init
+  driver: auto           # auto — SQLite (cache.sqlite в cache.dir), если у PHP, на котором работает opmin, есть pdo_sqlite, иначе files | sqlite — без pdo_sqlite ошибка конфига | files — JSON-файл на запись | memory — только на прогон
 ```
 
 ## Поставка
@@ -733,7 +734,7 @@ cache:
 - Платформы: linux-x86_64, linux-aarch64 (статически, musl — работает на любом дистрибутиве), macos-x86_64, macos-arm64. Windows — после MVP.
 - Встроенный PHP — последней стабильной версии (8.4/8.5), на нём работают оркестратор, Rector, генерация входов, отчёты.
 - **Встроенный PHP никогда не используется для того, что зависит от версии прода:** подсчёт опкодов, харнесс дифф-тестера, тесты и PHPStan проекта — всегда подпроцессом через `php.binary` (по умолчанию — `php` из `PATH`). Если `php.binary` нет — команды, которым он нужен, падают с понятным сообщением; `count` и `optimize` без него не работают, `doctor` это показывает первым пунктом.
-- Набор расширений для `spc`: только то, что нужно оркестратору (`tokenizer`, `mbstring`, `ctype`, `phar`, `json`, `pcntl`, `posix`, `iconv`, `filter`, плюс то, что потребуют оставшиеся зависимости — проверить по `composer-require-checker`). OPcache в бинарник **не** нужен.
+- Набор расширений для `spc`: только то, что нужно оркестратору (`tokenizer`, `mbstring`, `ctype`, `phar`, `json`, `pcntl`, `posix`, `iconv`, `filter`, `pdo_sqlite` (кеш `cache.driver: auto`), плюс то, что потребуют оставшиеся зависимости — проверить по `composer-require-checker`). OPcache в бинарник **не** нужен.
 - Релизы: GitHub Releases, бинарник на каждую платформу + `sha256sum.txt` + подпись (cosign или GPG).
 - Самообновление: `opmin self-update` (скачивает релиз под текущую платформу, проверяет checksum и подпись). `--check` — только сообщить о новой версии.
 - Установка (в README именно этот способ первым):

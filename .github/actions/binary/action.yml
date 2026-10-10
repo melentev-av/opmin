@@ -22,13 +22,15 @@ inputs:
     required: false
     default: '8.4'
   # zlib: the PHAR is GZ-compressed and self-update unpacks .tar.gz; openssl: HTTPS downloads and the
-  # release signature of self-update; pcntl/posix: process pool; the rest: Symfony and opmin itself.
+  # release signature of self-update; pcntl/posix: process pool; pdo/pdo_sqlite (it requires sqlite3): the
+  # cache of `cache.driver: auto`, the public-domain SQLite library with no further dependencies; the rest:
+  # Symfony and opmin itself.
   # No iconv: symfony/string only uses it when present, and GNU libiconv (LGPL) would be linked statically.
   # Each library linked into the binary is listed in LICENSE-THIRD-PARTY.md.
   extensions:
     description: Extensions of the embedded PHP.
     required: false
-    default: 'ctype,filter,mbstring,openssl,pcntl,phar,posix,tokenizer,zlib'
+    default: 'ctype,filter,mbstring,openssl,pcntl,pdo,pdo_sqlite,phar,posix,sqlite3,tokenizer,zlib'
 
 runs:
   using: composite

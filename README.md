@@ -118,7 +118,12 @@ opmin diff before.json after.json                   # per function: fewer / more
 - Counts are cached in `.opmin-cache/` by file content, PHP version, optimizer settings and opmin version:
   re-counting an unchanged project does not start PHP for compilation at all. A relative `cache.dir` is next to
   the config in use, so in a monorepo the packages share the root's cache.
-  `cache.driver: memory` keeps counts and references for one run only, without a file per entry on disk.
+  `cache.driver` picks the storage: `auto` (default) is one SQLite database `.opmin-cache/cache.sqlite` when the
+  PHP running opmin has `pdo_sqlite` (the static binary and most PHP builds do) and a JSON file per entry
+  otherwise; `sqlite` insists on the database (a config error, exit code 2, without `pdo_sqlite`); `files` is
+  always a file per entry; `memory` keeps counts and references for one run only, nothing on disk. Both disk
+  stores are shared by parallel runs; a corrupt or locked database only costs the cache, never the run
+  (`opmin doctor` names it — delete the file and the next run creates it anew).
 
 ## Verifying behavior
 

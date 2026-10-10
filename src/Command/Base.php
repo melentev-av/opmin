@@ -8,9 +8,8 @@ use Internal\Container\Container;
 use Internal\Path;
 use Opmin\Bootstrap;
 use Opmin\Info;
-use Opmin\Module\Common\Cache\FileStore;
-use Opmin\Module\Common\Cache\MemoryStore;
 use Opmin\Module\Common\Cache\Store;
+use Opmin\Module\Common\Cache\StoreFactory;
 use Opmin\Module\Config\ConfigLoader;
 use Opmin\Module\Config\ConfigSchema;
 use Opmin\Module\Config\Exception\ConfigException;
@@ -180,16 +179,15 @@ abstract class Base extends Command
     /**
      * Storage of cached counts and references: one per command, so a `memory` cache outlives the
      * counter and the index built from it.
+     *
+     * @throws ConfigException `cache.driver: sqlite` without `pdo_sqlite` (exit code 2).
      */
     protected function cacheStore(): Store
     {
         /** @var Schema\Cache $cacheConfig */
         $cacheConfig = $this->container->get(Schema\Cache::class);
 
-        return $this->cacheStore ??= match ($cacheConfig->driver) {
-            Schema\CacheDriver::Files => new FileStore($this->cacheDir()),
-            Schema\CacheDriver::Memory => new MemoryStore(),
-        };
+        return $this->cacheStore ??= StoreFactory::forThisPhp()->create($cacheConfig->driver, $this->cacheDir());
     }
 
     /**

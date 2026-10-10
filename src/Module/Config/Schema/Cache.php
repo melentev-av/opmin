@@ -19,6 +19,6 @@ final class Cache
     #[ConfigKey('cache.dir', 'Cache directory; a relative one is next to the config file (add it to .gitignore)')]
     public string $dir = '.opmin-cache';
 
-    #[ConfigKey('cache.driver', 'Storage of opcode counts and references: files (a JSON file per entry in cache.dir, kept between runs) | memory (this run only)')]
-    public CacheDriver $driver = CacheDriver::Files;
+    #[ConfigKey('cache.driver', 'Storage of opcode counts and references: auto (sqlite when the PHP running opmin has pdo_sqlite, files otherwise) | sqlite (one database cache.sqlite in cache.dir, kept between runs; a config error without pdo_sqlite) | files (a JSON file per entry in cache.dir, kept between runs) | memory (this run only)')]
+    public CacheDriver $driver = CacheDriver::Auto;
 }

@@ -26,7 +26,7 @@ final class DoctorTest
     #[BeforeTest]
     public function createProject(): void
     {
-        $this->dir = \sys_get_temp_dir() . '/opmin-doctor-' . \bin2hex(\random_bytes(4));
+        $this->dir = (string) \realpath(\sys_get_temp_dir()) . '/opmin-doctor-' . \bin2hex(\random_bytes(4));
         \mkdir($this->dir . '/src', 0777, true);
         \file_put_contents($this->dir . '/composer.json', \json_encode(['require' => ['php' => '>=' . TestPhp::minor()]]));
         \file_put_contents($this->dir . '/src/Price.php', "<?php\nfunction price(int \$cents): float { return \$cents / 100; }\n");
@@ -52,7 +52,33 @@ final class DoctorTest
             ->contains('✔ syntax: 1 file(s) parse')
             ->contains('! tests: no test runner found')
             ->contains('i PHPStan: commands.phpstan is null')
+            ->contains(\extension_loaded('pdo_sqlite')
+                ? '✔ cache: SQLite, ' . $this->dir . '/.opmin-cache/cache.sqlite (auto): created by the first count'
+                : 'i cache: files in ' . $this->dir . '/.opmin-cache (auto: the PHP running opmin has no pdo_sqlite)')
             ->contains('Ready');
+        Assert::false(\file_exists($this->dir . '/.opmin-cache'));
+    }
+
+    public function aCorruptSqliteCacheIsAWarningNotAnError(): void
+    {
+        \mkdir($this->dir . '/.opmin-cache');
+        \file_put_contents($this->dir . '/.opmin-cache/cache.sqlite', \str_repeat('not a database ', 1000));
+
+        [$code, $out] = $this->doctor('--set=cache.driver=sqlite');
+
+        Assert::same($code, 0);
+        Assert::string($out)
+            ->contains('! cache: the SQLite database cannot be used, runs work without the cache:')
+            ->contains('Fix: Delete ' . $this->dir . '/.opmin-cache/cache.sqlite');
+    }
+
+    public function otherDriversAreNamed(): void
+    {
+        [, $files] = $this->doctor('--set=cache.driver=files');
+        [, $memory] = $this->doctor('--set=cache.driver=memory');
+
+        Assert::string($files)->contains('i cache: files in ' . $this->dir . '/.opmin-cache' . "\n");
+        Assert::string($memory)->contains('i cache: memory: every run compiles and parses the project anew');
     }
 
     public function aMissingPhpBinaryComesFirstAndSkipsWhatDependsOnIt(): void

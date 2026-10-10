@@ -249,11 +249,11 @@ final class Worker
 
             $eof = $this->drain($read);
             if ($eof && !\str_contains($this->buffer, "\n")) {
-                $status = \is_resource($this->process) ? \proc_get_status($this->process) : null;
+                $exitCode = $this->awaitEnd();
                 $this->kill();
                 throw new WorkerException(
                     WorkerException::CRASH,
-                    'The harness ended without an answer' . ($status === null ? '.' : " (exit code {$status['exitcode']})."),
+                    'The harness ended without an answer' . ($exitCode === null ? '.' : " (exit code {$exitCode})."),
                     $this->stderr,
                 );
             }
@@ -281,6 +281,34 @@ final class Worker
         }
 
         return $eof;
+    }
+
+    /**
+     * Stdout has ended, but the tail of stderr and the exit code may lag behind it: waits for both, at most a second.
+     *
+     * @return int|null The exit code, null without a process.
+     */
+    private function awaitEnd(): ?int
+    {
+        $deadline = \hrtime(true) + 1_000_000_000;
+        while (!\feof($this->pipes[2]) && ($left = $deadline - \hrtime(true)) > 0) {
+            $read = [$this->pipes[2]];
+            $write = $except = null;
+            @\stream_select($read, $write, $except, 0, \min(\intdiv($left, 1000), 999_999)) > 0 and $this->drain($read);
+        }
+
+        if (!\is_resource($this->process)) {
+            return null;
+        }
+
+        # The exit code is reported once, by the first call that sees the process ended.
+        $status = \proc_get_status($this->process);
+        while ($status['running'] && \hrtime(true) < $deadline) {
+            \usleep(5000);
+            $status = \proc_get_status($this->process);
+        }
+
+        return $status['exitcode'];
     }
 
     private function kill(): void

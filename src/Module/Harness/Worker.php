@@ -70,7 +70,12 @@ final class Worker
             (string) HarnessFiles::worker(),
             $this->token,
         ];
-        $process = @\proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $this->options->cwd);
+        # Windows pipes ignore non-blocking mode and always pass stream_select(): a read from the silent
+        # stderr would block forever. Sockets behave there as pipes do elsewhere.
+        $descriptors = \PHP_OS_FAMILY === 'Windows'
+            ? [0 => ['socket'], 1 => ['socket'], 2 => ['socket']]
+            : [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+        $process = @\proc_open($command, $descriptors, $pipes, $this->options->cwd);
         \is_resource($process) or throw new WorkerException(WorkerException::START, "Cannot start the harness with php.binary `{$this->php->path}`.");
         $this->process = $process;
         /** @var array<int, resource> $pipes */

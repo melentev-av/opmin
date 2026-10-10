@@ -167,6 +167,7 @@ final class HoistLoopInvariantCountRector extends AbstractRector
             static fn(Expr $e): bool => false,
             static fn(Expr\PropertyFetch $e): bool => false,
             fn(Expr\CallLike $call, int $position): ?bool => (new ArgumentPassing($this->reflectionResolver))->byReference($call, $position),
+            static fn(Expr\FuncCall $call): bool => false,
         );
         $body = [...$loop->stmts, ...\array_map(static fn(Expr $e): Stmt => new Stmt\Expression($e), [...$loop->cond, ...$loop->loop])];
         foreach ($collector->collect($body) as $event) {

@@ -23,8 +23,9 @@ use Testo\Test;
 /**
  * Generated valid PHP (8.1 syntax) goes through the whole attribution chain under `php.binary`:
  * the dump parses, every block is paired with a function of the source, and every function of the
- * source gets a count — except closures the compiler drops in expressions it evaluates. Nested closures, anonymous classes and several closures on one line are the
- * cases where pairing by position could go wrong.
+ * source gets a count — except closures and anonymous classes the compiler drops in expressions it
+ * evaluates. Nested closures, anonymous classes and several closures on one line are the cases where
+ * pairing by position could go wrong.
  */
 #[Test]
 #[Covers(DumpParser::class)]
@@ -90,8 +91,8 @@ final class CountPropertyTest
             try {
                 $counts = (new DumpMatcher())->match($units, (new DumpParser())->parse((string) $dump?->dump), 'gen.php');
             } catch (MatchException $e) {
-                # A closure the compiler dropped next to a compiled one on the same line: no count, no guess.
-                Assert::string($e->getMessage())->contains('Cannot tell which closure on line');
+                # A closure or anonymous class the compiler dropped next to a compiled one on the same line: no count, no guess.
+                Assert::string($e->getMessage())->contains('Cannot tell which closure or anonymous class on line');
                 return;
             }
         } finally {
@@ -105,9 +106,10 @@ final class CountPropertyTest
         }
 
         Assert::same(\count(\array_unique($counted)), \count($counted));
-        # Only closures the compiler dropped (`[null ? fn() => 1 : null]`) and what is inside them have no count.
+        # Only closures and anonymous classes the compiler dropped (`[null ? fn() => 1 : null]`) and what is inside
+        # them have no count.
         foreach ($missing as $unit) {
-            Assert::true($unit->kind === UnitKind::Closure || \str_contains($unit->key, '::{closure:'), $unit->key);
+            Assert::true($unit->kind === UnitKind::Closure || \str_contains($unit->key, '::{closure:') || \str_contains($unit->key, '::{class:'), $unit->key);
         }
     }
 

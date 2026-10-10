@@ -2,7 +2,7 @@
 $_main:
      ; (lines=1, args=0, vars=0, tmps=0)
      ; (before optimizer)
-     ; /fixtures/Dead.php:1-20
+     ; /fixtures/Dead.php:1-25
      ; return  [] RANGE[0..0]
 0000 RETURN int(1)
 
@@ -66,10 +66,25 @@ Fixture\Count\{closure}:
 0001 VERIFY_RETURN_TYPE
 0002 RETURN null
 
+Fixture\Count\deadClass:
+     ; (lines=7, args=1, vars=1, tmps=1)
+     ; (before optimizer)
+     ; /fixtures/Dead.php:21-24
+     ; return  [] RANGE[0..0]
+0000 CV0($a) = RECV 1
+0001 T1 = INIT_ARRAY 2 (packed) CV0($a) NEXT
+0002 T1 = ADD_ARRAY_ELEMENT null NEXT
+0003 VERIFY_RETURN_TYPE T1
+0004 RETURN T1
+0005 VERIFY_RETURN_TYPE
+0006 RETURN null
+LIVE RANGES:
+     1: 0002 - 0004 (tmp/var)
+
 $_main:
      ; (lines=1, args=0, vars=0, tmps=0)
      ; (after optimizer)
-     ; /fixtures/Dead.php:1-20
+     ; /fixtures/Dead.php:1-25
 0000 RETURN int(1)
 
 Fixture\Count\dead:
@@ -109,3 +124,14 @@ Fixture\Count\{closure}:
      ; (after optimizer)
      ; /fixtures/Dead.php:18-18
 0000 RETURN int(2)
+
+Fixture\Count\deadClass:
+     ; (lines=4, args=1, vars=1, tmps=1)
+     ; (after optimizer)
+     ; /fixtures/Dead.php:21-24
+0000 CV0($a) = RECV 1
+0001 T1 = INIT_ARRAY 2 (packed) CV0($a) NEXT
+0002 T1 = ADD_ARRAY_ELEMENT null NEXT
+0003 RETURN T1
+LIVE RANGES:
+     1: 0002 - 0003 (tmp/var)

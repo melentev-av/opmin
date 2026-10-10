@@ -101,7 +101,7 @@ final class DumpMatcherTest
 
     public function refusesToGuessWhichClosureOnALineWasDropped(): never
     {
-        Expect::exception(MatchException::class)->withMessageContaining('Cannot tell which closure on line 13');
+        Expect::exception(MatchException::class)->withMessageContaining('Cannot tell which closure or anonymous class on line 13');
 
         # The dropped closure moves to the line of the compiled one: the block cannot be told apart.
         $code = \str_replace(

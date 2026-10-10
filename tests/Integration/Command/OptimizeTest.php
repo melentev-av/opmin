@@ -145,11 +145,18 @@ final class OptimizeTest
         $this->git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init');
         \file_put_contents($this->dir . '/src/Text.php', self::CODE . "\n");
 
-        [$code, , $err] = $this->opmin('optimize');
+        [$code, , $err] = $this->opmin('optimize', '--with-git');
 
         Assert::same($code, 2);
-        Assert::string($err)->ignoringWhitespace(lineBreaks: true)->contains('The git working tree is not clean')->contains('src/Text.php');
+        Assert::string($err)->ignoringWhitespace(lineBreaks: true)->contains('Files of the run have uncommitted changes')->contains('src/Text.php');
         Assert::same(\file_get_contents($this->dir . '/src/Text.php'), self::CODE . "\n");
+        # git.require_clean: all — any file blocks the run, not only a target.
+        $this->git('checkout', '--', 'src/Text.php');
+        \file_put_contents($this->dir . '/notes.txt', "mine\n");
+        [$allCode, , $allErr] = $this->opmin('optimize', '--set=git.require_clean=all');
+        Assert::same($allCode, 2);
+        Assert::string($allErr)->ignoringWhitespace(lineBreaks: true)->contains('The git working tree is not clean')->contains('notes.txt');
+        \file_put_contents($this->dir . '/src/Text.php', self::CODE . "\n");
         # A dry run commits nothing: a dirty tree is fine.
         [$dryCode] = $this->opmin('optimize', '--dry-run', '--format=none');
         Assert::same($dryCode, 0);

@@ -72,6 +72,7 @@ final class ConfigSchemaTest
             'check.tolerance',
             'check.max_ops_new_function',
             'check.base_ref',
+            'git.require_clean',
             'cache.dir',
             'cache.driver',
         );

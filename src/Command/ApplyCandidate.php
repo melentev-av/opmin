@@ -6,7 +6,6 @@ namespace Opmin\Command;
 
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Llm\Attempt;
-use Opmin\Module\Optimize\Workspace;
 use Opmin\Module\Php\PhpBinaryException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -48,6 +47,7 @@ final class ApplyCandidate extends LlmStage
         $this->addArgument('function', InputArgument::REQUIRED, 'Key of the function, as `llm:targets` prints it');
         $this->addArgument('source', InputArgument::OPTIONAL, 'File with the new source of the function, `-` for stdin', '-');
         $this->addOption('allow-public-signatures', null, InputOption::VALUE_NONE, 'Allow native type changes of public overridable methods');
+        $this->addWithGitOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -71,7 +71,7 @@ final class ApplyCandidate extends LlmStage
                 "No attempts left for `{$target->key}`: {$done} of llm.attempts_per_function = {$llm->attemptsPerFunction} are used.",
             );
             $source = $this->source((string) $input->getArgument('source'));
-            $workspace = Workspace::create($project, $session->runDir, false, $this->ignoredPaths($project));
+            $workspace = $this->workspace($project, $session->runDir, false, [$project->root->join($target->file)]);
         } catch (PhpBinaryException|\InvalidArgumentException|\RuntimeException $e) {
             $style->error($e->getMessage());
             return Command::INVALID;

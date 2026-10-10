@@ -44,9 +44,9 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * workspace, in Docker unless `--no-docker`: see {@see PackageRun}. The report and the patch land in the
  * current directory.
  *
- * In a git working tree (must be clean) every accepted step is a commit; outside git the originals
- * are copied to `runs/<ts>/original/`; `--dry-run` restores everything at the end. Every run writes
- * `runs/<ts>/`: the counts before and after, `report.json`, `opmin.patch`, counterexamples.
+ * In a git working tree every accepted step is a commit (`--with-git`: its target files must be clean); outside
+ * git the originals are copied to `runs/<ts>/original/`; `--dry-run` restores everything at the end.
+ * Every run writes `runs/<ts>/`: the counts before and after, `report.json`, `opmin.patch`, counterexamples.
  *
  * Exit codes: 0 — done (also when nothing could be improved); 1 — the full test run fails after the
  * optimization even with every step taken back, or a step failed; 2 — invalid config or usage, a
@@ -91,6 +91,7 @@ final class Optimize extends Stage
         $this->addOption('no-docker', null, InputOption::VALUE_NONE, 'Do not re-run inside Docker in git package mode');
         $this->addOption('allow-scripts', null, InputOption::VALUE_NONE, 'Run composer scripts and plugins of a git package');
         $this->addOption('yes', 'y', InputOption::VALUE_NONE, 'Do not ask before running tests of foreign code');
+        $this->addWithGitOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -188,10 +189,10 @@ final class Optimize extends Stage
             if ($state !== null) {
                 $rewritten = $state->restore($project->root);
                 $rewritten === [] or $style->note('Restored to the last accepted step: ' . \implode(', ', \array_slice($rewritten, 0, 10)));
-                $dryRun || $state->head === null or Workspace::rewind($project, $state->head, $state->files, $this->ignoredPaths($project));
+                $dryRun || $state->head === null or Workspace::rewind($project, $state->head);
             }
 
-            $workspace = Workspace::create($project, $runDir, $dryRun, $this->ignoredPaths($project));
+            $workspace = $this->workspace($project, $runDir, $dryRun, $files);
         } catch (\RuntimeException $e) {
             $style->error($e->getMessage());
             return Command::INVALID;

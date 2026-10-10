@@ -7,7 +7,6 @@ namespace Opmin\Command;
 use Opmin\Module\Llm\Attempt;
 use Opmin\Module\Optimize\LlmCandidate;
 use Opmin\Module\Optimize\StepReport;
-use Opmin\Module\Optimize\Workspace;
 use Opmin\Module\Php\PhpBinaryException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -32,6 +31,12 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 final class LlmFinish extends LlmStage
 {
+    public function configure(): void
+    {
+        parent::configure();
+        $this->addWithGitOption();
+    }
+
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         parent::execute($input, $output);
@@ -42,17 +47,18 @@ final class LlmFinish extends LlmStage
             [$project, , $php] = $this->project();
             $session = $this->session($project, $input);
             $session->finished and throw new \InvalidArgumentException('The session is finished already.');
-            $workspace = Workspace::create($project, $session->runDir, false, $this->ignoredPaths($project));
+            $files = [];
+            foreach ($session->targets as $target) {
+                $files[$target->file] = $project->root->join($target->file);
+            }
+
+            $workspace = $this->workspace($project, $session->runDir, false, \array_values($files));
         } catch (PhpBinaryException|\InvalidArgumentException|\RuntimeException $e) {
             $style->error($e->getMessage());
             return Command::INVALID;
         }
 
         $attempts = $session->attempts();
-        $files = [];
-        foreach ($session->targets as $target) {
-            $files[$target->file] = $project->root->join($target->file);
-        }
 
         $optimizer = $this->optimizer($project, $php, $workspace, $output, false);
         [$environment, $warnings] = $this->environment($project, $php, $optimizer, $session->runDir);

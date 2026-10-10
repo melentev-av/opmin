@@ -94,6 +94,32 @@ final class CountTest
         Assert::same($compiledThird, 2);
     }
 
+    public function cacheOfPackageInMonorepoIsInCurrentDirectoryWithoutConfig(): void
+    {
+        \mkdir("{$this->dir}/packages/http/src", 0777, true);
+        \file_put_contents("{$this->dir}/packages/http/composer.json", '{}');
+        \file_put_contents("{$this->dir}/packages/http/src/A.php", "<?php\nfunction a() { return 1; }\n");
+
+        [$code] = $this->opmin('count', 'packages/http/src');
+
+        Assert::same($code, 0);
+        Assert::true(\is_dir("{$this->dir}/.opmin-cache/count"));
+        Assert::false(\file_exists("{$this->dir}/packages/http/.opmin-cache"));
+    }
+
+    public function cacheIsNextToExplicitConfig(): void
+    {
+        \mkdir("{$this->dir}/conf");
+        \file_put_contents("{$this->dir}/conf/opmin.yaml", "cache:\n  dir: .cache\n");
+        \file_put_contents("{$this->dir}/src/A.php", "<?php\nfunction a() { return 1; }\n");
+
+        [$code] = $this->opmin('count', '--config=conf/opmin.yaml', 'src');
+
+        Assert::same($code, 0);
+        Assert::true(\is_dir("{$this->dir}/conf/.cache/count"));
+        Assert::false(\file_exists("{$this->dir}/.cache"));
+    }
+
     public function reportsFilesThatCannotBeCompiledAndCountsTheRest(): void
     {
         \file_put_contents("{$this->dir}/src/Good.php", "<?php\nfunction good() { return 1; }\n");

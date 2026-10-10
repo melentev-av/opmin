@@ -68,8 +68,6 @@ final class Count extends Base
         $phpConfig = $this->container->get(Schema\Php::class);
         /** @var Schema\Project $projectConfig */
         $projectConfig = $this->container->get(Schema\Project::class);
-        /** @var Schema\Cache $cacheConfig */
-        $cacheConfig = $this->container->get(Schema\Cache::class);
 
         try {
             $php = (new PhpBinaryProbe())->probe($phpConfig->binary);
@@ -82,8 +80,7 @@ final class Count extends Base
             return Command::INVALID;
         }
 
-        $cacheDir = Path::create($cacheConfig->dir);
-        $cacheDir->isAbsolute() or $cacheDir = $project->root->join($cacheConfig->dir);
+        $cacheDir = $this->cacheDir();
         $counter = new OpcodeCounter(new OpcacheDumper($php, Cpu::count()), new CountCache($cacheDir, $php));
 
         $progress = null;

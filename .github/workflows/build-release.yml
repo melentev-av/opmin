@@ -158,6 +158,7 @@ jobs:
         if: matrix.php != ''
         run: |
           mkdir -p "$RUNNER_TEMP/rector/src" && cd "$RUNNER_TEMP/rector"
+          printf 'paths: [src]\n' > opmin.yaml
           printf '<?php\nnamespace Acme;\nfinal class Text\n{\n    public function size(string $s): int\n    {\n        return strlen($s) + strlen(trim($s));\n    }\n}\n' > src/Text.php
           "$GITHUB_WORKSPACE/dist/opmin" optimize --dry-run --no-interaction --set=commands.phpstan=null src | tee optimize.log
           grep -q 'opcodes (-' optimize.log || { echo "::error::optimize did not apply a rule"; exit 1; }
@@ -229,6 +230,7 @@ jobs:
       - name: 🐳 Build, test and push
         run: |
           mkdir -p "$RUNNER_TEMP/smoke/src"
+          printf 'paths: [src]\n' > "$RUNNER_TEMP/smoke/opmin.yaml"
           printf '<?php\nfunction twice(int $x): int { return $x * 2; }\n' > "$RUNNER_TEMP/smoke/src/a.php"
           printf '<?php\nfunction twice(int $x): int { return $x * 3; }\n' > "$RUNNER_TEMP/smoke/other.php"
           for php in 8.1 8.2 8.3 8.4 8.5; do

@@ -315,7 +315,9 @@ final class OptimizeTest
 
     public function guardPerfMeasuresTheKeptChanges(): void
     {
-        [$code, $out, $err] = $this->opmin('optimize', '--format=none', '--guard-perf');
+        # The timing of a tiny function on a shared runner is noise: a huge allowed slowdown keeps the change,
+        # so its measurement lands in the report however the run went.
+        [$code, $out, $err] = $this->opmin('optimize', '--format=none', '--guard-perf', '--set=guard_perf.max_regression_percent=1000000');
 
         Assert::same($code, 0, $out . $err);
         $report = $this->report();

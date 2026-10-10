@@ -115,6 +115,10 @@ abstract class Base extends Command
         $this->logger = new Logger($output);
         $config = $this->getConfigFile($input);
         $cwd = Path::create((string) \getcwd());
+        $config === null && $this->requiresConfig($input) and throw new ConfigException(
+            "No opmin.yaml in {$cwd}: opmin reads the project's settings from it and keeps its cache next to it. "
+            . 'Run `opmin init` here, or pass --config=<file>.',
+        );
         $this->configDir = $config === null ? $cwd : Targets::absolute($config, $cwd)->parent();
 
         /** @var list<string> $overrides */
@@ -149,6 +153,15 @@ abstract class Base extends Command
         }
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Whether the command refuses to run without a config: a command that analyzes the project does, so its
+     * cache always lands next to the config and never in whatever directory the command was started from.
+     */
+    protected function requiresConfig(InputInterface $input): bool
+    {
+        return false;
     }
 
     /**

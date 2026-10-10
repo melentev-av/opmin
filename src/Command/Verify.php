@@ -48,6 +48,12 @@ final class Verify extends Base
         $this->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table | json', 'table');
     }
 
+    #[\Override]
+    protected function requiresConfig(InputInterface $input): bool
+    {
+        return true;
+    }
+
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         parent::execute($input, $output);

@@ -106,6 +106,7 @@ final class CliTest
     public function aPinnedVersionStopsAnotherOpminButNotSelfUpdate(): void
     {
         \file_put_contents($this->dir . '/.opmin-version', "9.9.9\n");
+        \file_put_contents($this->dir . '/opmin.yaml', '');
 
         [$code, , $err] = $this->opmin('count');
         [$updateCode, $updateOut] = $this->opminWithEnv(['HTTPS_PROXY' => 'http://127.0.0.1:9'], 'self-update');
@@ -147,6 +148,7 @@ final class CliTest
 
     public function invalidEnvironmentValueFailsBeforeWork(): void
     {
+        \file_put_contents($this->dir . '/opmin.yaml', '');
         [$code, , $err] = $this->opminWithEnv(['OPMIN_VERIFICATION_SEED' => 'x'], 'count');
 
         Assert::same($code, 2);

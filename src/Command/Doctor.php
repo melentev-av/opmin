@@ -63,15 +63,22 @@ final class Doctor extends Base
         /** @var Schema\Commands $commands */
         $commands = $this->container->get(Schema\Commands::class);
 
-        $checks = (new Checks(
-            Path::create((string) \getcwd()),
+        $cwd = Path::create((string) \getcwd());
+        $config = $this->getConfigFile($input);
+        $checks = [
+            $config === null
+                ? Check::error('config', "no opmin.yaml in {$cwd}: count, optimize and the other project commands refuse to run without it", 'Run opmin init here.')
+                : Check::ok('config', $config),
+        ];
+        $checks = [...$checks, ...(new Checks(
+            $cwd,
             $php,
             $project,
             $tests,
             $commands,
             Installation::current(),
             (bool) $input->getOption('with-tests'),
-        ))->run();
+        ))->run()];
 
         foreach ($checks as $check) {
             $this->print($output, $check);

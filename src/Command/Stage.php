@@ -107,6 +107,12 @@ abstract class Stage extends Base
         return \array_values(\array_unique(['runs', $project->relative($this->cacheDir()), Declined::FILE]));
     }
 
+    #[\Override]
+    protected function requiresConfig(InputInterface $input): bool
+    {
+        return true;
+    }
+
     /**
      * Adds `--with-git` to a command that commits its steps ({@see self::workspace()}).
      */

@@ -71,6 +71,7 @@ final class CheckTest
         \file_put_contents($this->dir . '/src/Text.php', self::TEXT);
         \file_put_contents($this->dir . '/src/math.php', self::MATH);
         \file_put_contents($this->dir . '/.gitignore', "/.opmin-cache/\n");
+        \file_put_contents($this->dir . '/opmin.yaml', '');
 
         $this->git('init', '-q');
         $this->git('checkout', '-q', '-b', 'main');

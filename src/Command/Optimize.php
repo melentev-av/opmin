@@ -108,8 +108,7 @@ final class Optimize extends Stage
 
         /** @var list<string> $arguments */
         $arguments = $input->getArgument('path');
-        $urls = \array_values(\array_filter($arguments, static fn(string $a): bool => \preg_match('~^(?:git@|[a-z][a-z0-9+.-]*://)~i', $a) === 1));
-        if ($urls !== []) {
+        if (self::packageMode($arguments)) {
             return $this->package($input, $output, $style, $arguments);
         }
 
@@ -249,6 +248,32 @@ final class Optimize extends Stage
         $failed = $report->finalTests === false || \array_filter($report->steps, static fn(StepReport $s): bool => $s->error !== null) !== [];
 
         return $failed ? Command::FAILURE : Command::SUCCESS;
+    }
+
+    /**
+     * A git package is optimized in a clone with its own config: the current directory needs none.
+     */
+    #[\Override]
+    protected function requiresConfig(InputInterface $input): bool
+    {
+        /** @var list<string> $arguments */
+        $arguments = $input->getArgument('path');
+
+        return !self::packageMode($arguments);
+    }
+
+    /**
+     * @param list<string> $arguments
+     */
+    private static function packageMode(array $arguments): bool
+    {
+        foreach ($arguments as $argument) {
+            if (\preg_match('~^(?:git@|[a-z][a-z0-9+.-]*://)~i', $argument) === 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

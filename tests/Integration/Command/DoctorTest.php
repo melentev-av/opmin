@@ -61,11 +61,24 @@ final class DoctorTest
 
         Assert::same($code, 1);
         Assert::string($out)
-            ->startsWith(' ✘ php.binary: `opmin-no-such-php` cannot be started.')
+            ->startsWith(' ✔ config: ')
+            ->contains(' ✘ php.binary: `opmin-no-such-php` cannot be started.')
             ->contains('Fix: Install PHP')
             ->contains('- harness: not checked')
             ->contains('- syntax: not checked')
             ->contains('1 problem(s) block opmin');
+    }
+
+    public function aMissingConfigIsAnError(): void
+    {
+        \unlink($this->dir . '/opmin.yaml');
+
+        [$code, $out] = $this->doctor('--set=php.binary=' . TestPhp::path(), '--set=commands.phpstan=null');
+
+        Assert::same($code, 1);
+        Assert::string($out)->ignoringWhitespace(lineBreaks: true)
+            ->startsWith(' ✘ config: no opmin.yaml in')
+            ->contains('Fix: Run opmin init here.');
     }
 
     public function namesFilesWithSyntaxPhpBinaryCannotParse(): void

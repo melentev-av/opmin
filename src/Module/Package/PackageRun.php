@@ -180,6 +180,11 @@ final readonly class PackageRun
         }
     }
 
+    private static function configured(Checkout $checkout): bool
+    {
+        return $checkout->dir->join('opmin.yaml')->isFile() || $checkout->dir->join('opmin.yaml.dist')->isFile();
+    }
+
     /**
      * The image for the package: `package.docker_image` with the PHP minor of `php.target`, or the newest
      * minor the package allows.
@@ -327,7 +332,7 @@ final readonly class PackageRun
      */
     private function paths(Checkout $checkout): array
     {
-        if ($this->paths !== [] || $checkout->dir->join('opmin.yaml')->isFile() || $checkout->dir->join('opmin.yaml.dist')->isFile()) {
+        if ($this->paths !== [] || self::configured($checkout)) {
             return $this->paths;
         }
 
@@ -343,7 +348,15 @@ final readonly class PackageRun
      */
     private function optimize(Checkout $checkout, ?string $image, array $paths): int
     {
-        $arguments = [...$this->innerOptions, '--', ...$paths];
+        $config = [];
+        if (!self::configured($checkout)) {
+            # opmin needs a config; the package has none: an empty one next to the clone, so the patch and the
+            # work tree of the package stay clean, and the cache lands in the workspace with it.
+            \file_put_contents((string) $checkout->workspace->join('opmin.yaml'), "# Written by opmin: the package has no config of its own.\n");
+            $config[] = '--config=../opmin.yaml';
+        }
+
+        $arguments = [...$this->innerOptions, ...$config, '--', ...$paths];
         $command = $image === null
             ? [...Installation::current()->command(), 'optimize', ...$arguments]
             : [...$this->docker($checkout, $image, network: false), 'opmin', 'optimize', ...$arguments];

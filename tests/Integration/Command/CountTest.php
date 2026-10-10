@@ -31,6 +31,7 @@ final class CountTest
         $this->dir = (string) \realpath(\sys_get_temp_dir()) . '/opmin-count-' . \bin2hex(\random_bytes(4));
         \mkdir($this->dir . '/src', 0777, true);
         \file_put_contents($this->dir . '/composer.json', '{"require": {"php": ">=8.1"}}');
+        \file_put_contents($this->dir . '/opmin.yaml', '');
     }
 
     #[AfterTest]
@@ -94,7 +95,19 @@ final class CountTest
         Assert::same($compiledThird, 2);
     }
 
-    public function cacheOfPackageInMonorepoIsInCurrentDirectoryWithoutConfig(): void
+    public function refusesToRunWithoutConfig(): void
+    {
+        \unlink($this->dir . '/opmin.yaml');
+        \file_put_contents("{$this->dir}/src/A.php", "<?php\nfunction a() { return 1; }\n");
+
+        [$code, , $err] = $this->opmin('count');
+
+        Assert::same($code, 2);
+        Assert::string($err)->ignoringWhitespace(lineBreaks: true)->contains('No opmin.yaml in')->contains('opmin init');
+        Assert::false(\file_exists("{$this->dir}/.opmin-cache"));
+    }
+
+    public function cacheOfPackageInMonorepoIsNextToTheConfig(): void
     {
         \mkdir("{$this->dir}/packages/http/src", 0777, true);
         \file_put_contents("{$this->dir}/packages/http/composer.json", '{}');

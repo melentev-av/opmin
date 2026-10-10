@@ -117,7 +117,7 @@ opmin diff before.json after.json                   # per function: fewer / more
   reports taken with different ones.
 - Counts are cached in `.opmin-cache/` by file content, PHP version, optimizer settings and opmin version:
   re-counting an unchanged project does not start PHP for compilation at all. A relative `cache.dir` is next to
-  the config in use (the current directory without one), so in a monorepo the packages share the root's cache.
+  the config in use, so in a monorepo the packages share the root's cache.
   `cache.driver: memory` keeps counts and references for one run only, without a file per entry on disk.
 
 ## Verifying behavior
@@ -401,7 +401,10 @@ fallback, and `\trim()` removes the fallback.
 
 ## Configuration
 
-`opmin.yaml` (or `opmin.yaml.dist`) in the project root; `opmin init` generates it with all keys. Unknown keys and
+`opmin.yaml` (or `opmin.yaml.dist`) in the project root; `opmin init` generates it with all keys. The commands that
+analyze a project (`count`, `verify`, `optimize`, `check`, `baseline`, `llm:*`, `apply-candidate`) refuse to run
+without it (exit code 2): they read their settings from it and keep the cache next to it. A git package
+(`opmin optimize <git-url>`) without its own config gets an empty one beside the clone. Unknown keys and
 wrong types are errors naming the key. Any key can be overridden for one run:
 
 ```bash

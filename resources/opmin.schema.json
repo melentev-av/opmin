@@ -481,7 +481,7 @@
             "additionalProperties": false,
             "properties": {
                 "dir": {
-                    "description": "Cache directory; a relative one is next to the config file, or in the current directory without one (add it to .gitignore)",
+                    "description": "Cache directory; a relative one is next to the config file (add it to .gitignore)",
                     "type": "string",
                     "minLength": 1,
                     "default": ".opmin-cache"

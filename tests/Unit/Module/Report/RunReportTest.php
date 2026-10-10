@@ -84,7 +84,7 @@ final class RunReportTest
         $fqn->accepted[] = ['file' => 'src/Cart.php', 'function' => 'App\Cart::total', 'gain' => 4, 'status' => 'diff-tested', 'checks' => [
             ['key' => 'App\Cart::total', 'status' => 'diff-tested', 'coverage' => 100.0, 'inputs' => 210, 'tests' => ['Tests\CartTest::total']],
         ]];
-        $fqn->reject('src/Cart.php', 'App\Cart::name', 'gain 0 is below readability.min_gain');
+        $fqn->reject('src/Cart.php', 'App\Cart::name', 'saves no opcodes');
         $fqn->reject('src/Cart.php', 'App\Cart::price', 'differential test: return differs: 1.5 vs 1', [
             'test' => 'runs/20261007-120000/counterexamples/CartPriceTest.php',
             'input' => ['args' => [['kind' => 'string', 'value' => '1.5']]],
@@ -106,7 +106,7 @@ final class RunReportTest
             ['key' => 'App\Cart::total::{closure#1}', 'status' => 'diff-tested', 'coverage' => null, 'inputs' => null, 'tests' => []],
             ['key' => 'App\Cart::total::{closure#2}', 'status' => 'tests', 'coverage' => 0.0, 'inputs' => 0, 'tests' => ['Tests\CartTest::io']],
         ]];
-        $llm->reject('src/Cart.php', 'App\Cart::total', 'cyclomatic complexity grew by 1');
+        $llm->reject('src/Cart.php', 'App\Cart::total', 'cyclomatic complexity grew by 1 (more branches; readability.max_cyclomatic_increase is 0)');
         $report->steps[] = $llm;
 
         return $report;

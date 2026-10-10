@@ -49,9 +49,9 @@ final class ReadabilityTest
     }
 
     #[DataSet([1, 1, false, null], 'a gain of one on one line')]
-    #[DataSet([0, 1, false, 'gain 0 is below readability.min_gain'], 'no gain')]
+    #[DataSet([0, 1, false, 'saves no opcodes'], 'no gain')]
     #[DataSet([-2, 1, false, 'opcodes grew by 2'], 'growth')]
-    #[DataSet([1, 3, false, 'gain 1 for 3 changed line(s) is below readability.min_gain_per_line 0.5'], 'not worth the lines')]
+    #[DataSet([1, 3, false, 'saves 1 opcode(s) for 3 changed line(s), less than readability.min_gain_per_line 0.5 per line'], 'not worth the lines')]
     #[DataSet([0, 3, true, null], 'executed gain: not growing is enough')]
     #[DataSet([-1, 1, true, 'opcodes grew by 1'], 'executed gain: growth')]
     public function rejectsChangesNotWorthIt(int $gain, int $lines, bool $executed, ?string $reason): void
@@ -64,10 +64,10 @@ final class ReadabilityTest
         $readability = new Readability(new Schema\Readability());
         $flat = self::function('return $a;');
 
-        Assert::same($readability->compare($flat, self::function('return $a ? 1 : 2;')), 'cyclomatic complexity grew by 1');
-        Assert::same($readability->compare(self::function('if ($a) { return 1; } return 2;'), self::function('if ($a) { if ($b) { return 1; } } return 2;')), 'cyclomatic complexity grew by 1');
-        Assert::same($readability->compare(self::function('if ($a) {} if ($b) {}'), self::function('if ($a) { if ($b) {} }')), 'nesting grew by 1');
-        Assert::same($readability->compare(self::function('$x = f(); if ($x) {}'), self::function('if ($x = f()) {}')), 'introduces assignment_in_condition');
+        Assert::same($readability->compare($flat, self::function('return $a ? 1 : 2;')), 'cyclomatic complexity grew by 1 (more branches; readability.max_cyclomatic_increase is 0)');
+        Assert::same($readability->compare(self::function('if ($a) { return 1; } return 2;'), self::function('if ($a) { if ($b) { return 1; } } return 2;')), 'cyclomatic complexity grew by 1 (more branches; readability.max_cyclomatic_increase is 0)');
+        Assert::same($readability->compare(self::function('if ($a) {} if ($b) {}'), self::function('if ($a) { if ($b) {} }')), 'nesting grew by 1 (code more levels deep; readability.max_nesting_increase is 0)');
+        Assert::same($readability->compare(self::function('$x = f(); if ($x) {}'), self::function('if ($x = f()) {}')), 'introduces assignment_in_condition (forbidden by readability.forbid_patterns)');
         Assert::same($readability->compare(self::function('return $a;'), self::function('return $a;')), null);
     }
 

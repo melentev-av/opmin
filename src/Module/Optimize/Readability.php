@@ -96,12 +96,22 @@ final readonly class Readability
      */
     public function reject(int $gain, int $changedLines, ?Node\FunctionLike $before, ?Node\FunctionLike $after, bool $executedGain): ?string
     {
-        if ($executedGain ? $gain < 0 : $gain < \max(1, $this->config->minGain)) {
-            return $gain < 0 ? 'opcodes grew by ' . -$gain : "gain {$gain} is below readability.min_gain";
+        $minGain = \max(1, $this->config->minGain);
+        if ($executedGain ? $gain < 0 : $gain < $minGain) {
+            return match (true) {
+                $gain < 0 => 'opcodes grew by ' . -$gain,
+                $gain === 0 => 'saves no opcodes',
+                default => "saves only {$gain} opcode(s), readability.min_gain is {$minGain}",
+            };
         }
 
         if (!$executedGain && $changedLines > 0 && $gain / $changedLines < $this->config->minGainPerLine) {
-            return \sprintf('gain %d for %d changed line(s) is below readability.min_gain_per_line %s', $gain, $changedLines, $this->config->minGainPerLine);
+            return \sprintf(
+                'saves %d opcode(s) for %d changed line(s), less than readability.min_gain_per_line %s per line',
+                $gain,
+                $changedLines,
+                $this->config->minGainPerLine,
+            );
         }
 
         return $before === null || $after === null ? null : $this->compare($before, $after);
@@ -114,18 +124,18 @@ final readonly class Readability
     {
         $complexity = self::complexity($after) - self::complexity($before);
         if ($complexity > $this->config->maxCyclomaticIncrease) {
-            return "cyclomatic complexity grew by {$complexity}";
+            return "cyclomatic complexity grew by {$complexity} (more branches; readability.max_cyclomatic_increase is {$this->config->maxCyclomaticIncrease})";
         }
 
         $nesting = self::nesting($after) - self::nesting($before);
         if ($nesting > $this->config->maxNestingIncrease) {
-            return "nesting grew by {$nesting}";
+            return "nesting grew by {$nesting} (code more levels deep; readability.max_nesting_increase is {$this->config->maxNestingIncrease})";
         }
 
         $was = self::patterns($before);
         foreach (self::patterns($after) as $pattern => $count) {
             if (\in_array($pattern, $this->config->forbidPatterns, true) && $count > $was[$pattern]) {
-                return "introduces {$pattern}";
+                return "introduces {$pattern} (forbidden by readability.forbid_patterns)";
             }
         }
 

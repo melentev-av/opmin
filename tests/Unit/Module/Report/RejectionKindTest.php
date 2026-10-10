@@ -22,15 +22,18 @@ final class RejectionKindTest
      */
     public static function reasons(): iterable
     {
-        yield 'no gain' => ['gain 0 is below readability.min_gain', RejectionKind::NoGain];
+        yield 'no gain' => ['saves no opcodes', RejectionKind::NoGain];
+        yield 'too little gain' => ['saves only 1 opcode(s), readability.min_gain is 2', RejectionKind::NoGain];
+        yield 'no gain, earlier wording' => ['gain 0 is below readability.min_gain', RejectionKind::NoGain];
         yield 'grew' => ['opcodes grew by 2', RejectionKind::NoGain];
         yield 'same candidate' => ['the candidate does not change the function', RejectionKind::NoGain];
         yield 'whole file grew' => ['the file changes outside functions, so it is all or nothing: opcodes grew in App\f, App\g', RejectionKind::NoGain];
         yield 'outside functions only' => ['the file changes outside functions, so it is all or nothing: changes outside functions only', RejectionKind::NoGain];
-        yield 'gain per line' => ['gain 1 for 4 changed line(s) is below readability.min_gain_per_line 0.5', RejectionKind::Readability];
-        yield 'complexity' => ['cyclomatic complexity grew by 1', RejectionKind::Readability];
-        yield 'closure nesting' => ['App\f::{closure#1}: nesting grew by 1', RejectionKind::Readability];
-        yield 'pattern' => ['introduces nested_ternary', RejectionKind::Readability];
+        yield 'gain per line' => ['saves 1 opcode(s) for 4 changed line(s), less than readability.min_gain_per_line 0.5 per line', RejectionKind::Readability];
+        yield 'gain per line, earlier wording' => ['gain 1 for 4 changed line(s) is below readability.min_gain_per_line 0.5', RejectionKind::Readability];
+        yield 'complexity' => ['cyclomatic complexity grew by 1 (more branches; readability.max_cyclomatic_increase is 0)', RejectionKind::Readability];
+        yield 'closure nesting' => ['App\f::{closure#1}: nesting grew by 1 (code more levels deep; readability.max_nesting_increase is 0)', RejectionKind::Readability];
+        yield 'pattern' => ['introduces nested_ternary (forbidden by readability.forbid_patterns)', RejectionKind::Readability];
         yield 'ignored' => ['excluded by the user (ignore)', RejectionKind::Ignored];
         yield 'eval' => ['App\f uses eval or include: never changed', RejectionKind::Dynamic];
         yield 'line numbers' => ['App\f depends on line numbers: never changed', RejectionKind::Dynamic];
@@ -67,5 +70,12 @@ final class RejectionKindTest
         $titles = \array_map(static fn(RejectionKind $k): string => $k->title(), RejectionKind::cases());
 
         Assert::same(\count(\array_unique($titles)), \count(RejectionKind::cases()));
+    }
+
+    public function everyKindHasADescription(): void
+    {
+        $descriptions = \array_map(static fn(RejectionKind $k): string => $k->description(), RejectionKind::cases());
+
+        Assert::same(\count(\array_unique($descriptions)), \count(RejectionKind::cases()));
     }
 }

@@ -130,7 +130,7 @@ final class OptimizeTest
         }
 
         Assert::string($reasons['App\Text::upper'] ?? '')->contains('excluded by the user');
-        Assert::string($reasons['App\Text::encode'] ?? '')->contains('min_gain');
+        Assert::same($reasons['App\Text::encode'] ?? '', 'saves no opcodes');
         Assert::string($reasons['App\Text::save'] ?? '')->contains('not proven');
         # The rule itself respects `@opmin-ignore`: nothing to roll back.
         Assert::false(isset($reasons['App\Text::untouched']));

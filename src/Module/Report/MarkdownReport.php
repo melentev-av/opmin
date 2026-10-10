@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Opmin\Module\Report;
 
+use Opmin\Module\Analysis\Flag;
+
 /**
  * `report.md`: `report.json` for people (brief, «Отчёт») — the total, the kept functions with what
  * saved their opcodes and how they are proven, the rolled-back changes grouped by reason with their
@@ -21,7 +23,14 @@ final class MarkdownReport
      */
     public static function render(array $report, string $title): string
     {
-        $out = ["# {$title}", ''];
+        $out = [
+            "# {$title}",
+            '',
+            'opmin rewrote functions so that PHP compiles them to fewer opcodes, and kept a change only when it',
+            'saved opcodes and the function behaved exactly as before. Opcodes are counted per function with',
+            'OPcache of `php.binary` (see Environment).',
+            '',
+        ];
         /** @var array<string, int|float> $totals */
         $totals = \is_array($report['totals'] ?? null) ? $report['totals'] : [];
         $before = (int) ($totals['ops_before'] ?? 0);
@@ -61,7 +70,13 @@ final class MarkdownReport
         self::rejected($out, $report);
         self::counterexamples($out, $report);
         self::environment($out, $report);
-        $notes = self::strings($report['notes'] ?? null);
+        # The formatter is already in Environment.
+        /** @var mixed $formatter */
+        $formatter = \is_array($report['environment'] ?? null) ? ($report['environment']['formatter'] ?? null) : null;
+        $notes = \array_values(\array_filter(
+            self::strings($report['notes'] ?? null),
+            static fn(string $note): bool => !\is_string($formatter) || $note !== "Formatter: {$formatter}",
+        ));
         if ($notes !== []) {
             $out[] = '## Notes';
             $out[] = '';
@@ -91,7 +106,7 @@ final class MarkdownReport
         \uksort($functions, static fn(string $a, string $b): int => [(int) ($functions[$b]['saved'] ?? 0), $a] <=> [(int) ($functions[$a]['saved'] ?? 0), $b]);
         $out[] = '## Changed functions';
         $out[] = '';
-        $out[] = '| Function | Opcodes | Saved by | Proof | Diff-test coverage | Project tests | Flags |';
+        $out[] = '| Function | Opcodes before → after | Saved by | Proven by | Behavior check | Project tests | Flags |';
         $out[] = '|---|---|---|---|---|---|---|';
         foreach ($functions as $key => $function) {
             /** @var list<array<string, mixed>> $gains */
@@ -108,13 +123,59 @@ final class MarkdownReport
                     . (($function['executed_gain'] ?? false) === true && (int) ($function['saved'] ?? 0) === 0 ? ' (executed: fewer)' : ''),
                 self::cell(\implode(', ', \array_unique($by))),
                 self::cell((string) ($function['status'] ?? '')) . self::time($function['time_change_percent'] ?? null),
-                $coverage !== null ? self::number($coverage) . '%' . (\is_int($function['inputs'] ?? null) ? ", {$function['inputs']} inputs" : '') : '—',
+                $coverage !== null ? (\is_int($function['inputs'] ?? null) ? "{$function['inputs']} inputs, " : '') . self::number($coverage) . '% of the original reached' : '—',
                 $runner ? (string) \count(self::strings($function['tests'] ?? null)) : '—',
                 self::cell(\implode(', ', self::strings($function['flags'] ?? null))),
             ]) . ' |';
         }
 
         $out[] = '';
+        $out[] = '- **Saved by**: the rules whose changes were kept; "LLM" is a rewrite by the LLM stage.';
+        $out[] = '- **Proven by**: `diff-tested` — the original and the changed function were called with the same';
+        $out[] = '  generated inputs and behaved the same (result, output, exceptions, warnings, changed arguments);';
+        $out[] = '  `tests` — the generated inputs could not prove it (side effects, too little of the code reached),';
+        $out[] = '  the project\'s tests that run the function pass; `unverified` — not proven, kept because';
+        $out[] = '  `verification.allow_unverified` is on. "time ±N%" is the speed change measured by `--guard-perf`.';
+        $out[] = '- **Behavior check**: how many generated inputs both versions got, and how much of the original';
+        $out[] = '  function\'s code those inputs reached. Below `verification.min_branch_coverage` the generated inputs';
+        $out[] = '  alone do not prove a change. "—": not checked this way.';
+        $out[] = '- **Project tests**: how many of the project\'s tests run the function; "—": no test runner.';
+        self::flagLegend($out, $functions);
+        $out[] = '';
+    }
+
+    /**
+     * What the flags in the table mean; only the flags that occur.
+     *
+     * @param list<string> $out
+     * @param array<string, array<string, mixed>> $functions
+     */
+    private static function flagLegend(array &$out, array $functions): void
+    {
+        $seen = [];
+        foreach ($functions as $function) {
+            foreach (self::strings($function['flags'] ?? null) as $value) {
+                $seen[$value] = true;
+            }
+        }
+
+        if ($seen === []) {
+            return;
+        }
+
+        $out[] = '- **Flags**: what in the function or the project limits the rewrites; the function:';
+        foreach (Flag::cases() as $flag) {
+            isset($seen[$flag->value]) and $out[] = "  - `{$flag->value}` — {$flag->description()};";
+            unset($seen[$flag->value]);
+        }
+
+        # A flag of a newer opmin, unknown here.
+        foreach (\array_keys($seen) as $value) {
+            $out[] = "  - `{$value}`;";
+        }
+
+        $last = \count($out) - 1;
+        $out[$last] = \rtrim($out[$last], ';') . '.';
     }
 
     /**
@@ -161,6 +222,9 @@ final class MarkdownReport
 
         $out[] = '## Rolled back';
         $out[] = '';
+        $out[] = 'Changes that were tried and taken back: the code of these functions stays as it was, or as an earlier';
+        $out[] = 'kept change left it. Grouped by the reason.';
+        $out[] = '';
         foreach (RejectionKind::cases() as $kind) {
             $group = $groups[$kind->value] ?? [];
             if ($group === []) {
@@ -168,6 +232,8 @@ final class MarkdownReport
             }
 
             $out[] = \sprintf('### %s (%d)', \ucfirst($kind->title()), \count($group));
+            $out[] = '';
+            $out[] = $kind->description();
             $out[] = '';
             $out[] = '| Function | Rule | Reason |';
             $out[] = '|---|---|---|';
@@ -245,6 +311,9 @@ final class MarkdownReport
             'formatter' => 'Formatter',
         ];
         $out[] = '## Environment';
+        $out[] = '';
+        $out[] = 'What the counts and checks depend on: opcode counts are comparable only between runs with the same';
+        $out[] = 'PHP version and OPcache optimizer settings.';
         $out[] = '';
         $out[] = '| | |';
         $out[] = '|---|---|';

@@ -60,6 +60,7 @@
         "platform": {
             "php": "8.3.16"
         },
+        "process-timeout": 0,
         "sort-packages": true,
         "allow-plugins": {
             "infection/extension-installer": true

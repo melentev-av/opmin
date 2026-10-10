@@ -208,7 +208,7 @@ opmin llm:finish                               # the full test run (taking back 
 - At most `llm.attempts_per_function` attempts per function. `#[\Opmin\Ignore(rules: ['llm'])]` /
   `@opmin-ignore llm` keeps a function away from this stage only.
 - The patterns the skill knows are measured on PHP 8.1–8.5 (`bin/bench --only=patterns`), including the ones that
-  usually give nothing: [resources/skills/opcode-minimize/SKILL.md](resources/skills/opcode-minimize/SKILL.md).
+  usually give nothing: [resources/skills/opcode-minimize/PATTERNS.md](resources/skills/opcode-minimize/PATTERNS.md).
 
 ## The report
 

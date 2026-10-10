@@ -123,7 +123,8 @@ opmin diff before.json after.json                   # per function: fewer / more
   otherwise; `sqlite` insists on the database (a config error, exit code 2, without `pdo_sqlite`); `files` is
   always a file per entry; `memory` keeps counts and references for one run only, nothing on disk. Both disk
   stores are shared by parallel runs; a corrupt or locked database only costs the cache, never the run
-  (`opmin doctor` names it — delete the file and the next run creates it anew).
+  (`opmin doctor` names it — delete the file and the next run creates it anew, or set
+  `cache.recreate_corrupt: true` to let runs do it).
 
 ## Verifying behavior
 

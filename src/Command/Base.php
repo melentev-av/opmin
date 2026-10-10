@@ -187,7 +187,7 @@ abstract class Base extends Command
         /** @var Schema\Cache $cacheConfig */
         $cacheConfig = $this->container->get(Schema\Cache::class);
 
-        return $this->cacheStore ??= StoreFactory::forThisPhp()->create($cacheConfig->driver, $this->cacheDir());
+        return $this->cacheStore ??= StoreFactory::forThisPhp()->create($cacheConfig->driver, $this->cacheDir(), $cacheConfig->recreateCorrupt);
     }
 
     /**

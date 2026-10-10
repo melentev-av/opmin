@@ -45,13 +45,14 @@ final readonly class StoreFactory
 
     /**
      * @param Path $dir `cache.dir`, absolute.
+     * @param bool $recreateCorrupt `cache.recreate_corrupt`.
      *
      * @throws ConfigException `sqlite` without `pdo_sqlite`.
      */
-    public function create(CacheDriver $configured, Path $dir): Store
+    public function create(CacheDriver $configured, Path $dir, bool $recreateCorrupt = false): Store
     {
         return match ($this->driver($configured)) {
-            CacheDriver::Sqlite => new SqliteStore($dir),
+            CacheDriver::Sqlite => new SqliteStore($dir, recreateCorrupt: $recreateCorrupt),
             CacheDriver::Memory => new MemoryStore(),
             default => new FileStore($dir),
         };

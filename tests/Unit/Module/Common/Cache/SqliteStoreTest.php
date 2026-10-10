@@ -72,6 +72,36 @@ final class SqliteStoreTest
 
         Assert::null($store->get('count', 'ab12'));
         Assert::string((string) $store->error())->contains('cache.sqlite');
+        # Without cache.recreate_corrupt the file is the user's to delete.
+        Assert::same(\file_get_contents($this->dir . '/cache.sqlite'), \str_repeat('not a database ', 1000));
+    }
+
+    public function corruptDatabaseIsRecreatedWhenAllowed(): void
+    {
+        \mkdir($this->dir);
+        \file_put_contents($this->dir . '/cache.sqlite', \str_repeat('not a database ', 1000));
+        \file_put_contents($this->dir . '/cache.sqlite-wal', 'stale');
+        $store = new SqliteStore(Path::create($this->dir), recreateCorrupt: true);
+
+        $store->set('count', 'ab12', '{"a":1}');
+
+        Assert::null($store->error());
+        Assert::same((new SqliteStore(Path::create($this->dir)))->get('count', 'ab12'), '{"a":1}');
+    }
+
+    public function lockedDatabaseIsNotRecreated(): void
+    {
+        (new SqliteStore(Path::create($this->dir)))->set('count', 'ab12', 'kept');
+        $other = new \PDO('sqlite:' . $this->dir . '/cache.sqlite');
+        $other->exec('PRAGMA locking_mode = EXCLUSIVE');
+        $other->exec('BEGIN EXCLUSIVE');
+        $store = new SqliteStore(Path::create($this->dir), busyTimeoutMs: 50, recreateCorrupt: true);
+
+        $store->set('count', 'cd34', 'mine');
+        $other->exec('COMMIT');
+        unset($other);
+
+        Assert::same((new SqliteStore(Path::create($this->dir)))->get('count', 'ab12'), 'kept');
     }
 
     public function directoryThatCannotBeCreatedIsAMiss(): void

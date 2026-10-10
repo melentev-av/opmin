@@ -75,6 +75,7 @@ final class ConfigSchemaTest
             'git.require_clean',
             'cache.dir',
             'cache.driver',
+            'cache.recreate_corrupt',
         );
     }
 

@@ -721,6 +721,7 @@ git:
 cache:
   dir: .opmin-cache      # добавить в .gitignore при init
   driver: auto           # auto — SQLite (cache.sqlite в cache.dir), если у PHP, на котором работает opmin, есть pdo_sqlite, иначе files | sqlite — без pdo_sqlite ошибка конфига | files — JSON-файл на запись | memory — только на прогон
+  recreate_corrupt: false  # битую базу SQLite удалить и начать заново; false — прогон идёт без кэша, opmin doctor называет файл
 ```
 
 ## Поставка

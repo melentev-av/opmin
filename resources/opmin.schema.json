@@ -495,6 +495,11 @@
                         "memory"
                     ],
                     "default": "auto"
+                },
+                "recreate_corrupt": {
+                    "description": "Delete a corrupt SQLite cache and start an empty one; off: the run works without the cache, opmin doctor reports the file to delete",
+                    "type": "boolean",
+                    "default": false
                 }
             }
         }

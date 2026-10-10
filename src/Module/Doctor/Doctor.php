@@ -437,7 +437,8 @@ final readonly class Doctor
             : Check::warning(
                 'cache',
                 "the SQLite database cannot be used, runs work without the cache: {$error}",
-                "Delete {$store->file()} (the next run creates it anew) or set cache.driver: files.",
+                "Delete {$store->file()} (the next run creates it anew), set cache.recreate_corrupt: true to let runs "
+                . 'do it, or set cache.driver: files.',
             );
     }
 }

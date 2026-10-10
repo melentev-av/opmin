@@ -143,7 +143,7 @@ final class Check extends Stage
 
         return new Suggester(
             $project,
-            $this->counter($php, $cacheDir),
+            $this->counter($php),
             new RectorRunner($project, $cacheDir, $phpTarget),
             RuleCatalog::build($rectorConfig, $standard, null, [], $phpTarget),
             $cacheDir->join('tmp'),

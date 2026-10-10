@@ -470,6 +470,14 @@
                     "type": "string",
                     "minLength": 1,
                     "default": ".opmin-cache"
+                },
+                "driver": {
+                    "description": "Storage of opcode counts and references: files (a JSON file per entry in cache.dir, kept between runs) | memory (this run only)",
+                    "enum": [
+                        "files",
+                        "memory"
+                    ],
+                    "default": "files"
                 }
             }
         }

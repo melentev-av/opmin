@@ -4,13 +4,12 @@ declare(strict_types=1);
 
 namespace Opmin\Module\Opcode;
 
-use Internal\Path;
 use Opmin\Info;
-use Opmin\Module\Common\FileSystem\FS;
+use Opmin\Module\Common\Cache\Store;
 use Opmin\Module\Php\PhpBinary;
 
 /**
- * Cache of per-file opcode counts in `cache.dir`.
+ * Cache of per-file opcode counts (`cache.driver`).
  *
  * Key: the file's path and content hash, `PHP_VERSION` of `php.binary`, the optimizer hash, the opmin
  * version and {@see self::FORMAT}. Only successful counts are stored: a crash or a timeout may not
@@ -24,7 +23,7 @@ final class CountCache
     private const FORMAT = 2;
 
     public function __construct(
-        private readonly Path $dir,
+        private readonly Store $store,
         private readonly PhpBinary $php,
     ) {}
 
@@ -50,9 +49,9 @@ final class CountCache
      */
     public function get(string $key): ?array
     {
-        $raw = @\file_get_contents((string) $this->path($key));
+        $raw = $this->store->get('count', $key);
         /** @var mixed $data */
-        $data = $raw === false ? null : \json_decode($raw, true);
+        $data = $raw === null ? null : \json_decode($raw, true);
         if (!\is_array($data) || ($data['key'] ?? null) !== $key || !\is_array($data['functions'] ?? null)) {
             return null;
         }
@@ -82,19 +81,6 @@ final class CountCache
             $data['functions'][$function->key] = $function->toArray();
         }
 
-        $path = $this->path($key);
-        FS::mkdir((string) $path->parent());
-        # Write and rename: a parallel or interrupted run never sees a half-written entry.
-        $tmp = (string) $path . '.' . \bin2hex(\random_bytes(4)) . '.tmp';
-        \file_put_contents($tmp, \json_encode($data, \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE));
-        \rename($tmp, (string) $path);
-    }
-
-    /**
-     * @param non-empty-string $key
-     */
-    private function path(string $key): Path
-    {
-        return $this->dir->join('count', \substr($key, 0, 2), $key . '.json');
+        $this->store->set('count', $key, \json_encode($data, \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE));
     }
 }

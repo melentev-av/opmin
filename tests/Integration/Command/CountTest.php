@@ -120,6 +120,18 @@ final class CountTest
         Assert::false(\file_exists("{$this->dir}/.cache"));
     }
 
+    public function memoryDriverWritesNoEntries(): void
+    {
+        \file_put_contents("{$this->dir}/src/A.php", "<?php\nfunction a() { return call_user_func('b'); }\n");
+
+        [$code, $json] = $this->opmin('count', '--format=json', '--set=cache.driver=memory');
+
+        Assert::same($code, 0);
+        Assert::array(self::decode($json)['functions'])->hasKeys('a');
+        Assert::false(\file_exists("{$this->dir}/.opmin-cache/count"));
+        Assert::false(\file_exists("{$this->dir}/.opmin-cache/refs"));
+    }
+
     public function reportsFilesThatCannotBeCompiledAndCountsTheRest(): void
     {
         \file_put_contents("{$this->dir}/src/Good.php", "<?php\nfunction good() { return 1; }\n");

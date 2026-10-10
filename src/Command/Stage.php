@@ -8,6 +8,7 @@ use Internal\Path;
 use Opmin\Module\Analysis\ReferenceIndex;
 use Opmin\Module\Common\Cpu;
 use Opmin\Module\Config\Schema;
+use Opmin\Module\Config\Schema\RequireClean;
 use Opmin\Module\Opcode\CountCache;
 use Opmin\Module\Opcode\Dump\OpcacheDumper;
 use Opmin\Info;
@@ -26,6 +27,8 @@ use Opmin\Module\Project\Project;
 use Opmin\Module\Project\Targets;
 use Opmin\Module\Report\Environment;
 use Opmin\Module\Verification\Verifier;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
@@ -37,6 +40,9 @@ use Symfony\Component\Console\Output\OutputInterface;
  */
 abstract class Stage extends Base
 {
+    /** Turns on the clean check of the run's files when `git.require_clean` is `off`. */
+    protected const string WITH_GIT = 'with-git';
+
     /**
      * The target files without excluded, ignored, vendor and generated ones.
      *
@@ -102,20 +108,33 @@ abstract class Stage extends Base
     }
 
     /**
+     * Adds `--with-git` to a command that commits its steps ({@see self::workspace()}).
+     */
+    protected function addWithGitOption(): void
+    {
+        $this->addOption(self::WITH_GIT, null, InputOption::VALUE_NONE, 'Require the files of the run to be committed (git.require_clean: targets)');
+    }
+
+    /**
      * @param list<Path> $targets The files the run may change.
-     * @throws \RuntimeException When the files `git.require_clean` asks for are not clean.
+     * @throws \RuntimeException When the files `git.require_clean` (or `--with-git`) asks for are not clean.
      */
     protected function workspace(Project $project, Path $runDir, bool $dryRun, array $targets): Workspace
     {
         /** @var Schema\Git $git */
         $git = $this->container->get(Schema\Git::class);
+        /** @var InputInterface $input */
+        $input = $this->container->get(InputInterface::class);
+        $requireClean = $git->requireClean === RequireClean::Off && $input->hasOption(self::WITH_GIT) && $input->getOption(self::WITH_GIT)
+            ? RequireClean::Targets
+            : $git->requireClean;
 
         return Workspace::create(
             $project,
             $runDir,
             $dryRun,
             $this->ignoredPaths($project),
-            $git->requireClean,
+            $requireClean,
             \array_map($project->relative(...), $targets),
         );
     }

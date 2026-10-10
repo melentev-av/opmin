@@ -21,8 +21,9 @@ did not report.
 2. Work on a branch of this run: every accepted candidate becomes a commit of its file. On the
    default branch or a branch shared with other work, create one for the run
    (`git switch -c opmin/<short-name>`). The files you will optimize must have no uncommitted
-   changes (other files may stay dirty): if they do, ask the user to commit or stash them and wait
-   for them; do not do it yourself.
+   changes (other files may stay dirty), or the user's edits land in your commits: check
+   `git status` and, if they do, ask the user to commit or stash them and wait for them; do not do
+   it yourself.
 3. Stage A (`opmin optimize`) should run first: it does the mechanical rewrites (fully qualified
    calls, repeated reads) safely and in bulk. This stage is for what rules cannot do.
 

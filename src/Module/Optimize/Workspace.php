@@ -15,8 +15,8 @@ use Symfony\Component\Process\Process;
  * «Команда `opmin optimize`», «Целевая кодовая база»):
  *
  * - in a git working tree (the project's files are tracked) every accepted step is a commit of the
- *   files it changed, so those must be clean (`git.require_clean`); other files may stay dirty, and
- *   every git command that changes the tree names its paths;
+ *   files it changed, so those should be clean (checked under `git.require_clean`, off by default);
+ *   other files may stay dirty, and every git command that changes the tree names its paths;
  * - outside git, the originals are copied to `runs/<ts>/original/` before the first change;
  * - with `--dry-run` nothing stays changed: the originals are restored at the end.
  *

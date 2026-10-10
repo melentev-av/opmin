@@ -47,6 +47,7 @@ final class ApplyCandidate extends LlmStage
         $this->addArgument('function', InputArgument::REQUIRED, 'Key of the function, as `llm:targets` prints it');
         $this->addArgument('source', InputArgument::OPTIONAL, 'File with the new source of the function, `-` for stdin', '-');
         $this->addOption('allow-public-signatures', null, InputOption::VALUE_NONE, 'Allow native type changes of public overridable methods');
+        $this->addWithGitOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int

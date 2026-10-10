@@ -466,13 +466,13 @@
             "additionalProperties": false,
             "properties": {
                 "require_clean": {
-                    "description": "targets — the files the run may change must be clean; all — the whole tree; off — no check",
+                    "description": "off — no check (--with-git turns on targets for one run); targets — the files the run may change must be clean; all — the whole tree",
                     "enum": [
                         "targets",
                         "all",
                         "off"
                     ],
-                    "default": "targets"
+                    "default": "off"
                 }
             }
         },

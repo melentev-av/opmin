@@ -44,7 +44,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * workspace, in Docker unless `--no-docker`: see {@see PackageRun}. The report and the patch land in the
  * current directory.
  *
- * In a git working tree (its target files must be clean) every accepted step is a commit; outside
+ * In a git working tree every accepted step is a commit (`--with-git`: its target files must be clean); outside
  * git the originals are copied to `runs/<ts>/original/`; `--dry-run` restores everything at the end.
  * Every run writes `runs/<ts>/`: the counts before and after, `report.json`, `opmin.patch`, counterexamples.
  *
@@ -91,6 +91,7 @@ final class Optimize extends Stage
         $this->addOption('no-docker', null, InputOption::VALUE_NONE, 'Do not re-run inside Docker in git package mode');
         $this->addOption('allow-scripts', null, InputOption::VALUE_NONE, 'Run composer scripts and plugins of a git package');
         $this->addOption('yes', 'y', InputOption::VALUE_NONE, 'Do not ask before running tests of foreign code');
+        $this->addWithGitOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int

@@ -161,9 +161,10 @@ opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
 - In a git working tree every accepted step is a commit of its files; outside git the originals are copied to
   `runs/<ts>/original/`; `--dry-run` restores everything. Each run writes the report (below), the counts before
   and after and `opmin.patch`, and ends with a full run of the project's tests.
-- Under git the files the run may change must be committed; other files may stay dirty, opmin's commits and
-  rollbacks never touch them. `git.require_clean: all` asks for a clean tree instead, `off` skips the check
-  (`--set=git.require_clean=off` for one run).
+- Under git opmin does not check the tree by default: its commits and rollbacks name their paths, so other dirty
+  files stay as they are, but your own uncommitted edits of a file the run changes go into opmin's commit.
+  `--with-git` (or `git.require_clean: targets`) requires the files the run may change to be committed, and
+  `git.require_clean: all` asks for a clean tree.
 - `--review` shows each change that passed every check — the diff of the function, `−N opcodes, rule X, checks:
   diff-tested 96% (210 inputs) ✓` — and asks `y` (apply), `n` (roll back and never propose again), `a` (apply this
   and the rest of the rule), `q` (roll back and end the run). Declined changes go to `opmin.baseline.yaml`

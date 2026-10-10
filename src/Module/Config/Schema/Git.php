@@ -15,6 +15,6 @@ use Opmin\Module\Common\Internal\Attribute\InflectableConfig;
 #[InflectableConfig]
 final class Git
 {
-    #[ConfigKey('git.require_clean', 'targets — the files the run may change must be clean; all — the whole tree; off — no check')]
-    public RequireClean $requireClean = RequireClean::Targets;
+    #[ConfigKey('git.require_clean', 'off — no check (--with-git turns on targets for one run); targets — the files the run may change must be clean; all — the whole tree')]
+    public RequireClean $requireClean = RequireClean::Off;
 }

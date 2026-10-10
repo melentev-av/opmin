@@ -31,6 +31,12 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 final class LlmFinish extends LlmStage
 {
+    public function configure(): void
+    {
+        parent::configure();
+        $this->addWithGitOption();
+    }
+
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         parent::execute($input, $output);

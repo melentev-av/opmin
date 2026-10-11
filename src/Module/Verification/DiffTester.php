@@ -102,6 +102,42 @@ final class DiffTester
     }
 
     /**
+     * Inputs both versions took in the last test ({@see self::perf()} times them); at most 1000.
+     *
+     * @return list<Input>
+     */
+    public function checkedInputs(): array
+    {
+        return $this->checkedInputs;
+    }
+
+    /**
+     * The verdict with the time of both versions on the given inputs, measured on its own: the guard-perf
+     * of a test that ran in another process ({@see DiffPool}), one after another so that nothing else
+     * runs at the same time.
+     *
+     * @param list<Input> $inputs
+     */
+    public function perf(DiffTask $task, Verdict $verdict, array $inputs): Verdict
+    {
+        try {
+            $original = $this->locator->locate($task->original, $task->key, $task->relative);
+            $changed = $this->locator->locate($task->changed, $task->key, $task->relative);
+        } catch (UnsupportedTarget) {
+            return $verdict;
+        }
+
+        $dir = $this->workDir->join('perf-' . \bin2hex(\random_bytes(6)));
+        FS::mkdir((string) $dir);
+        $this->checkedInputs = $inputs;
+        try {
+            return $this->timings->measure('diff_test.perf', fn(): Verdict => $this->withPerf($verdict, $task, $original, $changed, $dir));
+        } finally {
+            FS::remove($dir);
+        }
+    }
+
+    /**
      * @param array{array<string, mixed>, array<string, mixed>} $requests
      * @return array{array<string, mixed>, array<string, mixed>}
      */

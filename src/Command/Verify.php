@@ -47,6 +47,7 @@ final class Verify extends Base
         $this->addOption('function', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Function key to verify (default: every changed function)');
         $this->addOption('with-tests', null, InputOption::VALUE_NONE, 'Also run PHPStan and the project\'s tests (writes the candidate in place for the run)');
         $this->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table | json', 'table');
+        $this->addJobsOption();
     }
 
     #[\Override]
@@ -63,6 +64,12 @@ final class Verify extends Base
         $format = (string) $input->getOption('format');
         if (!\in_array($format, ['table', 'json'], true)) {
             $style->error("Unknown format `{$format}`: use table or json.");
+            return Command::INVALID;
+        }
+
+        $jobs = $this->applyJobsOption($input);
+        if ($jobs !== null) {
+            $style->error($jobs);
             return Command::INVALID;
         }
 

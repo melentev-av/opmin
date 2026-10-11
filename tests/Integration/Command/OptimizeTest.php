@@ -363,6 +363,31 @@ final class OptimizeTest
         Assert::true(\is_float($functions['App\Text::size']['time_change_percent'] ?? null) || \is_int($functions['App\Text::size']['time_change_percent'] ?? null));
     }
 
+    /**
+     * With tests in processes of their own, guard-perf times the kept changes afterwards, one by one.
+     */
+    public function guardPerfMeasuresTheKeptChangesOfParallelTests(): void
+    {
+        [$code, $out, $err] = $this->opmin('optimize', '--format=none', '--guard-perf', '--jobs=2', '--set=guard_perf.max_regression_percent=1000000');
+
+        Assert::same($code, 0, $out . $err);
+        $report = $this->report();
+        /** @var array<string, array<string, mixed>> $functions */
+        $functions = $report['functions'];
+        Assert::true(\is_float($functions['App\Text::size']['time_change_percent'] ?? null) || \is_int($functions['App\Text::size']['time_change_percent'] ?? null));
+        /** @var array{levels: array<string, mixed>} $timings */
+        $timings = $report['timings'];
+        Assert::array($timings['levels'])->hasKeys('diff_test.pool', 'diff_test.perf');
+    }
+
+    public function jobsMustBeANumber(): void
+    {
+        [$code, , $err] = $this->opmin('optimize', '--jobs=many');
+
+        Assert::same($code, 2);
+        Assert::string($err)->contains('--jobs takes a number');
+    }
+
     public function packageOptionsNeedAGitUrl(): void
     {
         [$code, , $err] = $this->opmin('optimize', '--ref=v1.0.0');

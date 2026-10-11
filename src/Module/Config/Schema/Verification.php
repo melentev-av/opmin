@@ -51,6 +51,10 @@ final class Verification
     #[ConfigKey('verification.memory_limit', 'memory_limit of harness workers')]
     public string $memoryLimit = '256M';
 
+    /** @var non-negative-int */
+    #[ConfigKey('verification.jobs', 'Differential tests at a time, each in its own process; 0 — auto: half of the CPU cores, at most 4, within the free memory (2 × memory_limit per test); 1 — one after another in the opmin process')]
+    public int $jobs = 0;
+
     #[ConfigKey('verification.allow_unverified', 'Change functions whose behavior is not proven')]
     public bool $allowUnverified = false;
 }

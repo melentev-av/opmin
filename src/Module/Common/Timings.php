@@ -63,6 +63,24 @@ final class Timings
     }
 
     /**
+     * Adds the levels and counters of another process ({@see self::toArray()}).
+     *
+     * @param array{levels?: array<non-empty-string, array{seconds: float, calls: int}>, counters?: array<non-empty-string, int>} $other
+     */
+    public function merge(array $other): void
+    {
+        foreach ($other['levels'] ?? [] as $level => $l) {
+            $this->levels[$level] ??= ['seconds' => 0.0, 'calls' => 0];
+            $this->levels[$level]['seconds'] += $l['seconds'];
+            $this->levels[$level]['calls'] += $l['calls'];
+        }
+
+        foreach ($other['counters'] ?? [] as $counter => $value) {
+            $this->count($counter, $value);
+        }
+    }
+
+    /**
      * Seconds since the timings were created: the wall time of the run.
      */
     public function wall(): float

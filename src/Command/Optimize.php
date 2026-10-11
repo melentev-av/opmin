@@ -87,6 +87,7 @@ final class Optimize extends Stage
         $this->addOption('allow-scripts', null, InputOption::VALUE_NONE, 'Run composer scripts and plugins of a git package');
         $this->addOption('yes', 'y', InputOption::VALUE_NONE, 'Do not ask before running tests of foreign code');
         $this->addWithGitOption();
+        $this->addJobsOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -106,6 +107,12 @@ final class Optimize extends Stage
                 $style->error("--{$option} is for a git package: opmin optimize <git-url> --ref=<tag>.");
                 return Command::INVALID;
             }
+        }
+
+        $jobs = $this->applyJobsOption($input);
+        if ($jobs !== null) {
+            $style->error($jobs);
+            return Command::INVALID;
         }
 
         if ($input->getOption('with-standard-rector') && $input->getOption('without-standard-rector')) {

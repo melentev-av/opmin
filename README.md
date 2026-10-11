@@ -158,6 +158,12 @@ opmin verify src/Cart.php /tmp/Cart.php --with-tests    # + php -l, PHPStan "no 
   (`$f = 'shell_exec'; $f(...)`), and the harness itself cannot start processes or send mail (`exec`,
   `shell_exec`, `system`, `passthru`, `proc_open`, `popen`, `pcntl_exec`, `mail` are disabled): a function that
   still reaches one stays unverified.
+- The differential tests of one step run `verification.jobs` at a time, each in a process of its own
+  (`--jobs=N` for one run). `0` (auto, the default) is half of the CPU cores — a test keeps two harness workers
+  busy — at most 4, within the free memory (2 × `verification.memory_limit` per test); `1` runs them one after
+  another in the opmin process. The inputs do not depend on it (`verification.seed`), but the time limits
+  (`call_timeout_ms`, `fuzz_time_ms`, `time_budget_ms`) do: for verdicts reproducible across machines, e.g. in
+  CI, use `--jobs=1`. `--guard-perf` times the kept changes afterwards, one by one.
 - Flags of `opmin count` (`compact`, `static_var`, `eval`, `io`…) say which constructs restrict a function.
 
 ## Optimizing (Stage A: Rector)

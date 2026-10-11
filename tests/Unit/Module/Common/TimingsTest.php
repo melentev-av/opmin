@@ -49,6 +49,20 @@ final class TimingsTest
         Assert::same($timings->toArray()['counters'], ['verify_files' => 3, 'verify_rounds' => 2]);
     }
 
+    public function mergeAddsTheTimingsOfAnotherProcess(): void
+    {
+        $timings = new Timings();
+        $timings->add('diff_test.inputs', 1.0);
+        $timings->count('fuzz_rounds', 2);
+        $timings->merge(['levels' => ['diff_test.inputs' => ['seconds' => 0.5, 'calls' => 3], 'diff_test.start' => ['seconds' => 0.25, 'calls' => 1]], 'counters' => ['fuzz_rounds' => 5]]);
+
+        Assert::same($timings->toArray()['levels'], [
+            'diff_test.inputs' => ['seconds' => 1.5, 'calls' => 4],
+            'diff_test.start' => ['seconds' => 0.25, 'calls' => 1],
+        ]);
+        Assert::same($timings->toArray()['counters'], ['fuzz_rounds' => 7]);
+    }
+
     public function linesListTheSlowestLevelFirst(): void
     {
         $timings = new Timings();

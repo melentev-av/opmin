@@ -148,8 +148,8 @@ final class Verifier
         }
 
         $autoload = $this->project->root->join('vendor/autoload.php');
-        $tester = new DiffTester($this->php, $this->verification, $work, $this->cacheDir->join('corpus'), measure: $this->guardPerf?->enabled ?? false, timings: $this->timings);
-        $results = [];
+        $tasks = [];
+        $owners = [];
         foreach ($files as [$file, $relative, $original, $candidate, $changed]) {
             $others = [];
             foreach ($files as [$otherFile, , $otherOriginal, $otherCandidate]) {
@@ -157,8 +157,7 @@ final class Verifier
             }
 
             foreach ($changed as $key) {
-                ($this->log)("Differential test of {$key}");
-                $verdict = $this->timings->measure('diff_test', static fn(): Verdict => $tester->verify(new DiffTask(
+                $tasks[] = new DiffTask(
                     $key,
                     $file,
                     $relative,
@@ -167,9 +166,16 @@ final class Verifier
                     $autoload->isFile() ? $autoload : null,
                     $others,
                     $staticErrors[(string) $file] ?? [],
-                )));
-                $results[] = $this->decide($key, $verdict, $testsOf[(string) $file][$key] ?? [], $testResult?->success ?? false, $runner, $original, $relative, $counterexamples);
+                );
+                $owners[] = [$file, $relative, $original];
             }
+        }
+
+        $pool = new DiffPool($this->php, $this->verification, $work, $this->cacheDir->join('corpus'), $this->timings, $this->log);
+        $results = [];
+        foreach ($pool->verify($tasks, $this->guardPerf?->enabled ?? false) as $i => $verdict) {
+            [$file, $relative, $original] = $owners[$i];
+            $results[] = $this->decide($tasks[$i]->key, $verdict, $testsOf[(string) $file][$tasks[$i]->key] ?? [], $testResult?->success ?? false, $runner, $original, $relative, $counterexamples);
         }
 
         return new CandidateReport($results, null, $phpstan, $runner?->name(), $testResult, $notes);

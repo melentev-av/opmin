@@ -267,6 +267,11 @@
                     "minLength": 1,
                     "default": "256M"
                 },
+                "jobs": {
+                    "description": "Differential tests at a time, each in its own process; 0 — auto: half of the CPU cores, at most 4, within the free memory (2 × memory_limit per test); 1 — one after another in the opmin process",
+                    "type": "integer",
+                    "default": 0
+                },
                 "allow_unverified": {
                     "description": "Change functions whose behavior is not proven",
                     "type": "boolean",

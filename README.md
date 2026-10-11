@@ -176,8 +176,25 @@ opmin optimize --review                # confirm every change: y / n / a (all of
 opmin optimize --resume                # continue the latest interrupted run (or --resume=.opmin/runs/<ts>)
 opmin optimize --guard-perf            # also roll back changes that make a function slower
 opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
+opmin optimize --plan                  # say what the run would use and exit: nothing is changed or tested
 ```
 
+- Every run starts with a header on stderr: the files and how many functions they have (the counts come from the
+  cache), the rules, the test runner, whether `php.binary` has a coverage driver, PHPStan, the formatter and the
+  differential tests at a time (`verification.jobs` resolved). When the runner is a plain `tests.command` or
+  there is neither pcov nor Xdebug, a warning says at once that every step runs the whole test suite.
+  `--plan` prints the header and exits with 0: no tests run, no files change, no run directory is written.
+
+  ```
+  Optimizing 12 file(s) of /app with 4 rule(s), PHP 8.4.1 (target 8.1), git: a commit per accepted step.
+    Functions: 230, 214 of them optimizable
+    Rules: FullyQualifyGlobalCallsRector, ExtractRepeatedPropertyFetchRector, ExtractRepeatedArrayDimFetchRector, HoistLoopInvariantCountRector
+    Tests: phpunit, the tests that cover a changed function
+    Coverage driver: yes (pcov or Xdebug in php.binary)
+    PHPStan: vendor/bin/phpstan
+    Formatter: vendor/bin/php-cs-fixer fix --quiet --path-mode=intersection {files} (detected)
+    Differential tests: 4 at a time (verification.jobs: 0, auto)
+  ```
 - Rules are applied one by one, in passes until a pass changes nothing (`rector.max_passes`). After each rule:
   the project's formatter on the changed files (Pint, PHP-CS-Fixer, ECS, PHPCBF — detected, or `commands.format`,
   `--format=none`), `php -l`, a count. A changed function is kept only when it saves opcodes, the gain is worth

@@ -12,6 +12,7 @@ use Opmin\Module\Optimize\Rector\RuleCatalog;
 use Opmin\Module\Optimize\Rector\RuleSpec;
 use Opmin\Module\Optimize\Review\ConsoleReviewer;
 use Opmin\Module\Optimize\Optimizer;
+use Opmin\Module\Optimize\RunHeader;
 use Opmin\Module\Optimize\RunReport;
 use Opmin\Module\Optimize\RunState;
 use Opmin\Module\Optimize\StepReport;
@@ -19,6 +20,7 @@ use Opmin\Module\Optimize\Workspace;
 use Opmin\Module\Package\PackageException;
 use Opmin\Module\Package\PackageRun;
 use Opmin\Module\Php\InternalSymbols;
+use Opmin\Module\Php\PhpBinary;
 use Opmin\Module\Php\PhpBinaryException;
 use Opmin\Module\Php\PhpBinaryProbe;
 use Opmin\Module\Project\Layout;
@@ -73,6 +75,7 @@ final class Optimize extends Stage
         $this->addArgument('path', InputArgument::IS_ARRAY, 'Files, directories, globs or a git URL');
         $this->addOption('ref', null, InputOption::VALUE_REQUIRED, 'Git ref (tag, branch) when the path is a git URL');
         $this->addOption('dry-run', null, InputOption::VALUE_NONE, 'Change nothing, only write the report and the patch');
+        $this->addOption('plan', null, InputOption::VALUE_NONE, 'Say what the run would use and exit: nothing is changed or tested');
         $this->addOption('review', null, InputOption::VALUE_NONE, 'Confirm every change interactively');
         $this->addOption('resume', null, InputOption::VALUE_OPTIONAL, 'Continue an interrupted run: the latest one or the given run directory');
         $this->addOption('guard-perf', null, InputOption::VALUE_NONE, 'Roll back changes that make code slower');
@@ -180,6 +183,13 @@ final class Optimize extends Stage
         $cacheDir = $this->cacheDir();
         $runDir = $state?->runDir ?? $this->newRunDir($project);
         $dryRun = (bool) ($options['dry_run'] ?? false);
+        if ($input->getOption('plan')) {
+            # Before the workspace and the restore of a resumed run: the plan changes nothing.
+            $header = $this->header($style, $state, $project, $runDir, $php, $files, $rules, 'plan: nothing is changed or tested');
+
+            return $header ? Command::SUCCESS : Command::INVALID;
+        }
+
         try {
             if ($state !== null) {
                 $rewritten = $state->restore($project->root);
@@ -193,16 +203,9 @@ final class Optimize extends Stage
             return Command::INVALID;
         }
 
-        $style->writeln(\sprintf(
-            '%s %d file(s) of %s with %d rule(s), PHP %s (target %s), %s.',
-            $state === null ? 'Optimizing' : 'Resuming ' . $project->relative($runDir) . ':',
-            \count($files),
-            (string) $project->root,
-            \count($rules),
-            $php->version,
-            $phpTarget ?? 'unknown',
-            $workspace->mode(),
-        ));
+        if (!$this->header($style, $state, $project, $runDir, $php, $files, $rules, $workspace->mode())) {
+            return Command::INVALID;
+        }
 
         if ($state === null) {
             $rules = $this->withRuntimeOptions($rules, $project, $cacheDir, $runDir, $php);
@@ -360,6 +363,48 @@ final class Optimize extends Stage
             $style->error($e->getMessage());
             return Command::INVALID;
         }
+    }
+
+    /**
+     * What the run will use ({@see RunHeader}), and a warning when every step runs the whole test suite.
+     *
+     * @param list<Path> $files
+     * @param list<RuleSpec> $rules
+     * @param string $mode How the files are changed.
+     * @return bool False when the test runner is misconfigured (printed as an error).
+     */
+    private function header(SymfonyStyle $style, ?RunState $state, Project $project, Path $runDir, PhpBinary $php, array $files, array $rules, string $mode): bool
+    {
+        /** @var Schema\Tests $tests */
+        $tests = $this->container->get(Schema\Tests::class);
+        /** @var Schema\Commands $commands */
+        $commands = $this->container->get(Schema\Commands::class);
+        /** @var Schema\Verification $verification */
+        $verification = $this->container->get(Schema\Verification::class);
+        $phpTarget = $this->phpTarget($project);
+        $title = \sprintf(
+            '%s %d file(s) of %s with %d rule(s), PHP %s (target %s), %s.',
+            $state === null ? 'Optimizing' : 'Resuming ' . $project->relative($runDir) . ':',
+            \count($files),
+            (string) $project->root,
+            \count($rules),
+            $php->version,
+            $phpTarget ?? 'unknown',
+            $mode,
+        );
+
+        try {
+            $header = RunHeader::detect($title, $project, $php, $files, $rules, $this->counter($php), $tests, $commands, $verification, $phpTarget, $this->cacheDir()->join('tmp'));
+        } catch (\InvalidArgumentException $e) {
+            $style->error($e->getMessage());
+            return false;
+        }
+
+        $style->writeln($header->lines());
+        $warning = $header->warning();
+        $warning === null or $style->warning($warning);
+
+        return true;
     }
 
     /**

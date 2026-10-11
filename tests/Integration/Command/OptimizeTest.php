@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Opmin\Tests\Integration\Command;
 
 use Opmin\Module\Optimize\Optimizer;
+use Opmin\Module\Optimize\RunHeader;
 use Opmin\Module\Optimize\Workspace;
+use Opmin\Module\Tests\PhpUnitAdapter;
 use Opmin\Tests\Integration\TestPhp;
 use Testo\Assert;
 use Testo\Codecov\Covers;
@@ -20,6 +22,7 @@ use Testo\Test;
 #[Test]
 #[Covers(Optimizer::class)]
 #[Covers(Workspace::class)]
+#[Covers(RunHeader::class)]
 final class OptimizeTest
 {
     private const CODE = <<<'PHP'
@@ -378,6 +381,49 @@ final class OptimizeTest
         /** @var array{levels: array<string, mixed>} $timings */
         $timings = $report['timings'];
         Assert::array($timings['levels'])->hasKeys('diff_test.pool', 'diff_test.perf');
+    }
+
+    public function planSaysWhatTheRunWouldUseAndChangesNothing(): void
+    {
+        \file_put_contents($this->dir . '/opmin.yaml', "tests:\n  runner: command\n  command: 'exit 1'\n");
+        $this->commitAll();
+
+        [$code, $out, $err] = $this->opmin('optimize', '--plan', '--format=none');
+
+        Assert::same($code, 0, $out . $err);
+        Assert::string($err)
+            ->contains('Optimizing 1 file(s) of ')
+            ->contains('plan: nothing is changed or tested.')
+            ->contains('  Functions: ')
+            ->contains('  Rules: FullyQualifyGlobalCallsRector')
+            ->contains('  Tests: command (tests.command): the whole suite on every step')
+            ->contains('  Coverage driver: ')
+            ->contains('  PHPStan: none (not installed in the project)')
+            ->contains('  Formatter: no formatter (commands.format: none)')
+            ->contains('  Differential tests: ');
+        # The failing command never ran: the run would stop at red tests.
+        Assert::string($err)->ignoringWhitespace(lineBreaks: true)->contains('Every step runs the whole test suite: tests.command is a plain command');
+        Assert::same(\file_get_contents($this->dir . '/src/Text.php'), self::CODE);
+        Assert::false(\is_dir($this->dir . '/.opmin/runs'));
+        Assert::same(\trim($this->git('status', '--porcelain')), '');
+        Assert::same(\trim($this->git('rev-list', '--count', 'HEAD')), '1');
+    }
+
+    public function planNamesTheDetectedRunnerAndWarnsOnlyWithoutACoverageDriver(): void
+    {
+        \file_put_contents($this->dir . '/phpunit.xml', "<phpunit/>\n");
+
+        [$code, , $err] = $this->opmin('optimize', '--plan', '--format=none');
+
+        Assert::same($code, 0, $err);
+        $driver = PhpUnitAdapter::hasCoverageDriver(TestPhp::binary());
+        Assert::string($err)->contains($driver
+            ? '  Tests: phpunit, the tests that cover a changed function'
+            : '  Tests: phpunit, the whole suite on every step');
+        # The warning wraps at the width of the terminal.
+        $flat = (string) \preg_replace('/\s+/', ' ', $err);
+        Assert::same(\str_contains($flat, 'neither pcov nor Xdebug, so there is no coverage map'), !$driver);
+        Assert::false(\is_dir($this->dir . '/.opmin/runs'));
     }
 
     public function jobsMustBeANumber(): void

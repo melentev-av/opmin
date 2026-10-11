@@ -104,7 +104,8 @@ jobs:
             ${{ runner.temp }}/smoke/${{ matrix.package }}-php${{ matrix.php }}/summary.json
             ${{ runner.temp }}/smoke/${{ matrix.package }}-php${{ matrix.php }}/tests-*.log
             ${{ runner.temp }}/smoke/${{ matrix.package }}-php${{ matrix.php }}/*.patch
-            ${{ runner.temp }}/smoke/${{ matrix.package }}-php${{ matrix.php }}/runs/
+            ${{ runner.temp }}/smoke/${{ matrix.package }}-php${{ matrix.php }}/.opmin/runs/
+          include-hidden-files: true
           retention-days: 30
           if-no-files-found: ignore
 ...

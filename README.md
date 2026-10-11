@@ -26,7 +26,7 @@ opmin needs **two PHPs**, and the binary brings one of them:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/melentev-av/opmin/master/install.sh | sh
-curl -fsSL https://raw.githubusercontent.com/melentev-av/opmin/master/install.sh | sh -s -- --dir=/usr/local/bin --version=0.2.0
+curl -fsSL https://raw.githubusercontent.com/melentev-av/opmin/master/install.sh | sh -s -- --dir=/usr/local/bin --version=<version>
 opmin self-update            # the latest release; --check only tells; --to=<version> installs that one
 ```
 
@@ -41,17 +41,17 @@ with your `vendor/`).
 
 **3. Docker** — `ghcr.io/melentev-av/opmin:<version>-php<8.1…8.5>`: the binary plus the PHP of production with
 OPcache (JIT off), pcov, git and composer. Pick the tag of your production PHP; the images are meant for CI and
-for git packages.
+for git packages. The floating `php<8.1…8.5>` tag follows the latest release.
 
 ```bash
-docker run --rm -v "$PWD:/app" ghcr.io/melentev-av/opmin:0.2.0-php8.3 opmin doctor
+docker run --rm -v "$PWD:/app" ghcr.io/melentev-av/opmin:<version>-php8.3 opmin doctor
 ```
 
-**Pinning the version per project.** Commit a `.opmin-version` (`0.2.3`, or a constraint like `^0.2`) or set
-`requires: '^0.2'` in `opmin.yaml`: another opmin stops with exit code 2 and the `opmin self-update --to=` command
-to run. A global `opmin` started inside a project that has its own — `vendor/bin/opmin` (the composer package) or
-an `opmin` binary in the project root (e.g. downloaded by [dload](https://github.com/php-internal/dload)) — runs
-that one instead (`OPMIN_NO_DELEGATE=1` keeps the global one).
+**Pinning the version per project.** Commit a `.opmin-version` (an exact version `x.y.z`, or a constraint like
+`^x.y`; for 0.x `^0.4` means `>=0.4.0 <0.5.0`) or set `requires:` the same way in `opmin.yaml`: another opmin
+stops with exit code 2 and the `opmin self-update --to=` command to run. A global `opmin` started inside a
+project that has its own — `vendor/bin/opmin` (the composer package) or an `opmin` binary in the project root
+(e.g. downloaded by [dload](https://github.com/php-internal/dload)) — runs that one instead (`OPMIN_NO_DELEGATE=1` keeps the global one).
 
 **From sources** (development): `git clone git@github.com:melentev-av/opmin.git && cd opmin && composer install &&
 bin/opmin list`.
@@ -65,7 +65,7 @@ one kept offline):
 ```bash
 sha256sum --check --ignore-missing sha256sum.txt
 openssl dgst -sha256 -verify primary.pub.pem -signature sha256sum.txt.sig sha256sum.txt
-gh attestation verify opmin-0.2.0-linux-x86_64.tar.gz --repo melentev-av/opmin
+gh attestation verify opmin-<version>-linux-x86_64.tar.gz --repo melentev-av/opmin
 ```
 
 ## Quick start
@@ -382,7 +382,7 @@ instead, with the workspace on the file system of the container:
 
 ```bash
 docker run --rm -v "$PWD:/out" ghcr.io/melentev-av/opmin:php8.4 sh -c \
-  'cd /tmp && opmin optimize https://github.com/briannesbitt/Carbon.git --ref=3.14.2 --no-docker --yes -n; cp -r runs *.patch /out/'
+  'cd /tmp && opmin optimize https://github.com/briannesbitt/Carbon.git --ref=3.14.2 --no-docker --yes -n; cp -r .opmin opmin-*.patch /out/'
 ```
 
 ## Results on real packages

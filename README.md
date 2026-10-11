@@ -79,7 +79,7 @@ opmin optimize    # Rector stage, every accepted step is a separate commit
 opmin baseline    # commit opmin.baseline.json, then `opmin check` in CI keeps opcodes from growing
 ```
 
-A run ends with a summary like this, and `.opmin/runs/<ts>/report.md` with every function:
+A run ends with a summary like this, and `.opmin/report_<ts>.md` with every function:
 
 ```text
  ------ ------------------------------------ ------ ------------- --------- ----------------
@@ -92,7 +92,7 @@ A run ends with a summary like this, and `.opmin/runs/<ts>/report.md` with every
 
 The full run of the project's tests passes on the result.
 
- [OK] 442 → 349 opcodes (-93). Report: .opmin/runs/20261007-192240/report.md, patch: .opmin/runs/20261007-192240/opmin.patch
+ [OK] 442 → 349 opcodes (-93). Report: .opmin/report_20261007-192240.md, patch: .opmin/runs/20261007-192240/opmin.patch
 ```
 
 `opmin doctor` exits with 1 when something blocks `count`/`optimize` (warnings — e.g. no pcov, so every step
@@ -222,7 +222,8 @@ opmin llm:finish                               # the full test run (taking back 
 
 ## The report
 
-Every run (`optimize`, `llm:finish`) writes `.opmin/runs/<ts>/report.md` for people and `.opmin/runs/<ts>/report.json` for tools:
+Every run (`optimize`, `llm:finish`) writes `.opmin/runs/<ts>/report.md` for people — and the same file as
+`.opmin/report_<ts>.md`, next to the reports of the earlier runs — and `.opmin/runs/<ts>/report.json` for tools:
 
 - the total: opcodes before → after, %; whether the full run of the project's tests passes;
 - every changed function: before → after, what saved the opcodes (rule or LLM), how it is proven (`diff-tested`,

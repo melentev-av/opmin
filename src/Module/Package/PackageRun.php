@@ -405,7 +405,10 @@ final readonly class PackageRun
             }
 
             self::copyTree((string) $runs->join($run), (string) $target);
-            $this->style->text('Report: ' . (string) $target->join('report.md'));
+            $report = $target->join('report.md');
+            $copy = Layout::report($target);
+            $copy === null || !$report->isFile() or \copy((string) $report, (string) $copy);
+            $this->style->text('Report: ' . (string) ($copy !== null && $copy->isFile() ? $copy : $report));
             $patch = $target->join('opmin.patch');
             if ($patch->isFile() && \filesize((string) $patch) > 0) {
                 $suffix = $checkout->ref === null ? '' : '-' . \trim((string) \preg_replace('/[^A-Za-z0-9._-]+/', '-', $checkout->ref), '-');

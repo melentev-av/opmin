@@ -27,6 +27,21 @@ final class Layout
     public const string GITIGNORE = self::DIR . '/';
 
     /**
+     * `.opmin/report_<ts>.md`: the report of a run where it is found without opening `runs/`; null for a run
+     * directory outside `.opmin/runs/`.
+     */
+    public static function report(Path $runDir): ?Path
+    {
+        $runs = $runDir->parent();
+        $dir = $runs->parent();
+        if ($runs->name() !== 'runs' || $dir->name() !== self::DIR) {
+            return null;
+        }
+
+        return $dir->join('report_' . $runDir->name() . '.md');
+    }
+
+    /**
      * Adds {@see self::GITIGNORE} to the `.gitignore` of a git work tree when no line covers it yet.
      *
      * @param Path $dir The directory of the config: the root of the work tree or a package in it.

@@ -292,8 +292,12 @@ final class OptimizeTest
         Assert::true($report['interrupted']);
         $markdown = \glob($this->dir . '/.opmin/runs/*/report.md') ?: [];
         Assert::string((string) \file_get_contents($markdown[0] ?? ''))->contains('The run was interrupted');
+        # The same report lies in the root of .opmin/, named after the run.
+        $copy = $this->dir . '/.opmin/report_' . \basename(\dirname($markdown[0] ?? '')) . '.md';
+        Assert::same(\file_get_contents($copy), \file_get_contents($markdown[0] ?? ''));
+        Assert::string($out . $err)->ignoringWhitespace(lineBreaks: true)->contains('Report: .opmin/report_');
 
-        \exec('rm -rf ' . \escapeshellarg($this->dir . '/runs'));
+        \exec('rm -rf ' . \escapeshellarg($this->dir . '/.opmin/runs'));
         [$all, $allOut, $allErr] = $this->opmin(['optimize', '--format=none', '--review'], "a\n");
 
         Assert::same($all, 0, $allOut . $allErr);

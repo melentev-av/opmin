@@ -484,7 +484,7 @@ final class Optimize extends Stage
             $report->opsBefore,
             $report->opsAfter,
             $report->opsAfter === $report->opsBefore ? 'no change' : \sprintf('-%d', $report->opsBefore - $report->opsAfter),
-            $project->relative($runDir->join('report.md')),
+            $project->relative(Layout::report($runDir) ?? $runDir->join('report.md')),
             $report->patch === null ? '' : ', patch: ' . $report->patch . ($dryRun ? ' (dry run: files restored)' : ''),
         ));
     }

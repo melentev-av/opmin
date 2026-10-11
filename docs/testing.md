@@ -55,6 +55,8 @@ final class ConfigLoaderTest
   `Assert::string($err)->ignoringWhitespace(lineBreaks: true)->contains(...)` (console output wraps lines).
 - A test without assertions is `risky`. If it only checks "does not throw", mark it `#[ExpectNoAssertions]`.
 - Setup/teardown: `#[BeforeTest]`, `#[AfterTest]`, `#[BeforeClass]`, `#[AfterClass]` on methods (no `setUp`).
+- The test methods of a class may run on **one instance**: a property changed by one test is seen by the next
+  (unlike PHPUnit). Reset such state at the start of the test or in `#[BeforeTest]` (`tests/Unit/Module/Progress/`).
 
 ## Expected exception
 

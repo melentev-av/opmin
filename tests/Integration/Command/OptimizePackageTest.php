@@ -65,6 +65,8 @@ final class OptimizePackageTest
         Assert::string($out . $err)->contains('Docker is not used')->contains('Report: ' . $this->dir . '/cwd/.opmin/report_');
         $reports = \glob($this->dir . '/cwd/.opmin/runs/*/report.json') ?: [];
         Assert::count($reports, 1);
+        # The inner run follows the outer terminal (--no-ansi is forwarded): timestamped lines, no line redrawn in place.
+        Assert::string($err)->matchesRegex('~^  \[\d{2}:\d{2}:\d{2} \+\d+s\] Pass 1: ~m')->notContains("\r");
         Assert::count(\glob($this->dir . '/cwd/.opmin/report_*.md') ?: [], 1);
         $patch = (string) \file_get_contents($this->dir . '/cwd/opmin-acme-tiny-v1.0.0.patch');
         Assert::string($patch)->contains('+        return \strlen($s) + \strlen(\trim($s));');

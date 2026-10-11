@@ -9,6 +9,8 @@ use Opmin\Module\Config\Schema;
 use Opmin\Module\Php\PhpBinaryException;
 use Opmin\Module\Php\PhpBinaryProbe;
 use Opmin\Module\Project\Layout;
+use Opmin\Module\Progress\Silent;
+use Opmin\Module\Progress\TimedLines;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Project\Targets;
 use Opmin\Module\Verification\CandidateReport;
@@ -108,9 +110,7 @@ final class Verify extends Base
             $tests,
             $cacheDir,
             $phpConfig->target ?? $project->phpTarget,
-            static function (string $message) use ($errorOutput): void {
-                $errorOutput->isVerbose() and $errorOutput->writeln("  {$message}");
-            },
+            $errorOutput->isVerbose() ? new TimedLines($errorOutput, true) : new Silent(),
         );
 
         /** @var list<non-empty-string> $keys */

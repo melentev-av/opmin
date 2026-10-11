@@ -141,6 +141,26 @@ final class OptimizeTest
         Assert::true(\is_file($this->dir . '/' . $report['patch']));
     }
 
+    /**
+     * Without a terminal and without `-v` the progress is a log: every line with the time and the
+     * seconds since the start, a line with the result of every step, never a line redrawn in place.
+     */
+    public function withoutTerminalTheProgressIsTimestampedLines(): void
+    {
+        [$code, $out, $err] = $this->opmin('optimize', '--format=none', '--dry-run');
+
+        Assert::same($code, 0, $out . $err);
+        $at = '  \[\d{2}:\d{2}:\d{2} \+\d+s\] ';
+        Assert::string($err)->matchesRegex("~^{$at}Counting the opcodes of 1 file\(s\)$~m");
+        Assert::string($err)->matchesRegex("~^{$at}Pass 1: FullyQualifyGlobalCallsRector$~m");
+        Assert::string($err)->matchesRegex("~^{$at}Verifying 1 file\(s\)$~m");
+        Assert::string($err)->matchesRegex("~^{$at}Pass 1: FullyQualifyGlobalCallsRector: kept \d+, rolled back \d+, -\d+ opcodes \(\d+s\)$~m");
+        # The phases inside a verification are for -v.
+        Assert::string($err)->notContains('Differential test of');
+        Assert::string($err)->notContains("\r");
+        Assert::string($out)->notContains('Pass 1:');
+    }
+
     public function dirtyTreeIsRefused(): void
     {
         $this->git('init', '-q');

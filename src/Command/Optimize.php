@@ -23,6 +23,8 @@ use Opmin\Module\Php\InternalSymbols;
 use Opmin\Module\Php\PhpBinary;
 use Opmin\Module\Php\PhpBinaryException;
 use Opmin\Module\Php\PhpBinaryProbe;
+use Opmin\Module\Progress\Renderer;
+use Opmin\Module\Progress\Renderers;
 use Opmin\Module\Project\Layout;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Project\Targets;
@@ -212,18 +214,25 @@ final class Optimize extends Stage
             $state = RunState::start($runDir, \array_map($project->relative(...), $files), $rules, $options);
         }
 
-        $optimizer = $this->optimizer($project, $php, $workspace, $output, (bool) ($options['allow_public_signatures'] ?? false));
+        # The progress goes to stderr: a line redrawn in place in a terminal, timestamped lines in a log.
+        $progress = Renderers::for($errorOutput);
+        $optimizer = $this->optimizer($project, $php, $workspace, $output, (bool) ($options['allow_public_signatures'] ?? false), $progress);
         [$environment, $warnings] = $this->environment($project, $php, $optimizer, $runDir);
         $warnings === [] or $style->warning($warnings);
         if ($input->getOption('review')) {
             # Without a terminal (-n, CI, an agent) every change that passes the checks is applied.
             $input->isInteractive()
-                ? $optimizer->withReviewer(new ConsoleReviewer(new SymfonyStyle($input, $errorOutput)))
+                ? $optimizer->withReviewer(new ConsoleReviewer(new SymfonyStyle($input, $errorOutput), $progress->clear(...)))
                 : $style->warning('--review needs an interactive session: every change that passes the checks is applied.');
         }
 
         # Red tests prove nothing about a change: every change would be rolled back, so stop before any.
-        $red = $optimizer->failingTestsOnOriginal();
+        try {
+            $red = $optimizer->failingTestsOnOriginal();
+        } finally {
+            $progress->clear();
+        }
+
         if ($red !== null) {
             $style->error([
                 'The project\'s tests fail on the original code: fix them first, or set tests.runner to none to verify with the differential tests only.',
@@ -232,8 +241,13 @@ final class Optimize extends Stage
             return Command::FAILURE;
         }
 
-        $signalled = $this->onSignals($optimizer, $errorOutput);
-        $report = $optimizer->run($files, $rules, $state);
+        $signalled = $this->onSignals($optimizer, $errorOutput, $progress);
+        try {
+            $report = $optimizer->run($files, $rules, $state);
+        } finally {
+            $progress->clear();
+        }
+
         $report->environment = $environment;
         $report->warnings = $warnings;
         $patch = $workspace->finish();
@@ -436,12 +450,13 @@ final class Optimize extends Stage
      *
      * @return \Closure(): bool Whether a signal came.
      */
-    private function onSignals(Optimizer $optimizer, OutputInterface $output): \Closure
+    private function onSignals(Optimizer $optimizer, OutputInterface $output, Renderer $progress): \Closure
     {
         $count = 0;
         if (\function_exists('pcntl_async_signals') && \function_exists('pcntl_signal')) {
             \pcntl_async_signals(true);
-            $handler = static function () use ($optimizer, $output, &$count): void {
+            $handler = static function () use ($optimizer, $output, $progress, &$count): void {
+                $progress->clear();
                 if (++$count > 1) {
                     $output->writeln('Aborted: `opmin optimize --resume` restores the files and continues.');
                     /** @psalm-suppress ForbiddenCode The user asked twice: no step can be finished cleanly. */

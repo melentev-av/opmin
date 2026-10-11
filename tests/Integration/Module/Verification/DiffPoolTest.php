@@ -7,6 +7,7 @@ namespace Opmin\Tests\Integration\Module\Verification;
 use Internal\Path;
 use Opmin\Module\Common\Timings;
 use Opmin\Module\Config\Schema\Verification;
+use Opmin\Module\Progress\Silent;
 use Opmin\Module\Verification\DiffPool;
 use Opmin\Module\Verification\DiffTask;
 use Opmin\Module\Verification\Verdict;
@@ -87,7 +88,7 @@ final class DiffPoolTest
         $config = new Verification();
         $config->jobs = $jobs;
         $config->fuzzTimeMs = 300;
-        $pool = new DiffPool(TestPhp::binary(), $config, Path::create($this->dir), null, $timings ?? new Timings(), static function (string $m): void {});
+        $pool = new DiffPool(TestPhp::binary(), $config, Path::create($this->dir), null, $timings ?? new Timings(), new Silent());
         $tasks = \array_map(
             static fn(string $key): DiffTask => new DiffTask($key, $file, 'Code.php', self::ORIGINAL, self::CHANGED),
             ['App\same', 'App\differs', 'App\slow'],

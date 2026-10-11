@@ -6,6 +6,8 @@ namespace Opmin\Tests\Integration\Module\Verification;
 
 use Internal\Path;
 use Opmin\Module\Config\Schema;
+use Opmin\Module\Progress\Event;
+use Opmin\Module\Progress\Listener;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Verification\CandidateReport;
 use Opmin\Module\Verification\CounterexampleRenderer;
@@ -220,6 +222,9 @@ final class VerifierTest
         Assert::true($second->accepted());
         Assert::count(\array_keys($this->log, 'Project tests on the original code (command)', true), 1);
         Assert::count(\array_keys($this->log, 'Project tests on the changed code', true), 2);
+        # A command runner gives no coverage map: the user is warned once, at the first verification.
+        Assert::count(\array_keys($this->log, 'No coverage map of the project\'s tests: every step runs the whole test suite', true), 1);
+        Assert::true(\in_array('No coverage map of the project\'s tests (Xdebug or pcov in php.binary): all tests are run.', $first->notes, true));
         Assert::same($verifier->runnerName(), 'command');
         Assert::same($verifier->runAllTests()?->success, true);
     }
@@ -274,8 +279,21 @@ final class VerifierTest
             $tests ?? new Schema\Tests(),
             Path::create($this->dir)->join('.opmin/cache'),
             '8.1',
-            function (string $message): void {
-                $this->log[] = $message;
+            new class(function (string $line): void {
+                $this->log[] = $line;
+            }) implements Listener {
+
+                /**
+                 * @param \Closure(string): void $line
+                 */
+                public function __construct(private readonly \Closure $line) {}
+
+                #[\Override]
+                public function on(Event $event): void
+                {
+                    $text = $event->text();
+                    $text === null or ($this->line)($text);
+                }
             },
             $guardPerf,
         );

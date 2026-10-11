@@ -220,6 +220,14 @@ opmin optimize --plan                  # say what the run would use and exit: no
   report says the run was interrupted. Every step is saved to `.opmin/runs/<ts>/state.json`; `--resume` puts the files
   back to the last accepted step (also after a crash or `kill -9`, dropping an opmin commit the state missed) and
   continues with the same files, rules and options, ending as an uninterrupted run would.
+- The progress goes to stderr, the summary to stdout. In a terminal it is one line redrawn in place — pass, rule,
+  phase, `verifying 12/47` (functions of the round whose differential test is done), `round 2` after a take-back,
+  the current function, the time since the start — with the result of every step and the warnings above it.
+  Without a terminal (CI, a pipe, `--no-ansi`) it is a log: every line with the time and the seconds since the
+  start (`[14:02:11 +83s] Pass 1: FullyQualifyGlobalCallsRector`), a result line per step (`kept 4, rolled back 1,
+  -12 opcodes (51s)`), the tests on the original code and the coverage map. `-v` adds the phases inside a
+  verification: PHPStan, the project's tests, each differential test. A missing coverage map is a warning at the
+  first verification: every step then runs the whole test suite.
 - A change rolled back for a reason of its own (no gain, a difference, not proven…) is not tried again in later
   passes while the function stays the same.
 - opmin's own rules, on by default, prove their safety conditions themselves (native types through PHPStan):

@@ -16,6 +16,9 @@ use Opmin\Module\Opcode\Locate\FunctionLocator;
 use Opmin\Module\Opcode\Locate\LocateException;
 use Opmin\Module\Opcode\Locate\UnitKind;
 use Opmin\Module\Php\PhpBinary;
+use Opmin\Module\Progress\Event;
+use Opmin\Module\Progress\Listener;
+use Opmin\Module\Progress\Silent;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Tests\CommandAdapter;
 use Opmin\Module\Tests\CoverageMap;
@@ -43,9 +46,6 @@ use Opmin\Module\Verification\Target\UnsupportedTarget;
  */
 final class Verifier
 {
-    /** @var \Closure(string): void */
-    private \Closure $log;
-
     private bool $baselineDone = false;
     private bool $originalTested = false;
 
@@ -65,7 +65,7 @@ final class Verifier
 
     /**
      * @param non-empty-string|null $phpTarget
-     * @param \Closure(string): void|null $log Progress messages.
+     * @param Listener $progress The progress of the checks.
      */
     public function __construct(
         private readonly Project $project,
@@ -75,12 +75,10 @@ final class Verifier
         private readonly Schema\Tests $tests,
         private readonly Path $cacheDir,
         private readonly ?string $phpTarget,
-        ?\Closure $log = null,
+        private readonly Listener $progress = new Silent(),
         private readonly ?Schema\GuardPerf $guardPerf = null,
         private readonly Timings $timings = new Timings(),
-    ) {
-        $this->log = $log ?? static function (string $message): void {};
-    }
+    ) {}
 
     /**
      * The failed tests, or — when the runner reported none (it did not start, the config is broken) —
@@ -171,7 +169,7 @@ final class Verifier
             }
         }
 
-        $pool = new DiffPool($this->php, $this->verification, $work, $this->cacheDir->join('corpus'), $this->timings, $this->log);
+        $pool = new DiffPool($this->php, $this->verification, $work, $this->cacheDir->join('corpus'), $this->timings, $this->progress);
         $results = [];
         foreach ($pool->verify($tasks, $this->guardPerf?->enabled ?? false) as $i => $verdict) {
             [$file, $relative, $original] = $owners[$i];
@@ -218,7 +216,7 @@ final class Verifier
         }
 
         $this->originalTested = true;
-        ($this->log)("Project tests on the original code ({$runner->name()})");
+        $this->progress->on(Event::originalTests($runner->name()));
         $result = $this->timings->measure('once.tests_original', $runner->runAll(...));
         if (!$result->success) {
             $this->red = $result;
@@ -301,7 +299,7 @@ final class Verifier
 
             $new = [];
             if ($before !== null) {
-                ($this->log)('PHPStan on the changed code');
+                $this->progress->on(Event::phpStan());
                 $new = PhpStanResult::newErrors($before, $this->timings->measure('phpstan.after', static fn(): PhpStanResult => $phpstan->analyse($paths)));
             }
 
@@ -309,10 +307,10 @@ final class Verifier
             if ($runner !== null && $this->coverage !== null) {
                 # Only the tests that execute a changed function can see the change.
                 $selected = \array_values(\array_unique($selected));
-                ($this->log)('Project tests on the changed code: ' . \count($selected) . ' that execute the changed functions');
+                $this->progress->on(Event::tests(\count($selected)));
                 $after = $this->timings->measure('tests', static fn(): TestResult => $runner->runFiltered($selected));
             } elseif ($runner !== null) {
-                ($this->log)('Project tests on the changed code');
+                $this->progress->on(Event::tests(null));
                 $after = $this->timings->measure('tests', $runner->runAll(...));
             }
 
@@ -339,8 +337,13 @@ final class Verifier
             return;
         }
 
+        $this->progress->on(Event::coverageMap());
         $this->coverage = $this->timings->measure('once.coverage_map', $runner->collectCoverageMap(...));
-        $this->coverage === null and $this->baselineNotes[] = 'No coverage map of the project\'s tests (Xdebug or pcov in php.binary): all tests are run.';
+        if ($this->coverage === null) {
+            $this->baselineNotes[] = 'No coverage map of the project\'s tests (Xdebug or pcov in php.binary): all tests are run.';
+            # Every step then pays for the whole suite: worth knowing at the start, not only in the report.
+            $this->progress->on(Event::warning('No coverage map of the project\'s tests: every step runs the whole test suite'));
+        }
     }
 
     private function runner(Path $work): ?TestRunnerAdapter

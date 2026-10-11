@@ -10,6 +10,8 @@ use Opmin\Module\Common\Memory;
 use Opmin\Module\Common\Timings;
 use Opmin\Module\Config\Schema\Verification as Config;
 use Opmin\Module\Php\PhpBinary;
+use Opmin\Module\Progress\Event;
+use Opmin\Module\Progress\Listener;
 use Opmin\Module\Release\Installation;
 use Symfony\Component\Process\Process;
 
@@ -35,16 +37,13 @@ final class DiffPool
     /** Inputs a child sends back for guard-perf. */
     private const PERF_INPUTS = 50;
 
-    /**
-     * @param \Closure(string): void $log
-     */
     public function __construct(
         private readonly PhpBinary $php,
         private readonly Config $config,
         private readonly Path $workDir,
         private readonly ?Path $corpus,
         private readonly Timings $timings,
-        private readonly \Closure $log,
+        private readonly Listener $progress,
     ) {}
 
     /**
@@ -103,15 +102,17 @@ final class DiffPool
         if ($jobs === 1 || \count($tasks) <= 1) {
             $tester = $this->tester($measure, $this->timings);
             $verdicts = [];
+            $tasks === [] or $this->progress->on(Event::diffTests(\count($tasks), 1));
             foreach ($tasks as $task) {
-                ($this->log)("Differential test of {$task->key}");
+                $this->progress->on(Event::diffTest($task->key, \count($verdicts), \count($tasks)));
                 $verdicts[] = $this->timings->measure('diff_test', static fn(): Verdict => $tester->verify($task));
+                $this->progress->on(Event::diffDone(\count($verdicts), \count($tasks)));
             }
 
             return $verdicts;
         }
 
-        ($this->log)(\sprintf('Differential tests of %d functions, %d at a time', \count($tasks), $jobs));
+        $this->progress->on(Event::diffTests(\count($tasks), $jobs));
         $results = $this->timings->measure('diff_test.pool', fn(): array => $this->parallel($tasks, $jobs));
         $verdicts = [];
         $tester = $measure ? $this->tester(false, $this->timings) : null;
@@ -147,7 +148,7 @@ final class DiffPool
             while ($pending !== [] || $running !== []) {
                 while ($pending !== [] && \count($running) < $jobs) {
                     $task = \array_shift($pending);
-                    ($this->log)("Differential test of {$task->key}");
+                    $this->progress->on(Event::diffTest($task->key, \count($results), \count($tasks)));
                     $process = new Process(
                         $installation->command(),
                         env: ['OPMIN_INTERNAL' => 'diff-test', 'OPMIN_NO_DELEGATE' => '1'],
@@ -171,6 +172,7 @@ final class DiffPool
 
                     unset($running[$i]);
                     $results[$i] = $this->result($tasks[$i], $process);
+                    $this->progress->on(Event::diffDone(\count($results), \count($tasks)));
                 }
 
                 $running === [] or \usleep(5_000);

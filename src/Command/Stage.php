@@ -23,6 +23,8 @@ use Opmin\Module\Config\Exception\ConfigException;
 use Opmin\Module\Optimize\Rector\RectorRunner;
 use Opmin\Module\Optimize\Workspace;
 use Opmin\Module\Php\PhpBinary;
+use Opmin\Module\Progress\Listener;
+use Opmin\Module\Progress\Renderers;
 use Opmin\Module\Project\FileFinder;
 use Opmin\Module\Project\Layout;
 use Opmin\Module\Project\Project;
@@ -185,12 +187,16 @@ abstract class Stage extends Base
         );
     }
 
+    /**
+     * @param Listener|null $progress The progress of the run; null — lines on stderr ({@see Renderers::lines()}).
+     */
     protected function optimizer(
         Project $project,
         PhpBinary $php,
         Workspace $workspace,
         OutputInterface $output,
         bool $allowPublicSignatures,
+        ?Listener $progress = null,
     ): Optimizer {
         $errorOutput = $output instanceof ConsoleOutputInterface ? $output->getErrorOutput() : $output;
         $cacheDir = $this->cacheDir();
@@ -201,9 +207,7 @@ abstract class Stage extends Base
         $commands = $this->container->get(Schema\Commands::class);
         /** @var Schema\Tests $tests */
         $tests = $this->container->get(Schema\Tests::class);
-        $verbose = static function (string $message) use ($errorOutput): void {
-            $errorOutput->isVerbose() and $errorOutput->writeln("  {$message}");
-        };
+        $progress ??= Renderers::lines($errorOutput);
         /** @var Schema\Rector $rectorConfig */
         $rectorConfig = $this->container->get(Schema\Rector::class);
         /** @var Schema\Readability $readability */
@@ -230,16 +234,14 @@ abstract class Stage extends Base
             $timings->measure('once.references', fn(): ReferenceIndex => ReferenceIndex::build($project, $cacheDir, $this->cacheStore())),
             new RectorRunner($project, $cacheDir, $phpTarget),
             Formatter::create($project, $php, $commands->format),
-            new Verifier($project, $php, $verification, $commands, $tests, $cacheDir, $phpTarget, $verbose, $guardPerf, $timings),
+            new Verifier($project, $php, $verification, $commands, $tests, $cacheDir, $phpTarget, $progress, $guardPerf, $timings),
             $rectorConfig,
             $readability,
             $signatures,
             $ignore,
             $cacheDir->join('tmp'),
             $allowPublicSignatures,
-            static function (string $message) use ($errorOutput): void {
-                $errorOutput->writeln("  {$message}", OutputInterface::VERBOSITY_NORMAL);
-            },
+            $progress,
             $declined,
             $timings,
         );

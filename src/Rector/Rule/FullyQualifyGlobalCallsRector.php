@@ -48,6 +48,9 @@ class FullyQualifyGlobalCallsRector extends AbstractRector implements Configurab
     public const string SHADOWS = 'shadows';
     public const string SYMBOLS = 'symbols';
 
+    /** Options that hold a path to a JSON file: the rule's cache is keyed on the file's content. */
+    public const array FILE_OPTIONS = [self::SHADOWS, self::SYMBOLS];
+
     /** Constants the compiler resolves itself in any namespace. */
     private const array SPECIAL_CONSTANTS = ['true', 'false', 'null'];
 

@@ -70,7 +70,7 @@ final class CountTest
 
     /**
      * @param non-empty-string $driver
-     * @param non-empty-string $stored What the cache keeps in `.opmin-cache/`.
+     * @param non-empty-string $stored What the cache keeps in `.opmin/cache/`.
      * @param non-empty-string $absent
      */
     #[DataSet(['files', 'count', 'cache.sqlite'], 'files')]
@@ -98,8 +98,8 @@ final class CountTest
         $this->opminWithEnv($env, 'count', $set);
         $compiledThird = \count(\file($log) ?: []);
 
-        Assert::true(\file_exists("{$this->dir}/.opmin-cache/{$stored}"));
-        Assert::false(\file_exists("{$this->dir}/.opmin-cache/{$absent}"));
+        Assert::true(\file_exists("{$this->dir}/.opmin/cache/{$stored}"));
+        Assert::false(\file_exists("{$this->dir}/.opmin/cache/{$absent}"));
         Assert::same($compiledFirst, 1);
         Assert::same($compiledSecond, 1);
         Assert::same($second, $first);
@@ -115,7 +115,7 @@ final class CountTest
 
         Assert::same($code, 2);
         Assert::string($err)->ignoringWhitespace(lineBreaks: true)->contains('No opmin.yaml in')->contains('opmin init');
-        Assert::false(\file_exists("{$this->dir}/.opmin-cache"));
+        Assert::false(\file_exists("{$this->dir}/.opmin/cache"));
     }
 
     public function cacheOfPackageInMonorepoIsNextToTheConfig(): void
@@ -127,8 +127,8 @@ final class CountTest
         [$code] = $this->opmin('count', 'packages/http/src');
 
         Assert::same($code, 0);
-        Assert::true(self::hasCache("{$this->dir}/.opmin-cache"));
-        Assert::false(\file_exists("{$this->dir}/packages/http/.opmin-cache"));
+        Assert::true(self::hasCache("{$this->dir}/.opmin/cache"));
+        Assert::false(\file_exists("{$this->dir}/packages/http/.opmin/cache"));
     }
 
     public function cacheIsNextToExplicitConfig(): void
@@ -152,8 +152,8 @@ final class CountTest
 
         Assert::same($code, 0);
         Assert::array(self::decode($json)['functions'])->hasKeys('a');
-        Assert::false(self::hasCache("{$this->dir}/.opmin-cache"));
-        Assert::false(\file_exists("{$this->dir}/.opmin-cache/refs"));
+        Assert::false(self::hasCache("{$this->dir}/.opmin/cache"));
+        Assert::false(\file_exists("{$this->dir}/.opmin/cache/refs"));
     }
 
     public function reportsFilesThatCannotBeCompiledAndCountsTheRest(): void

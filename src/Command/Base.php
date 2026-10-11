@@ -14,6 +14,7 @@ use Opmin\Module\Config\ConfigLoader;
 use Opmin\Module\Config\ConfigSchema;
 use Opmin\Module\Config\Exception\ConfigException;
 use Opmin\Module\Config\Schema;
+use Opmin\Module\Project\Layout;
 use Opmin\Module\Project\Targets;
 use Opmin\Module\Release\ProjectVersion;
 use Opmin\Service\Logger;
@@ -119,6 +120,10 @@ abstract class Base extends Command
             . 'Run `opmin init` here, or pass --config=<file>.',
         );
         $this->configDir = $config === null ? $cwd : Targets::absolute($config, $cwd)->parent();
+        # What opmin writes must not end up in the repository: the line comes with the first command that writes.
+        $config === null || !$this->requiresConfig($input) || !Layout::ignore($this->configDir)
+            or (new SymfonyStyle($input, $output instanceof ConsoleOutputInterface ? $output->getErrorOutput() : $output))
+                ->note('Added ' . Layout::GITIGNORE . ' to .gitignore in ' . (string) $this->configDir . ': opmin keeps its runs and cache there.');
 
         /** @var list<string> $overrides */
         $overrides = $input->getOption('set');

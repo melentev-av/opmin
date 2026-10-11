@@ -272,7 +272,7 @@ final class VerifierTest
             $verification,
             $commands ?? new Schema\Commands(),
             $tests ?? new Schema\Tests(),
-            Path::create($this->dir)->join('.opmin-cache'),
+            Path::create($this->dir)->join('.opmin/cache'),
             '8.1',
             function (string $message): void {
                 $this->log[] = $message;

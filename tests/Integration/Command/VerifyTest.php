@@ -81,7 +81,7 @@ final class VerifyTest
 
         Assert::same($code, 1);
         Assert::string($out)->contains('The candidate is rejected');
-        $files = \glob($this->dir . '/runs/*/counterexamples/*') ?: [];
+        $files = \glob($this->dir . '/.opmin/runs/*/counterexamples/*') ?: [];
         Assert::same(\array_map('basename', $files), ['OpminAppFCounterexampleTest.json', 'OpminAppFCounterexampleTest.php']);
         Assert::string((string) \file_get_contents($files[1]))->contains("\$arg0 = ['x' => null];");
     }

@@ -81,11 +81,11 @@ final class OptimizeResumeTest
         $dir = $this->project();
 
         $this->runUntilFirstStep($dir, 9);
-        Assert::same(\glob($dir . '/runs/*/report.json'), []);
+        Assert::same(\glob($dir . '/.opmin/runs/*/report.json'), []);
         [$resumed, $resumedOut, $resumedErr] = $this->opmin($dir, ['optimize', '--resume']);
 
         Assert::same($resumed, 0, $resumedOut . $resumedErr);
-        Assert::string($resumedErr)->contains('Resuming runs/');
+        Assert::string($resumedErr)->contains('Resuming .opmin/runs/');
         $this->assertSameResult($dir, $expected);
     }
 
@@ -120,7 +120,7 @@ final class OptimizeResumeTest
         [$withPaths, , $pathsErr] = $this->opmin($dir, ['optimize', 'src', '--resume']);
 
         Assert::same($code, 2);
-        Assert::string($err)->contains('No interrupted run in runs/');
+        Assert::string($err)->contains('No interrupted run in .opmin/runs/');
         Assert::same($withPaths, 2);
         Assert::string($pathsErr)->contains('do not pass paths');
     }
@@ -153,7 +153,7 @@ final class OptimizeResumeTest
         );
         $deadline = \microtime(true) + 120;
         while (\microtime(true) < $deadline) {
-            $states = \glob($dir . '/runs/*/state.json') ?: [];
+            $states = \glob($dir . '/.opmin/runs/*/state.json') ?: [];
             /** @var mixed $state */
             $state = $states === [] ? null : \json_decode((string) @\file_get_contents($states[0]), true);
             if (\is_array($state) && \is_array($state['steps'] ?? null) && \count($state['steps']) >= 1) {
@@ -177,7 +177,7 @@ final class OptimizeResumeTest
         \mkdir($dir . '/src', 0777, true);
         \file_put_contents($dir . '/composer.json', '{"require": {"php": ">=8.1"}, "autoload": {"psr-4": {"App\\\\": "src/"}}}');
         \file_put_contents($dir . '/src/Text.php', self::CODE);
-        \file_put_contents($dir . '/.gitignore', "/runs/\n/.opmin-cache/\n");
+        \file_put_contents($dir . '/.gitignore', ".opmin/\n");
         \file_put_contents($dir . '/opmin.yaml', '');
         $this->git($dir, 'init', '-q');
         $this->git($dir, 'add', '.');
@@ -191,7 +191,7 @@ final class OptimizeResumeTest
      */
     private function report(string $dir): array
     {
-        $files = \glob($dir . '/runs/*/report.json') ?: [];
+        $files = \glob($dir . '/.opmin/runs/*/report.json') ?: [];
         Assert::count($files, 1);
 
         /** @var array{totals: array<string, mixed>, interrupted: bool, functions: array<string, mixed>} */

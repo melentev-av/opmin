@@ -70,7 +70,7 @@ final class CheckTest
         \file_put_contents($this->dir . '/composer.json', '{"require": {"php": ">=8.1"}, "autoload": {"psr-4": {"App\\\\": "src/"}}}');
         \file_put_contents($this->dir . '/src/Text.php', self::TEXT);
         \file_put_contents($this->dir . '/src/math.php', self::MATH);
-        \file_put_contents($this->dir . '/.gitignore', "/.opmin-cache/\n");
+        \file_put_contents($this->dir . '/.gitignore', ".opmin/\n");
         \file_put_contents($this->dir . '/opmin.yaml', '');
 
         $this->git('init', '-q');
@@ -127,7 +127,7 @@ final class CheckTest
         Assert::same($report['findings'][0]['function'], 'App\Text::size');
         Assert::same($report['findings'][0]['suggestion']['rule'] ?? null, 'Opmin\Rector\Rule\FullyQualifyGlobalCallsRector');
         Assert::same((string) \file_get_contents($this->dir . '/src/Text.php'), $before);
-        Assert::same(\glob($this->dir . '/.opmin-cache/tmp/suggest-*') ?: [], []);
+        Assert::same(\glob($this->dir . '/.opmin/cache/tmp/suggest-*') ?: [], []);
     }
 
     public function decreaseAsksToUpdateTheBaselineAndUpdatesIt(): void

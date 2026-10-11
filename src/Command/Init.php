@@ -7,7 +7,11 @@ namespace Opmin\Command;
 use Internal\Path;
 use Opmin\Info;
 use Opmin\Module\Config\ConfigWriter;
+use Opmin\Module\Config\Schema;
+use Opmin\Module\Php\PhpBinaryException;
+use Opmin\Module\Php\PhpBinaryProbe;
 use Opmin\Module\Project\InitDetector;
+use Opmin\Module\Project\Layout;
 use Opmin\Module\Skill\Skill;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -41,7 +45,6 @@ final class Init extends Base
 {
     protected const bool CHECK_VERSION = false;
     private const DEFAULT_CONFIG_PATH = 'opmin.yaml';
-    private const CACHE_IGNORE_LINE = '/.opmin-cache/';
 
     public function configure(): void
     {
@@ -67,14 +70,23 @@ final class Init extends Base
             return Command::FAILURE;
         }
 
-        $detected = InitDetector::detect($configPath->parent());
+        /** @var Schema\Php $php */
+        $php = $this->container->get(Schema\Php::class);
+        try {
+            $binary = (new PhpBinaryProbe())->probe($php->binary);
+        } catch (PhpBinaryException) {
+            # No php.binary yet: composer.json gives the target, doctor tells what to install.
+            $binary = null;
+        }
+
+        $detected = InitDetector::detect($configPath->parent(), $binary);
         \file_put_contents((string) $configPath, ConfigWriter::render(\array_map(static fn(array $found): mixed => $found[0], $detected)));
         $style->success("Configuration file created: {$configPath}");
         foreach ($detected as $key => $found) {
             $style->text(\sprintf('  %s: %s  <fg=gray>(%s)</>', $key, Yaml::dump($found[0], 0), $found[1]));
         }
 
-        $this->ignoreCacheDirectory($configPath->parent(), $style);
+        Layout::ignore($configPath->parent()) and $style->text('Added ' . Layout::GITIGNORE . ' to .gitignore');
         $input->getOption('no-skill') or $this->installSkill($configPath->parent(), $style);
 
         return Command::SUCCESS;
@@ -121,28 +133,6 @@ final class Init extends Base
         $helper = $this->getHelper('question');
 
         return !$helper->ask($input, $this->container->get(OutputInterface::class), $question);
-    }
-
-    /**
-     * Adds the cache directory to the project's `.gitignore` when the project is a git repository
-     * and the line is not there yet.
-     */
-    private function ignoreCacheDirectory(Path $root, StyleInterface $style): void
-    {
-        $gitignore = $root->join('.gitignore');
-        if (!$gitignore->exists() && !$root->join('.git')->exists()) {
-            return;
-        }
-
-        $content = $gitignore->exists() ? (string) \file_get_contents((string) $gitignore) : '';
-        $lines = \array_map('trim', \explode("\n", $content));
-        if (\array_intersect($lines, [self::CACHE_IGNORE_LINE, '.opmin-cache', '.opmin-cache/', '/.opmin-cache']) !== []) {
-            return;
-        }
-
-        $prefix = $content === '' || \str_ends_with($content, "\n") ? '' : "\n";
-        \file_put_contents((string) $gitignore, $prefix . self::CACHE_IGNORE_LINE . "\n", \FILE_APPEND);
-        $style->text('Added ' . self::CACHE_IGNORE_LINE . ' to .gitignore');
     }
 
     /**

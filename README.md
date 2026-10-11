@@ -71,7 +71,7 @@ gh attestation verify opmin-0.2.0-linux-x86_64.tar.gz --repo melentev-av/opmin
 ## Quick start
 
 ```bash
-opmin init        # opmin.yaml: every key with a comment; detects php.target, paths, test runner, formatter, PHPStan
+opmin init        # opmin.yaml: every key with a comment; php.target from php.binary, paths, test runner, formatter, PHPStan
 opmin doctor      # php.binary first, then OPcache, the harness, syntax, tests, PHPStan, coverage, git — with fixes
 opmin count       # opcodes per function
 opmin optimize    # Rector stage, every accepted step is a separate commit
@@ -79,7 +79,7 @@ opmin optimize    # Rector stage, every accepted step is a separate commit
 opmin baseline    # commit opmin.baseline.json, then `opmin check` in CI keeps opcodes from growing
 ```
 
-A run ends with a summary like this, and `runs/<ts>/report.md` with every function:
+A run ends with a summary like this, and `.opmin/report_<ts>.md` with every function:
 
 ```text
  ------ ------------------------------------ ------ ------------- --------- ----------------
@@ -92,7 +92,7 @@ A run ends with a summary like this, and `runs/<ts>/report.md` with every functi
 
 The full run of the project's tests passes on the result.
 
- [OK] 442 → 349 opcodes (-93). Report: runs/20261007-192240/report.md, patch: runs/20261007-192240/opmin.patch
+ [OK] 442 → 349 opcodes (-93). Report: .opmin/report_20261007-192240.md, patch: .opmin/runs/20261007-192240/opmin.patch
 ```
 
 `opmin doctor` exits with 1 when something blocks `count`/`optimize` (warnings — e.g. no pcov, so every step
@@ -115,10 +115,10 @@ opmin diff before.json after.json                   # per function: fewer / more
   once, in the trait; abstract and interface methods are not reported.
 - Counts depend on the PHP version: reports carry `php` and `optimizer_hash`, and `diff` refuses to compare
   reports taken with different ones.
-- Counts are cached in `.opmin-cache/` by file content, PHP version, optimizer settings and opmin version:
+- Counts are cached in `.opmin/cache/` by file content, PHP version, optimizer settings and opmin version:
   re-counting an unchanged project does not start PHP for compilation at all. A relative `cache.dir` is next to
   the config in use, so in a monorepo the packages share the root's cache.
-  `cache.driver` picks the storage: `auto` (default) is one SQLite database `.opmin-cache/cache.sqlite` when the
+  `cache.driver` picks the storage: `auto` (default) is one SQLite database `.opmin/cache/cache.sqlite` when the
   PHP running opmin has `pdo_sqlite` (the static binary and most PHP builds do) and a JSON file per entry
   otherwise; `sqlite` insists on the database (a config error, exit code 2, without `pdo_sqlite`); `files` is
   always a file per entry; `memory` keeps counts and references for one run only, nothing on disk. Both disk
@@ -139,7 +139,7 @@ opmin verify src/Cart.php /tmp/Cart.php --with-tests    # + php -l, PHPStan "no 
   output, warnings (also thrown as `ErrorException`), by-ref arguments, `$this`, mock calls, globals and statics
   are compared. Time and randomness in the function's namespace are faked; a function that disagrees with
   itself is nondeterministic and stays unverified.
-- A difference is shrunk to a minimal input and saved to `runs/<timestamp>/counterexamples/` as JSON and as a
+- A difference is shrunk to a minimal input and saved to `.opmin/runs/<timestamp>/counterexamples/` as JSON and as a
   test for the project's runner (PHPUnit, Pest, Testo; a plain script otherwise).
 - Accepted: proven by differential tests with `verification.min_branch_coverage` of the original's branches,
   or unverified but executed by passing project tests, or with `verification.allow_unverified`. Branches the
@@ -154,7 +154,7 @@ opmin optimize                         # the config `paths` (src/ or app/)
 opmin optimize src/Cart.php 'src/**/*Service.php' --dry-run
 opmin optimize --with-standard-rector  # also the standard Rector rules (off by default)
 opmin optimize --review                # confirm every change: y / n / a (all of this rule) / q
-opmin optimize --resume                # continue the latest interrupted run (or --resume=runs/<ts>)
+opmin optimize --resume                # continue the latest interrupted run (or --resume=.opmin/runs/<ts>)
 opmin optimize --guard-perf            # also roll back changes that make a function slower
 opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
 ```
@@ -165,7 +165,7 @@ opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
   the changed lines (`readability.*`), complexity and nesting do not grow and its signature stays as
   `signatures.*` allow; then it is verified on all three levels. Everything else is taken back.
 - In a git working tree every accepted step is a commit of its files; outside git the originals are copied to
-  `runs/<ts>/original/`; `--dry-run` restores everything. Each run writes the report (below), the counts before
+  `.opmin/runs/<ts>/original/`; `--dry-run` restores everything. Each run writes the report (below), the counts before
   and after and `opmin.patch`, and ends with a full run of the project's tests.
 - Under git opmin does not check the tree by default: its commits and rollbacks name their paths, so other dirty
   files stay as they are, but your own uncommitted edits of a file the run changes go into opmin's commit.
@@ -181,7 +181,7 @@ opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
   change of the time goes to the report, and a change slower by more than `guard_perf.max_regression_percent`
   (5) is rolled back even with fewer opcodes. Changes proven only by the project's tests are not timed.
 - Ctrl+C (SIGINT, SIGTERM) stops a run: the step under way is dropped — its tools got the signal too — and the
-  report says the run was interrupted. Every step is saved to `runs/<ts>/state.json`; `--resume` puts the files
+  report says the run was interrupted. Every step is saved to `.opmin/runs/<ts>/state.json`; `--resume` puts the files
   back to the last accepted step (also after a crash or `kill -9`, dropping an opmin commit the state missed) and
   continues with the same files, rules and options, ending as an uninterrupted run would.
 - A change rolled back for a reason of its own (no gain, a difference, not proven…) is not tried again in later
@@ -204,10 +204,10 @@ Rector step. `opmin init` puts the skill `opcode-minimize` into `.claude/skills/
 the installed opmin. The skill drives these commands:
 
 ```bash
-opmin llm:targets src --format=json            # starts a session in runs/<ts>/: the llm.top_n functions with the most opcodes
+opmin llm:targets src --format=json            # starts a session in .opmin/runs/<ts>/: the llm.top_n functions with the most opcodes
 opmin llm:context 'App\Cart::total'            # source, opcode listing, histogram, dynamic constructs with their rules,
                                                # readability and signature rules, rejected attempts with their reasons
-opmin apply-candidate 'App\Cart::total' runs/<ts>/candidate.php --format=json
+opmin apply-candidate 'App\Cart::total' .opmin/runs/<ts>/candidate.php --format=json
 opmin llm:finish                               # the full test run (taking back attempts while it fails), report, patch
 ```
 
@@ -222,7 +222,8 @@ opmin llm:finish                               # the full test run (taking back 
 
 ## The report
 
-Every run (`optimize`, `llm:finish`) writes `runs/<ts>/report.md` for people and `runs/<ts>/report.json` for tools:
+Every run (`optimize`, `llm:finish`) writes `.opmin/runs/<ts>/report.md` for people — and the same file as
+`.opmin/report_<ts>.md`, next to the reports of the earlier runs — and `.opmin/runs/<ts>/report.json` for tools:
 
 - the total: opcodes before → after, %; whether the full run of the project's tests passes;
 - every changed function: before → after, what saved the opcodes (rule or LLM), how it is proven (`diff-tested`,
@@ -230,7 +231,7 @@ Every run (`optimize`, `llm:finish`) writes `runs/<ts>/report.md` for people and
   of dynamic constructs; changes that save executed opcodes rather than static ones are listed apart;
 - every rolled-back change grouped by reason (a difference with its counterexample input, failing tests, PHPStan,
   not proven, signature, dynamic constructs, readability, no gain, excluded);
-- counterexamples as tests of the project's runner in `runs/<ts>/counterexamples/`;
+- counterexamples as tests of the project's runner in `.opmin/runs/<ts>/counterexamples/`;
 - the environment: PHP runtime, `php.target`, the optimizer settings, opmin, Rector, the project's PHPStan. A run
   warns when one of them changed since the previous run, `opmin diff` when the reports come from other opmin
   versions or targets.
@@ -361,7 +362,7 @@ opmin optimize git@github.com:vendor/package.git src/Parser --ref=main --dry-run
   (`--yes` in scripts), and only if `php.binary` satisfies `require.php` and has the `ext-*` the package needs;
 - the public API is never changed (`signatures.public_api` is forced off): a package is called from code nobody
   can see. `--force-public-api` lifts it;
-- `runs/<ts>/` with the report and `opmin-<package>-<ref>.patch` land in the current directory: apply the patch in
+- `.opmin/runs/<ts>/` with the report and `opmin-<package>-<ref>.patch` land in the current directory: apply the patch in
   your fork with `git apply`.
 
 `package.docker_image` (`ghcr.io/melentev-av/opmin:{version}-php{php}`) selects another image.
@@ -409,7 +410,9 @@ fallback, and `\trim()` removes the fallback.
 
 `opmin.yaml` (or `opmin.yaml.dist`) in the project root; `opmin init` generates it with all keys. The commands that
 analyze a project (`count`, `verify`, `optimize`, `check`, `baseline`, `llm:*`, `apply-candidate`) refuse to run
-without it (exit code 2): they read their settings from it and keep the cache next to it. A git package
+without it (exit code 2): they read their settings from it and keep the cache next to it. Everything opmin
+writes goes to `.opmin/` next to the config — `.opmin/runs/<ts>/` (reports, patches, counterexamples) and
+`.opmin/cache/` — and `init` or the first such command adds `.opmin/` to `.gitignore` of a git project. A git package
 (`opmin optimize <git-url>`) without its own config gets an empty one beside the clone. Unknown keys and
 wrong types are errors naming the key. Any key can be overridden for one run:
 

@@ -9,6 +9,7 @@ use Opmin\Module\Config\Schema;
 use Opmin\Module\Llm\Session;
 use Opmin\Module\Php\PhpBinary;
 use Opmin\Module\Php\PhpBinaryProbe;
+use Opmin\Module\Project\Layout;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Project\Targets;
 use Symfony\Component\Console\Input\InputInterface;
@@ -16,7 +17,7 @@ use Symfony\Component\Console\Input\InputOption;
 
 /**
  * The commands the skill of the LLM stage calls (brief, «Stage B»): they share a session in
- * `runs/<ts>/` (the latest one, or `--run`) and print JSON with `--format=json`.
+ * `.opmin/runs/<ts>/` (the latest one, or `--run`) and print JSON with `--format=json`.
  *
  * @internal
  */
@@ -77,7 +78,7 @@ abstract class LlmStage extends Stage
         $run = $input->getOption('run');
 
         return Session::open(
-            $project->root->join('runs'),
+            $project->root->join(Layout::RUNS),
             \is_string($run) && $run !== '' ? Targets::absolute($run, Path::create((string) \getcwd())) : null,
         );
     }

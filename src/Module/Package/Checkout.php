@@ -19,7 +19,7 @@ use Symfony\Component\Process\Process;
 final readonly class Checkout
 {
     /** Written by composer and opmin in the clone: they must not make the work tree dirty. */
-    private const EXCLUDE = ['/vendor/', '/composer.lock', '/.opmin-cache/', '/runs/', '/.opmin-host.yaml'];
+    private const EXCLUDE = ['/vendor/', '/composer.lock', '/.opmin/', '/.opmin-host.yaml'];
 
     /**
      * @param Path $workspace The temporary directory; removed by {@see self::remove()}.

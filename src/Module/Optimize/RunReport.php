@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Opmin\Module\Optimize;
 
+use Internal\Path;
+use Opmin\Module\Project\Layout;
 use Opmin\Module\Report\Environment;
 use Opmin\Module\Report\MarkdownReport;
 use Opmin\Module\Report\RejectionKind;
@@ -64,7 +66,7 @@ final class RunReport
     }
 
     /**
-     * Writes `report.json` and `report.md` to the run directory.
+     * Writes `report.json` and `report.md` to the run directory, and `report.md` as `.opmin/report_<ts>.md`.
      *
      * @param array<string, mixed> $extra More fields of `report.json` (the attempts of the LLM stage).
      * @return array<string, mixed> The data of `report.json`.
@@ -77,7 +79,10 @@ final class RunReport
             \json_encode($data, \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE | \JSON_THROW_ON_ERROR) . "\n",
         );
         $title = \sprintf('opmin %s: %s', $this->kind === 'llm' ? 'LLM stage' : 'optimize', \basename($this->runDir));
-        \file_put_contents($this->runDir . '/report.md', MarkdownReport::render($data, $title));
+        $markdown = MarkdownReport::render($data, $title);
+        \file_put_contents($this->runDir . '/report.md', $markdown);
+        $copy = Layout::report(Path::create($this->runDir));
+        $copy === null or \file_put_contents((string) $copy, $markdown);
 
         return $data;
     }

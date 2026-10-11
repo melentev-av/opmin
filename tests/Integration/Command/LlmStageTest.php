@@ -86,7 +86,7 @@ final class LlmStageTest
         \mkdir($this->dir . '/src', 0777, true);
         \file_put_contents($this->dir . '/composer.json', '{"require": {"php": ">=8.1"}, "autoload": {"psr-4": {"App\\\\": "src/"}}}');
         \file_put_contents($this->dir . '/src/Text.php', self::CODE);
-        \file_put_contents($this->dir . '/.gitignore', "/runs/\n/.opmin-cache/\n");
+        \file_put_contents($this->dir . '/.gitignore', ".opmin/\n");
         \file_put_contents($this->dir . '/opmin.yaml', "commands:\n  format: none\nllm:\n  attempts_per_function: 2\n");
         $this->git('init', '-q');
         $this->git('add', '.');
@@ -158,11 +158,11 @@ final class LlmStageTest
 
     public function finishTakesBackWhatTheFullTestRunRejects(): void
     {
-        # The suite fails on the rewritten slug once `runs/broken` exists: the attempt passes, the final run does not.
+        # The suite fails on the rewritten slug once `.opmin/runs/broken` exists: the attempt passes, the final run does not.
         \file_put_contents($this->dir . '/check.php', <<<'PHP'
             <?php
             $rewritten = str_contains((string) file_get_contents(__DIR__ . '/src/Text.php'), '\preg_replace(');
-            exit($rewritten && is_file(__DIR__ . '/runs/broken') ? 1 : 0);
+            exit($rewritten && is_file(__DIR__ . '/.opmin/runs/broken') ? 1 : 0);
             PHP);
         \file_put_contents($this->dir . '/opmin.yaml', "commands:\n  format: none\ntests:\n  runner: command\n  command: php check.php\n");
         $this->git('add', '.');
@@ -176,7 +176,7 @@ final class LlmStageTest
             PHP);
         [$code, $out, $err] = $this->opmin('apply-candidate', 'App\Text::slug', $candidate);
         Assert::same($code, 0, $out . $err);
-        \touch($this->dir . '/runs/broken');
+        \touch($this->dir . '/.opmin/runs/broken');
 
         [$finish, $finishOut, $finishErr] = $this->opmin('llm:finish', '--format=json');
 
@@ -281,7 +281,7 @@ final class LlmStageTest
 
         Assert::same([$first, $second, $third], [1, 1, 2]);
         Assert::string($err)->ignoringWhitespace(lineBreaks: true)->contains('No attempts left for `App\Text::kind`: 2 of llm.attempts_per_function = 2');
-        Assert::count(\glob($this->dir . '/runs/*/candidates/*.php') ?: [], 2);
+        Assert::count(\glob($this->dir . '/.opmin/runs/*/candidates/*.php') ?: [], 2);
     }
 
     public function withoutASessionNothingRuns(): void
@@ -304,7 +304,7 @@ final class LlmStageTest
      */
     private function candidate(string $source): string
     {
-        $runs = \glob($this->dir . '/runs/*', \GLOB_ONLYDIR) ?: [];
+        $runs = \glob($this->dir . '/.opmin/runs/*', \GLOB_ONLYDIR) ?: [];
         Assert::true($runs !== []);
         $file = \end($runs) . '/candidate-' . \bin2hex(\random_bytes(3)) . '.php';
         \file_put_contents($file, $source);

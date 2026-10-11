@@ -53,23 +53,23 @@ final class DoctorTest
             ->contains('! tests: no test runner found')
             ->contains('i PHPStan: commands.phpstan is null')
             ->contains(\extension_loaded('pdo_sqlite')
-                ? '✔ cache: SQLite, ' . $this->dir . '/.opmin-cache/cache.sqlite (auto): created by the first count'
-                : 'i cache: files in ' . $this->dir . '/.opmin-cache (auto: the PHP running opmin has no pdo_sqlite)')
+                ? '✔ cache: SQLite, ' . $this->dir . '/.opmin/cache/cache.sqlite (auto): created by the first count'
+                : 'i cache: files in ' . $this->dir . '/.opmin/cache (auto: the PHP running opmin has no pdo_sqlite)')
             ->contains('Ready');
-        Assert::false(\file_exists($this->dir . '/.opmin-cache'));
+        Assert::false(\file_exists($this->dir . '/.opmin/cache'));
     }
 
     public function aCorruptSqliteCacheIsAWarningNotAnError(): void
     {
-        \mkdir($this->dir . '/.opmin-cache');
-        \file_put_contents($this->dir . '/.opmin-cache/cache.sqlite', \str_repeat('not a database ', 1000));
+        \mkdir($this->dir . '/.opmin/cache', 0777, true);
+        \file_put_contents($this->dir . '/.opmin/cache/cache.sqlite', \str_repeat('not a database ', 1000));
 
         [$code, $out] = $this->doctor('--set=cache.driver=sqlite');
 
         Assert::same($code, 0);
         Assert::string($out)
             ->contains('! cache: the SQLite database cannot be used, runs work without the cache:')
-            ->contains('Fix: Delete ' . $this->dir . '/.opmin-cache/cache.sqlite');
+            ->contains('Fix: Delete ' . $this->dir . '/.opmin/cache/cache.sqlite');
     }
 
     public function otherDriversAreNamed(): void
@@ -77,7 +77,7 @@ final class DoctorTest
         [, $files] = $this->doctor('--set=cache.driver=files');
         [, $memory] = $this->doctor('--set=cache.driver=memory');
 
-        Assert::string($files)->contains('i cache: files in ' . $this->dir . '/.opmin-cache' . "\n");
+        Assert::string($files)->contains('i cache: files in ' . $this->dir . '/.opmin/cache' . "\n");
         Assert::string($memory)->contains('i cache: memory: every run compiles and parses the project anew');
     }
 

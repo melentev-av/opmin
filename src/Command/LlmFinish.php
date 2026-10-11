@@ -8,6 +8,7 @@ use Opmin\Module\Llm\Attempt;
 use Opmin\Module\Optimize\LlmCandidate;
 use Opmin\Module\Optimize\StepReport;
 use Opmin\Module\Php\PhpBinaryException;
+use Opmin\Module\Project\Layout;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -108,7 +109,7 @@ final class LlmFinish extends LlmStage
                 \count($kept),
                 \count($attempts),
                 $gain,
-                $project->relative($session->runDir->join('report.md')),
+                $project->relative(Layout::report($session->runDir) ?? $session->runDir->join('report.md')),
                 $report->patch === null ? '' : ', patch: ' . $report->patch,
             ));
         }

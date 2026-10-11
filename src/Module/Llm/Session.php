@@ -8,7 +8,7 @@ use Internal\Path;
 use Opmin\Module\Common\FileSystem\FS;
 
 /**
- * One pass of the LLM stage (brief, «Stage B»): a run directory `runs/<ts>/` that the separate calls
+ * One pass of the LLM stage (brief, «Stage B»): a run directory `.opmin/runs/<ts>/` that the separate calls
  * of the skill share — `llm:targets` starts it, `llm:context` and `apply-candidate` work in it,
  * `llm:finish` ends it.
  *

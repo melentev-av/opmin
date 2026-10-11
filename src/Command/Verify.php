@@ -8,6 +8,7 @@ use Internal\Path;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Php\PhpBinaryException;
 use Opmin\Module\Php\PhpBinaryProbe;
+use Opmin\Module\Project\Layout;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Project\Targets;
 use Opmin\Module\Verification\CandidateReport;
@@ -25,7 +26,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * Verify a changed version of a file: the checks every optimization step goes through (brief,
  * Модуль 2). The file is not changed (with `--with-tests` the candidate is written in place for
  * PHPStan and the tests and the original is restored). Counterexamples of rejected functions are
- * written as tests of the project's runner to `runs/<timestamp>/counterexamples/`.
+ * written as tests of the project's runner to `.opmin/runs/<timestamp>/counterexamples/`.
  *
  * Exit codes: 0 — the candidate is accepted; 1 — rejected (or the project's tests fail on the
  * original code); 2 — invalid config, missing files, unusable `php.binary`.
@@ -113,7 +114,7 @@ final class Verify extends Base
                 (string) \file_get_contents((string) $candidate),
                 $keys === [] ? null : $keys,
                 (bool) $input->getOption('with-tests'),
-                $project->root->join('runs', \date('Ymd-His'), 'counterexamples'),
+                $project->root->join(Layout::RUNS, \date('Ymd-His'), 'counterexamples'),
             );
         } catch (\InvalidArgumentException $e) {
             $style->error($e->getMessage());

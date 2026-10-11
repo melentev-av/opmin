@@ -21,7 +21,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
  * Starts a session of the LLM stage: counts the targets and picks the `llm.top_n` top-level functions
- * with the most opcodes (brief, «Stage B», step 1). The session lives in `runs/<ts>/`.
+ * with the most opcodes (brief, «Stage B», step 1). The session lives in `.opmin/runs/<ts>/`.
  *
  * ```bash
  * opmin llm:targets src --format=json

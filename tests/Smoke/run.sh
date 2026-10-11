@@ -11,7 +11,7 @@
 #               (default: opmin:smoke-php{php}, see docker/Dockerfile)
 #   SMOKE_DIR   working directory (default: ~/.cache/opmin-smoke — Docker VMs share only the home directory)
 #
-# Writes <SMOKE_DIR>/<package>-php<php>/: run.log, runs/ (report.md, report.json, counterexamples), the patch,
+# Writes <SMOKE_DIR>/<package>-php<php>/: run.log, .opmin/runs/ (report.md, report.json, counterexamples), the patch,
 # and summary.json — one row of the summary table.
 set -euo pipefail
 
@@ -88,7 +88,7 @@ if [ -n "$patch" ]; then
   tests "$work/check" after || after=red
 fi
 
-report="$(ls runs/*/report.json 2>/dev/null | head -n 1 || true)"
+report="$(ls .opmin/runs/*/report.json 2>/dev/null | head -n 1 || true)"
 php -r '
   [, $file, $package, $ref, $php, $code, $seconds, $before, $after] = $argv;
   $r = $file !== "" && is_file($file) ? json_decode(file_get_contents($file), true) : null;

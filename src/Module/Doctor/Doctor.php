@@ -21,6 +21,7 @@ use Opmin\Module\Php\PhpBinary;
 use Opmin\Module\Php\PhpBinaryException;
 use Opmin\Module\Php\PhpBinaryProbe;
 use Opmin\Module\Project\FileFinder;
+use Opmin\Module\Project\Layout;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Project\Targets;
 use Opmin\Module\Release\Installation;
@@ -382,7 +383,7 @@ final readonly class Doctor
             $inside->run();
             $checks[] = Check::ok('git', \trim($git->getOutput()) . (\trim($inside->getOutput()) === 'true'
                 ? ', the project is a git work tree: every accepted step is a commit'
-                : ', the project is not a git work tree: optimize keeps a copy of the originals in runs/'));
+                : ', the project is not a git work tree: optimize keeps a copy of the originals in ' . Layout::RUNS . '/'));
         }
 
         $checks[] = $this->cacheStore();

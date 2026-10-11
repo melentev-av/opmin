@@ -26,7 +26,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * is recorded in the session, at most `llm.attempts_per_function` per function.
  *
  * ```bash
- * opmin apply-candidate 'App\Service\Pricing::total' runs/20261007-120000/candidate.php --format=json
+ * opmin apply-candidate 'App\Service\Pricing::total' .opmin/runs/20261007-120000/candidate.php --format=json
  * opmin apply-candidate 'App\Service\Pricing::total' - < candidate.php
  * ```
  *

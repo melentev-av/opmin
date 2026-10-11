@@ -62,9 +62,10 @@ final class OptimizePackageTest
         [$code, $out, $err] = $this->opmin('--yes');
 
         Assert::same($code, 0, $out . $err);
-        Assert::string($out . $err)->contains('Docker is not used')->contains('Report: ' . $this->dir . '/cwd/runs/');
-        $reports = \glob($this->dir . '/cwd/runs/*/report.json') ?: [];
+        Assert::string($out . $err)->contains('Docker is not used')->contains('Report: ' . $this->dir . '/cwd/.opmin/report_');
+        $reports = \glob($this->dir . '/cwd/.opmin/runs/*/report.json') ?: [];
         Assert::count($reports, 1);
+        Assert::count(\glob($this->dir . '/cwd/.opmin/report_*.md') ?: [], 1);
         $patch = (string) \file_get_contents($this->dir . '/cwd/opmin-acme-tiny-v1.0.0.patch');
         Assert::string($patch)->contains('+        return \strlen($s) + \strlen(\trim($s));');
         Assert::same(\glob($this->dir . '/workspaces/*'), []);

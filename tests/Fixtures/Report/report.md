@@ -78,7 +78,7 @@ Counterexample for `App\Cart::price` (test: `runs/20261007-120000/counterexample
 
 ### Behavior not proven (1)
 
-Nothing proved that the function behaves as before: the generated inputs reached too little of its code (verification.min_branch_coverage), it has side effects or is nondeterministic, and no project test runs it. `--allow-unverified` keeps such changes.
+Nothing proved that the function behaves as before: the generated inputs reached too little of its code (verification.min_branch_coverage), it has side effects or is nondeterministic, and no project test runs it. «What to do next» says how to prove it.
 
 | Function | Rule | Reason |
 |---|---|---|

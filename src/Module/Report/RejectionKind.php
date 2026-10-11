@@ -105,7 +105,7 @@ enum RejectionKind: string
             self::StaticCheck => 'The changed code does not parse, Rector failed on it, or PHPStan found a new error.',
             self::NotProven => 'Nothing proved that the function behaves as before: the generated inputs reached too little of '
                 . 'its code (verification.min_branch_coverage), it has side effects or is nondeterministic, and no '
-                . 'project test runs it. `--allow-unverified` keeps such changes.',
+                . 'project test runs it. «What to do next» says how to prove it.',
             self::Performance => '`--guard-perf` measured the changed function as slower than '
                 . 'guard_perf.max_regression_percent allows.',
             self::Signature => 'The change would alter the signature or the docblock of the function, which the '

@@ -106,6 +106,8 @@ runs the whole test suite — do not); `--with-tests` also runs your test suite 
 ```bash
 opmin count src lib/Legacy.php                      # table: function, file:line, ops_raw, ops_opt, vars, tmps
 opmin count --filter='App\Service\*' --exclude=tests
+opmin count --top=20                                # the 20 largest functions by ops_opt
+opmin count --min=50 --sort=ops_raw                 # functions of 50+ ops_opt, largest ops_raw first
 opmin count --format=json > before.json             # deterministic report, keys sorted
 opmin diff before.json after.json                   # per function: fewer / more opcodes, new, removed
 ```
@@ -116,6 +118,11 @@ opmin diff before.json after.json                   # per function: fewer / more
   counted but not optimized) gets a stable key: `App\Foo::bar`, `App\Foo::bar::{closure:2}`,
   `App\Foo::bar::{class:1}::baz` for anonymous classes — ordinals, not line numbers. Trait methods are counted
   once, in the trait; abstract and interface methods are not reported.
+- `--sort=file|ops_opt|ops_raw` orders the table: by file and line (default), or by opcodes, most first.
+  `--top=N` keeps the first N rows and sorts by `ops_opt` unless `--sort` is given; `--min=N` keeps functions
+  with at least N `ops_opt`. Both leave out main code (it is not optimized) and the per-file table; the totals
+  stay those of the whole report. The three shape the table only: `--format=json` is the full report `diff`
+  reads, so with them it exits with code 2 — cut the JSON with `jq` instead.
 - Counts depend on the PHP version: reports carry `php` and `optimizer_hash`, and `diff` refuses to compare
   reports taken with different ones.
 - Counts are cached in `.opmin/cache/` by file content, PHP version, optimizer settings and opmin version:

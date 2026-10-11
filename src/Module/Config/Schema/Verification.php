@@ -33,6 +33,10 @@ final class Verification
     #[ConfigKey('verification.fuzz_time_ms', 'Time limit of coverage-guided input search per function, ms')]
     public int $fuzzTimeMs = 2000;
 
+    /** @var positive-int */
+    #[ConfigKey('verification.time_budget_ms', 'Time limit of the whole differential test of one function (planned, random and fuzzed inputs), ms; when it runs out, coverage decides on the inputs checked so far')]
+    public int $timeBudgetMs = 15000;
+
     #[ConfigKey('verification.seed', 'Seed of input generation')]
     public int $seed = 42;
 

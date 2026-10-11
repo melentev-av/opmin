@@ -31,6 +31,7 @@ use Opmin\Module\Verification\Property\Discard;
 use Opmin\Module\Verification\Property\PropertyOutcome;
 use Opmin\Module\Verification\Property\PropertyRunner;
 use Opmin\Module\Verification\Property\PropertySpec;
+use Opmin\Module\Verification\Property\Stop;
 use Opmin\Module\Verification\Target\Target;
 use Opmin\Module\Verification\Target\TargetLocator;
 use Opmin\Module\Verification\Target\UnsupportedTarget;
@@ -44,7 +45,9 @@ use Opmin\Module\Verification\Target\UnsupportedTarget;
  * `ErrorException` when any warning occurred. An input the original cannot take (it hangs, the input
  * cannot be built) is discarded. Inputs: the plan of boundary values and literals, random inputs,
  * then coverage-guided mutations within `fuzz_time_ms` while branches of the original stay uncovered.
- * A difference is shrunk to a minimal counterexample.
+ * A difference is shrunk to a minimal counterexample. The whole test is limited by `time_budget_ms`
+ * (coverage decides on what was checked by then); a few inputs in a row the original times out on end
+ * it as unverified.
  *
  * @internal
  */
@@ -55,6 +58,12 @@ final class DiffTester
 
     /** Inputs per round of the coverage-guided search. */
     private const FUZZ_ROUND = 25;
+
+    /**
+     * Inputs in a row the original times out on that end the test: each costs `call_timeout_ms` and
+     * says nothing, and the next ones are drawn the same way.
+     */
+    private const TIMEOUTS_IN_ROW = 5;
 
     /** @var list<Input> Inputs both versions took in the last test: the inputs of the benchmark. */
     private array $checkedInputs = [];
@@ -273,14 +282,25 @@ final class DiffTester
         $inputs = [];
         $range = [(int) ($describedOriginal['line'] ?? 0), (int) ($describedOriginal['end_line'] ?? 0)];
         $file = (string) $task->file;
-        $check = static function (Input $input) use ($original, $changed, $originalSession, $changedSession, $comparator, $feedback, $static, $lines, $range, $file, $deadLines, &$checked, &$inputs): void {
+        $timeouts = new TimeoutStreak(self::TIMEOUTS_IN_ROW);
+        $check = static function (Input $input) use ($original, $changed, $originalSession, $changedSession, $comparator, $feedback, $static, $lines, $range, $file, $deadLines, $timeouts, &$checked, &$inputs): void {
+            # Once stopped, no input is run any more: each one ends at once.
+            $timeouts->stopped() and throw new Stop();
             $repeat = $static ? 3 : 1;
             $requests = [
                 ['target' => $original->call, 'input' => $input->toArray(), 'errors' => 'record', 'repeat' => $repeat],
                 ['target' => $changed->call, 'input' => $input->toArray(), 'errors' => 'record', 'repeat' => $repeat],
             ];
             [$o1, $c1] = self::both($originalSession, $changedSession, $requests);
-            if (\in_array($o1['status'] ?? null, ['unbuildable', 'timeout', 'crashed'], true)) {
+            $status = $o1['status'] ?? null;
+            if ($status === 'timeout') {
+                # The original cannot take this input either, and it cost call_timeout_ms.
+                throw $timeouts->timedOut() ? new Stop() : new Discard();
+            }
+
+            # An input that cannot be built never reached the function: it does not break the row.
+            $status === 'unbuildable' or $timeouts->ran();
+            if (\in_array($status, ['unbuildable', 'crashed'], true)) {
                 # The original cannot take this input: nothing to compare.
                 throw new Discard();
             }
@@ -288,6 +308,7 @@ final class DiffTester
             [$o2, $c2] = self::both($originalSession, $changedSession, $requests);
             $noise = $comparator->compare($o1, $o2);
             if ($noise !== null) {
+                $timeouts->failed();
                 throw new Nondeterminism($noise, 'original');
             }
 
@@ -302,24 +323,38 @@ final class DiffTester
                 [$o1, $changedResult] = [$ot, $ct];
             }
 
-            $difference === null or throw new Mismatch($difference, $o1, $changedResult);
+            if ($difference !== null) {
+                $timeouts->failed();
+                throw new Mismatch($difference, $o1, $changedResult);
+            }
+
             ++$checked;
             \count($inputs) < 1000 and $inputs[] = $input;
         };
 
         $id = $task->relative . '::' . $task->key;
         $seed = $this->config->seed;
+        # The budget of the whole test: the start of the workers, the inputs, the search. The shrinking of
+        # a difference is never cut short by it (the engine limits only the generated inputs).
+        $budget = $start + $this->config->timeBudgetMs * 1_000_000;
         # Planned and random inputs; the shrinking of a difference found among them is in this time too.
         $outcome = $this->timings->measure('diff_test.inputs', fn(): PropertyOutcome => $this->runner->run(
-            new PropertySpec($id, \max(1, \count($planner->plan()) + $this->config->randomInputs), $seed, corpus: $this->corpus),
+            new PropertySpec(
+                $id,
+                \max(1, \count($planner->plan()) + $this->config->randomInputs),
+                $seed,
+                budgetMs: \max(1, \intdiv($budget - \hrtime(true), 1_000_000)),
+                corpus: $this->corpus,
+            ),
             $planner,
             $shrinker,
             $check,
         ));
+        $outOfTime = $outcome->outOfTime;
         $fuzzStart = \hrtime(true);
 
-        $deadline = \hrtime(true) + $this->config->fuzzTimeMs * 1_000_000;
-        for ($round = 1; !$outcome->isFalsified() && !$feedback->complete() && \hrtime(true) < $deadline; ++$round) {
+        $deadline = \min($budget, \hrtime(true) + $this->config->fuzzTimeMs * 1_000_000);
+        for ($round = 1; !$timeouts->stopped() && !$outcome->isFalsified() && !$feedback->complete() && \hrtime(true) < $deadline; ++$round) {
             $planner->fuzz();
             $left = \max(1, \intdiv($deadline - \hrtime(true), 1_000_000));
             $outcome = $this->runner->run(
@@ -334,9 +369,15 @@ final class DiffTester
             $this->timings->add('diff_test.fuzz', (float) (\hrtime(true) - $fuzzStart) / 1e9);
             $this->timings->count('fuzz_rounds', $round - 1);
         }
+
+        $stopped = $timeouts->stopped();
+        # The search ended by the budget, not by its own limit.
+        $outOfTime = $outOfTime || !$stopped && !$outcome->isFalsified() && !$feedback->complete() && \hrtime(true) >= $budget;
+        $outOfTime and $this->timings->count('time_budget_spent');
+        $stopped and $this->timings->count('original_timeouts_stop');
         $this->checkedInputs = $inputs;
 
-        return $this->verdict($task, $original, $outcome, $feedback, $checked, $lines);
+        return $this->verdict($task, $original, $outcome, $feedback, $checked, $lines, $stopped);
     }
 
     /**
@@ -371,7 +412,10 @@ final class DiffTester
         );
     }
 
-    private function verdict(DiffTask $task, Target $original, PropertyOutcome $outcome, Feedback $feedback, int $checked, bool $lines): Verdict
+    /**
+     * @param bool $stopped The original timed out on {@see self::TIMEOUTS_IN_ROW} inputs in a row.
+     */
+    private function verdict(DiffTask $task, Target $original, PropertyOutcome $outcome, Feedback $feedback, int $checked, bool $lines, bool $stopped): Verdict
     {
         $flags = $original->flags;
         $coverage = $feedback->percent();
@@ -407,6 +451,15 @@ final class DiffTester
                 $failure instanceof HarnessException => 'the harness failed: ' . $failure->getMessage(),
                 default => 'the differential test failed: ' . $failure::class . ': ' . $failure->getMessage(),
             });
+        }
+
+        # Before every other reason: no later input was run, whatever the coverage of the earlier ones.
+        if ($stopped) {
+            return $base(VerdictStatus::Unverified, \sprintf(
+                'the original times out on generated inputs: %d in a row ran past verification.call_timeout_ms (%d ms)',
+                self::TIMEOUTS_IN_ROW,
+                $this->config->callTimeoutMs,
+            ));
         }
 
         if ($checked === 0) {

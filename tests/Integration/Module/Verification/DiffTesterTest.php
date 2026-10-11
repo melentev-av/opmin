@@ -221,6 +221,73 @@ final class DiffTesterTest
         Assert::same($verdict->status, VerdictStatus::Equivalent, $verdict->reason);
     }
 
+    public function originalTimingOutInARowStopsTheTest(): void
+    {
+        $start = \hrtime(true);
+
+        $verdict = $this->verify(
+            '<?php function f(int $a) { \usleep(2000000); return $a; }',
+            '<?php function f(int $a) { \usleep(2000000); return $a + 1; }',
+            callTimeoutMs: 300,
+            fuzzTimeMs: 0,
+            randomInputs: 20,
+        );
+        $seconds = (float) (\hrtime(true) - $start) / 1e9;
+
+        Assert::same($verdict->status, VerdictStatus::Unverified);
+        Assert::same($verdict->reason, 'the original times out on generated inputs: 5 in a row ran past verification.call_timeout_ms (300 ms)');
+        Assert::same($verdict->inputs, 0);
+        # Five calls of 300 ms and the start of the workers; without the stop, ten discards per input.
+        Assert::true($seconds < 15.0, (string) $seconds);
+    }
+
+    public function differenceFoundBeforeTheTimeoutsIsKept(): void
+    {
+        # Zero is a planned boundary value: the difference is found while the other inputs hang.
+        $verdict = $this->verify(
+            '<?php function f(int $a) { if ($a !== 0) { \usleep(2000000); } return 0; }',
+            '<?php function f(int $a) { if ($a !== 0) { \usleep(2000000); } return 1; }',
+            callTimeoutMs: 300,
+            fuzzTimeMs: 0,
+            randomInputs: 20,
+        );
+
+        Assert::same($verdict->status, VerdictStatus::Mismatch, $verdict->reason);
+        Assert::same($verdict->counterexample?->input->args, [['type' => 'int', 'value' => 0]]);
+    }
+
+    public function timeBudgetEndsASlowTestOnWhatWasChecked(): void
+    {
+        $start = \hrtime(true);
+
+        # 50 ms per call, two calls per input one after another: over 20 s for the plan and 200 inputs.
+        $verdict = $this->verify(
+            '<?php function f(int $a) { \usleep(50000); return $a; }',
+            '<?php function f(int $a) { \usleep(50000); return $a; }',
+            fuzzTimeMs: 0,
+            timeBudgetMs: 1500,
+        );
+        $seconds = (float) (\hrtime(true) - $start) / 1e9;
+
+        Assert::same($verdict->status, VerdictStatus::Equivalent, $verdict->reason);
+        Assert::true($verdict->inputs > 0 && $verdict->inputs < 100, (string) $verdict->inputs);
+        Assert::true($seconds < 8.0, (string) $seconds);
+    }
+
+    public function timeBudgetLimitsTheSearchToo(): void
+    {
+        $code = '<?php function f(int $a) { if (md5((string) $a) === "00000000000000000000000000000000") { return 1; } return 0; }';
+        $start = \hrtime(true);
+
+        $verdict = $this->verify($code, $code, fuzzTimeMs: 60000, timeBudgetMs: 2000);
+        $seconds = (float) (\hrtime(true) - $start) / 1e9;
+
+        # Out of time proves nothing more: the coverage decides as before.
+        Assert::same($verdict->status, VerdictStatus::Unverified);
+        Assert::string($verdict->reason)->contains('min_branch_coverage');
+        Assert::true($seconds < 10.0, (string) $seconds);
+    }
+
     public function staticChainIsThreeCallsLong(): void
     {
         $verdict = $this->verify(
@@ -380,11 +447,13 @@ final class DiffTesterTest
      * @param positive-int $callTimeoutMs
      * @param int<0, 100> $minCoverage
      * @param non-negative-int $fuzzTimeMs
+     * @param positive-int $timeBudgetMs
+     * @param non-negative-int $randomInputs
      */
     /**
      * @param list<array{file: string, message: string, identifier: string, line: int}> $staticErrors
      */
-    private function verify(string $original, string $changed, string $key = 'App\f', int $callTimeoutMs = 2000, int $fuzzTimeMs = 500, int $minCoverage = 90, CoverageDriver $driver = CoverageDriver::Auto, array $staticErrors = []): Verdict
+    private function verify(string $original, string $changed, string $key = 'App\f', int $callTimeoutMs = 2000, int $fuzzTimeMs = 500, int $minCoverage = 90, CoverageDriver $driver = CoverageDriver::Auto, array $staticErrors = [], int $timeBudgetMs = 15000, int $randomInputs = 200): Verdict
     {
         \str_contains($original, 'namespace App;') or $key = \str_replace('App\\', '', $key);
         $file = Path::create($this->dir)->join('Code.php');
@@ -394,6 +463,8 @@ final class DiffTesterTest
         $config->callTimeoutMs = $callTimeoutMs;
         $config->minBranchCoverage = $minCoverage;
         $config->coverageDriver = $driver;
+        $config->timeBudgetMs = $timeBudgetMs;
+        $config->randomInputs = $randomInputs;
         $tester = new DiffTester(TestPhp::binary(), $config, Path::create($this->dir));
 
         /** @var non-empty-string $key */

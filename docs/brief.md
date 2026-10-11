@@ -680,6 +680,7 @@ verification:
   coverage_driver: auto        # auto | xdebug | pcov
   random_inputs: 200
   fuzz_time_ms: 2000           # лимит coverage-guided добора на функцию
+  time_budget_ms: 15000        # лимит всего дифф-теста функции: план, случайные входы и добор
   seed: 42
   float_tolerance: 1.0e-12     # 0 — побитовое сравнение
   call_timeout_ms: 1000

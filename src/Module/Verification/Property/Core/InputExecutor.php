@@ -6,6 +6,7 @@ namespace Opmin\Module\Verification\Property\Core;
 
 use Opmin\Module\Verification\Input;
 use Opmin\Module\Verification\Property\Discard;
+use Opmin\Module\Verification\Property\Stop;
 use Rasuvaeff\PropertyTesting\Runner\TrialExecutor;
 use Rasuvaeff\PropertyTesting\Runner\TrialOutcome;
 
@@ -31,6 +32,10 @@ final readonly class InputExecutor implements TrialExecutor
             ($this->check)(Input::fromArray($input));
         } catch (Discard) {
             return TrialOutcome::discarded();
+        } catch (Stop) {
+            # A skip, not a discard: it says nothing about the input, and the engine gives up after one
+            # skip per requested run. Never a failure: there is no counterexample to shrink or store.
+            return TrialOutcome::skipped();
         } catch (\Throwable $e) {
             return TrialOutcome::failed($e);
         }

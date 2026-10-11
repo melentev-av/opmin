@@ -15,6 +15,7 @@ use Opmin\Module\Verification\Property\InputGenerator;
 use Opmin\Module\Verification\Property\InputShrinker;
 use Opmin\Module\Verification\Property\PropertySpec;
 use Opmin\Module\Verification\Property\RandomSource;
+use Opmin\Module\Verification\Property\Stop;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Lifecycle\AfterTest;
@@ -81,6 +82,7 @@ final class CorePropertyRunnerTest
         );
 
         Assert::false($outcome->isFalsified());
+        Assert::false($outcome->outOfTime);
         Assert::same([$outcome->checks, $seen], [50, 50]);
     }
 
@@ -154,7 +156,30 @@ final class CorePropertyRunnerTest
 
         Assert::false($outcome->isFalsified());
         Assert::false($outcome->gaveUp);
+        Assert::true($outcome->outOfTime);
         Assert::true($outcome->checks > 0 && $outcome->checks < 1_000_000);
+    }
+
+    public function stopEndsTheRunWithoutAFailureOrACorpusEntry(): void
+    {
+        $this->dir = FS::tmpDir(sub: 'opmin-corpus');
+        $calls = 0;
+
+        $outcome = (new CorePropertyRunner())->run(
+            new PropertySpec('f', runs: 100, seed: 1, corpus: $this->dir),
+            self::ints(),
+            self::shrinker(),
+            static function () use (&$calls): void {
+                ++$calls > 3 and throw new Stop();
+            },
+        );
+
+        Assert::false($outcome->isFalsified());
+        Assert::same([$outcome->gaveUp, $outcome->checks], [true, 3]);
+        # A skip per requested run at most, then the engine gives up.
+        Assert::true($calls <= 3 + 101, (string) $calls);
+        $stored = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator((string) $this->dir, \FilesystemIterator::SKIP_DOTS));
+        Assert::same(\iterator_count($stored), 0);
     }
 
     public function discardingEverythingGivesUp(): void

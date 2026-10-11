@@ -241,6 +241,11 @@
                     "type": "integer",
                     "default": 2000
                 },
+                "time_budget_ms": {
+                    "description": "Time limit of the whole differential test of one function (planned, random and fuzzed inputs), ms; when it runs out, coverage decides on the inputs checked so far",
+                    "type": "integer",
+                    "default": 15000
+                },
                 "seed": {
                     "description": "Seed of input generation",
                     "type": "integer",

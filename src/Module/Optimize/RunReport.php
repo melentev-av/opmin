@@ -6,9 +6,12 @@ namespace Opmin\Module\Optimize;
 
 use Internal\Path;
 use Opmin\Module\Project\Layout;
+use Opmin\Module\Report\Advice;
 use Opmin\Module\Report\Environment;
 use Opmin\Module\Report\MarkdownReport;
+use Opmin\Module\Report\RejectionCause;
 use Opmin\Module\Report\RejectionKind;
+use Opmin\Module\Report\TestSetup;
 
 /**
  * Result of an optimization run (brief, «Отчёт»): opcodes before and after, every step, every kept
@@ -97,6 +100,7 @@ final class RunReport
     {
         $functions = $this->functionsArray();
         $rejected = $this->rejectedArray();
+        $counterexamples = $this->counterexamples();
         $saved = $this->opsBefore - $this->opsAfter;
 
         return [
@@ -117,7 +121,11 @@ final class RunReport
             'patch' => $this->patch,
             'functions' => $functions,
             'rejected' => $rejected,
-            'counterexamples' => $this->counterexamples(),
+            'advice' => \array_map(
+                static fn(Advice $a): array => $a->toArray(),
+                Advice::of($rejected, $counterexamples === [] ? null : $this->counterexamplesDir()),
+            ),
+            'counterexamples' => $counterexamples,
             'notes' => $this->notes,
             'steps' => \array_map(static fn(StepReport $s): array => $s->toArray(), $this->steps),
             'timings' => $this->timings,
@@ -203,6 +211,7 @@ final class RunReport
     private function rejectedArray(): array
     {
         $result = [];
+        $setup = TestSetup::of($this->environment?->toArray(), $this->notes);
         foreach ($this->steps as $step) {
             foreach ($step->rejected as $rejected) {
                 $result[] = [
@@ -211,12 +220,27 @@ final class RunReport
                     'rule' => $step->rule,
                     'pass' => $step->pass,
                     'kind' => RejectionKind::fromReason($rejected['reason'])->value,
+                    'cause' => RejectionCause::of($rejected['reason'], $setup)->value,
                     'reason' => $rejected['reason'],
                 ] + (isset($rejected['counterexample']) ? ['counterexample' => $rejected['counterexample']] : []);
             }
         }
 
         return $result;
+    }
+
+    /**
+     * The counterexamples directory as the user finds it: relative to the project under `.opmin/runs/`.
+     *
+     * @return non-empty-string
+     */
+    private function counterexamplesDir(): string
+    {
+        $dir = Layout::report(Path::create($this->runDir)) === null
+            ? $this->runDir
+            : Layout::RUNS . '/' . \basename($this->runDir);
+
+        return $dir . '/counterexamples/';
     }
 
     /**

@@ -270,11 +270,21 @@ Every run (`optimize`, `llm:finish`) writes `.opmin/runs/<ts>/report.md` for peo
 `.opmin/report_<ts>.md`, next to the reports of the earlier runs — and `.opmin/runs/<ts>/report.json` for tools:
 
 - the total: opcodes before → after, %; whether the full run of the project's tests passes;
+- what to do next (`advice` in `report.json`, at the top of `report.md`, and at the end of the console output
+  next to the functions that saved most): keyed on the cause of the rolled-back changes and on what the run had
+  to prove them with — set `tests.runner`; enable pcov or Xdebug in `php.binary` when the runner gives no
+  coverage map; fix the autoload (`composer install`, then `opmin doctor`) when the harness could not load the
+  code; add tests for functions with side effects; the counterexamples of a difference; the `signatures.*`
+  settings. Expected rollbacks (no gain, readability, excluded, declined in the review) are only counted.
+  `--allow-unverified` is never the advice: it comes last, with a warning;
 - every changed function: before → after, what saved the opcodes (rule or LLM), how it is proven (`diff-tested`,
   `tests`, `unverified`), the branch coverage of the differential tests, the project's tests that run it, the flags
   of dynamic constructs; changes that save executed opcodes rather than static ones are listed apart;
 - every rolled-back change grouped by reason (a difference with its counterexample input, failing tests, PHPStan,
-  not proven, signature, dynamic constructs, readability, no gain, excluded);
+  not proven, signature, dynamic constructs, readability, no gain, excluded); in `report.json` each one has a
+  `kind` (the group) and a machine-readable `cause` — what to fix first so that it could be kept, e.g.
+  `not_proven.no_runner`, `not_proven.no_coverage_map`, `not_proven.harness_load`, `not_proven.side_effects`,
+  `not_proven.no_inputs`, `diff_test`, `signature.public_api`;
 - counterexamples as tests of the project's runner in `.opmin/runs/<ts>/counterexamples/`;
 - the environment: PHP runtime, `php.target`, the optimizer settings, opmin, Rector, the project's PHPStan. A run
   warns when one of them changed since the previous run, `opmin diff` when the reports come from other opmin

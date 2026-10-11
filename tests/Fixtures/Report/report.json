@@ -20,7 +20,7 @@
         "saved": 7,
         "percent": 17.5,
         "functions_changed": 2,
-        "changes_rolled_back": 3
+        "changes_rolled_back": 5
     },
     "final_tests": true,
     "interrupted": false,
@@ -94,6 +94,7 @@
             "rule": "Opmin\\Rector\\Rule\\FullyQualifyGlobalCallsRector",
             "pass": 1,
             "kind": "no_gain",
+            "cause": "no_gain",
             "reason": "saves no opcodes"
         },
         {
@@ -102,6 +103,7 @@
             "rule": "Opmin\\Rector\\Rule\\FullyQualifyGlobalCallsRector",
             "pass": 1,
             "kind": "diff_test",
+            "cause": "diff_test",
             "reason": "differential test: return differs: 1.5 vs 1",
             "counterexample": {
                 "test": "runs/20261007-120000/counterexamples/CartPriceTest.php",
@@ -117,16 +119,62 @@
         },
         {
             "file": "src/Cart.php",
+            "function": "App\\Cart::save",
+            "rule": "Opmin\\Rector\\Rule\\FullyQualifyGlobalCallsRector",
+            "pass": 1,
+            "kind": "not_proven",
+            "cause": "not_proven.no_coverage_map",
+            "reason": "not proven: side effects (io): only the project's tests can prove the change"
+        },
+        {
+            "file": "src/Cart.php",
+            "function": "App\\Cart::count",
+            "rule": "Opmin\\Rector\\Rule\\FullyQualifyGlobalCallsRector",
+            "pass": 1,
+            "kind": "signature",
+            "cause": "signature.public_api",
+            "reason": "changes native types of an overridable method (signatures.public_api)"
+        },
+        {
+            "file": "src/Cart.php",
             "function": "App\\Cart::total",
             "rule": "Opmin\\Module\\Optimize\\LlmCandidate",
             "pass": 1,
             "kind": "readability",
+            "cause": "readability",
             "reason": "cyclomatic complexity grew by 1 (more branches; readability.max_cyclomatic_increase is 0)"
+        }
+    ],
+    "advice": [
+        {
+            "kind": "not_proven",
+            "cause": "not_proven.no_coverage_map",
+            "count": 1,
+            "text": "Enable pcov or Xdebug in `php.binary`: without a coverage map the project's tests prove no function."
+        },
+        {
+            "kind": "diff_test",
+            "cause": "diff_test",
+            "count": 1,
+            "text": "A change behaved differently on some input: the report shows the input. From a rule of opmin, that is a bug: please report it."
+        },
+        {
+            "kind": "signature",
+            "cause": "signature.public_api",
+            "count": 1,
+            "text": "Native types of overridable methods change only with `--allow-public-signatures` or `signatures.public_api: true` (applications, not packages)."
+        },
+        {
+            "kind": "not_proven",
+            "cause": "not_proven",
+            "count": 1,
+            "text": "Last resort: `--allow-unverified` keeps unproven changes. Warning: their behavior may differ, unnoticed."
         }
     ],
     "counterexamples": [],
     "notes": [
-        "Formatter: vendor/bin/pint {files} (pint.json)"
+        "Formatter: vendor/bin/pint {files} (pint.json)",
+        "No coverage map of the project's tests (Xdebug or pcov in php.binary): all tests are run."
     ],
     "steps": [
         {
@@ -176,6 +224,16 @@
                             ]
                         }
                     }
+                },
+                {
+                    "file": "src/Cart.php",
+                    "function": "App\\Cart::save",
+                    "reason": "not proven: side effects (io): only the project's tests can prove the change"
+                },
+                {
+                    "file": "src/Cart.php",
+                    "function": "App\\Cart::count",
+                    "reason": "changes native types of an overridable method (signatures.public_api)"
                 }
             ]
         },

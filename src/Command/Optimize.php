@@ -28,11 +28,13 @@ use Opmin\Module\Progress\Renderers;
 use Opmin\Module\Project\Layout;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Project\Targets;
+use Opmin\Module\Report\ConsoleSummary;
 use Opmin\Module\Verification\Verifier;
 use Opmin\Rector\Rule\AbstractExtractRepeatedReadRector;
 use Opmin\Rector\Rule\FullyQualifyGlobalCallsRector;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -535,6 +537,10 @@ final class Optimize extends Stage
         $report->notes === [] or $style->note($report->notes);
         $report->finalTests === true and $style->writeln('The full run of the project\'s tests passes on the result.');
         $report->finalTests === false and $style->error('The full test run fails after the optimization: see report.json.');
+        foreach (ConsoleSummary::lines($report->toArray()) as $line) {
+            $style->writeln(OutputFormatter::escape($line));
+        }
+
         $style->success(\sprintf(
             '%d → %d opcodes (%s). Report: %s%s',
             $report->opsBefore,

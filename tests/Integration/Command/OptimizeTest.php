@@ -139,6 +139,13 @@ final class OptimizeTest
         Assert::false(isset($reasons['App\Text::untouched']));
         Assert::string($out)->contains('opcodes (-');
         Assert::true(\is_file($this->dir . '/' . $report['patch']));
+        # The end of the run says what to do next: no runner, so the project's tests, never --allow-unverified first.
+        Assert::string($out)
+            ->contains('Rolled back 3: 1 behavior not proven, 1 no opcodes saved, 1 excluded by the user.')
+            ->contains("What to do next:\n  - Set `tests.runner`")
+            ->contains("(1)\n  ! Last resort: `--allow-unverified`")
+            ->notContains('Saved most');
+        Assert::same(\array_column($report['advice'], 'cause'), ['not_proven.no_runner', 'not_proven']);
     }
 
     /**
@@ -234,9 +241,11 @@ final class OptimizeTest
             'App\Text::encode' => 'no_gain',
             'App\Text::save' => 'not_proven',
         ]);
+        Assert::same(\array_column($report['rejected'], 'cause', 'function')['App\Text::save'], 'not_proven.no_runner');
         Assert::string($markdown)
             ->contains('| `App\Text::size`<br>src/Text.php | ')
             ->contains('### Behavior not proven (1)')
+            ->contains("## What to do next\n\n- Set `tests.runner`")
             ->contains('### Excluded by the user (1)')
             ->contains('| Rector | ');
 

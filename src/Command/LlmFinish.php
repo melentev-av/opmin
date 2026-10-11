@@ -9,8 +9,10 @@ use Opmin\Module\Optimize\LlmCandidate;
 use Opmin\Module\Optimize\StepReport;
 use Opmin\Module\Php\PhpBinaryException;
 use Opmin\Module\Project\Layout;
+use Opmin\Module\Report\ConsoleSummary;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -105,6 +107,10 @@ final class LlmFinish extends LlmStage
             $out = new SymfonyStyle($input, $output);
             $report->notes === [] or $out->note($report->notes);
             $report->finalTests === false and $out->error('The full test run fails even with every attempt taken back: see report.json.');
+            foreach (ConsoleSummary::lines($data) as $line) {
+                $out->writeln(OutputFormatter::escape($line));
+            }
+
             $out->success(\sprintf(
                 '%d of %d attempt(s) kept, -%d opcodes. Report: %s%s',
                 \count($kept),

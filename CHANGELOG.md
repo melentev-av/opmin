@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.5.0](https://github.com/melentev-av/opmin/compare/v0.4.0...v0.5.0) (2026-10-11)
+
+
+### Features
+
+* **ci:** a composite action for opmin check ([988ae8b](https://github.com/melentev-av/opmin/commit/988ae8b24f28e0021e1cd3fcf080550cd88f3b7f))
+* **config:** did-you-mean hints for unknown config keys and rule names ([de99218](https://github.com/melentev-av/opmin/commit/de99218207f5cb9f343d216547b50040a2bfaccb)), closes [#49](https://github.com/melentev-av/opmin/issues/49)
+* **count:** --sort, --top and --min for the table ([df76d48](https://github.com/melentev-av/opmin/commit/df76d482cfc526ae82d60396cbc821e7c200a166)), closes [#45](https://github.com/melentev-av/opmin/issues/45)
+* **init:** --ci writes the workflow of the CI guard ([0d16eca](https://github.com/melentev-av/opmin/commit/0d16ecac0489240f782eaa94352f365662b1836c)), closes [#50](https://github.com/melentev-av/opmin/issues/50)
+* **init:** end with the next steps and an optional doctor ([8e82377](https://github.com/melentev-av/opmin/commit/8e82377d7df94fb98084027f86e89b9ce90eeeb6)), closes [#46](https://github.com/melentev-av/opmin/issues/46)
+* **llm:** apply-candidate --next says what to do next ([e7a1c23](https://github.com/melentev-av/opmin/commit/e7a1c23d11e8c54441d27e5f0d7c6ffcf9e7a8a8)), closes [#51](https://github.com/melentev-av/opmin/issues/51)
+* **optimize:** live progress of the run ([d764383](https://github.com/melentev-av/opmin/commit/d764383a5a9854755422bb568f6629a9c5f3df65)), closes [#42](https://github.com/melentev-av/opmin/issues/42)
+* **optimize:** say what a run will use before it starts, and --plan ([b84df97](https://github.com/melentev-av/opmin/commit/b84df978a413ff2cfbc1a59c002c262ec4c4beb4)), closes [#43](https://github.com/melentev-av/opmin/issues/43)
+* **report:** end a run with what to do next ([4460c52](https://github.com/melentev-av/opmin/commit/4460c521c06245cdb7f096c04b01ed49c30fb0b3)), closes [#44](https://github.com/melentev-av/opmin/issues/44)
+* **report:** record where the time of a run goes ([2db5e3f](https://github.com/melentev-av/opmin/commit/2db5e3f40cb4493649a144d5a5c75bd9debae4d1)), closes [#31](https://github.com/melentev-av/opmin/issues/31)
+* **runs:** list, show and clean the runs in .opmin/runs ([d18ab0b](https://github.com/melentev-av/opmin/commit/d18ab0b8286403ad7c26dd9e0a0f9a771e2e8b50)), closes [#47](https://github.com/melentev-av/opmin/issues/47) [#48](https://github.com/melentev-av/opmin/issues/48)
+* **skill:** follow next of apply-candidate and pass the candidate on stdin ([55e0cec](https://github.com/melentev-av/opmin/commit/55e0cecb3275d66b3b84525344a8fc867b0e8f7f)), closes [#51](https://github.com/melentev-av/opmin/issues/51)
+* **verify:** a time budget per function for the differential test ([db89021](https://github.com/melentev-av/opmin/commit/db89021d5c833184fdf9ad337456581ac531ce86)), closes [#59](https://github.com/melentev-av/opmin/issues/59)
+
+
+### Bug Fixes
+
+* **analysis:** __FUNCTION__ and __METHOD__ of a named function do not depend on its line ([8478a77](https://github.com/melentev-av/opmin/commit/8478a7720e58e0755f509c1f205e9a500c75561f)), closes [#52](https://github.com/melentev-av/opmin/issues/52)
+* **analysis:** warn about an unknown rule in [@opmin-ignore](https://github.com/opmin-ignore) and match full class names ([24ebddd](https://github.com/melentev-av/opmin/commit/24ebddd0f39b4f99ae4fd5613b3f4aafd7dd0ecc))
+* **harness:** on Windows a worker holds after its last answer until stopped ([9b818cc](https://github.com/melentev-av/opmin/commit/9b818ccb1c4be41d9e2b18e48932c192327f3771)), closes [#58](https://github.com/melentev-av/opmin/issues/58)
+* **optimize:** refuse a git repository without commits ([79e6b42](https://github.com/melentev-av/opmin/commit/79e6b427b702398da5667f5404f7ffa162ddd35b)), closes [#57](https://github.com/melentev-av/opmin/issues/57)
+* **optimize:** remove the --mutation-check stub ([51b7817](https://github.com/melentev-av/opmin/commit/51b7817fd29d893a63ae15a5144224ac78af76e4)), closes [#36](https://github.com/melentev-av/opmin/issues/36)
+* **optimize:** report an error that stops the run instead of a trace ([758c3cf](https://github.com/melentev-av/opmin/commit/758c3cf316cc36465301f14fca28b7fba835ffe8)), closes [#57](https://github.com/melentev-av/opmin/issues/57)
+* **rector:** do not let a process/ directory of the project replace the targets ([2b125de](https://github.com/melentev-av/opmin/commit/2b125decaff5e7da510aa9c675f04228da959880)), closes [#60](https://github.com/melentev-av/opmin/issues/60)
+* **runs:** a finished run that changed nothing holds no backup ([dfb1d71](https://github.com/melentev-av/opmin/commit/dfb1d7185d1db923487c3df4ea58ac11a98b2b01))
+* **verification:** inputs the original runs out of memory on count like timeouts ([e6d1bc9](https://github.com/melentev-av/opmin/commit/e6d1bc9aa5bd65955548b1e833fd5c69f6cd1458)), closes [#62](https://github.com/melentev-av/opmin/issues/62)
+* **verify:** log the jobs of a parallel differential test instead of a summed counter ([a587c15](https://github.com/melentev-av/opmin/commit/a587c158c32b56cc525dd4b026f3e4a01a7b7037)), closes [#39](https://github.com/melentev-av/opmin/issues/39)
+* **verify:** never run a process function on generated inputs ([9258007](https://github.com/melentev-av/opmin/commit/92580075a607a299726b49f02f029dbc6dd5643a)), closes [#61](https://github.com/melentev-av/opmin/issues/61)
+
+
+### Performance Improvements
+
+* **phpstan:** one container per config, kept in .opmin/cache ([11a1c44](https://github.com/melentev-av/opmin/commit/11a1c447783337a99554d6500cc1ed0f8cc9987b)), closes [#38](https://github.com/melentev-av/opmin/issues/38)
+* **rector:** keep the rule cache across runs and opmin versions ([e535c9e](https://github.com/melentev-av/opmin/commit/e535c9e6a0350651e575a16366068a10c4074fb6)), closes [#41](https://github.com/melentev-av/opmin/issues/41)
+* **verification:** reuse PHPStan on the original code within one run ([2da82d8](https://github.com/melentev-av/opmin/commit/2da82d89f4c769211d4cdf91ca4abedc8861cf8f)), closes [#37](https://github.com/melentev-av/opmin/issues/37)
+* **verify:** run the differential tests of a step in parallel ([7ebfdfb](https://github.com/melentev-av/opmin/commit/7ebfdfb37154c00de6001055659c48f40af3c39b)), closes [#39](https://github.com/melentev-av/opmin/issues/39)
+
+
+### Documentation
+
+* **dload:** no stale version constraint in the project example ([4ba2e6f](https://github.com/melentev-av/opmin/commit/4ba2e6f4c7055d5e6db2fb5063754fa53af4c281)), closes [#32](https://github.com/melentev-av/opmin/issues/32)
+* **readme:** add a troubleshooting section ([8d92e76](https://github.com/melentev-av/opmin/commit/8d92e7691b420badccd616a92eb25d43133227f2)), closes [#54](https://github.com/melentev-av/opmin/issues/54)
+* **readme:** drop stale versions and paths from the examples ([83a5e62](https://github.com/melentev-av/opmin/commit/83a5e621125b0ffcf8fe09e7f9d40efcbe43979c)), closes [#32](https://github.com/melentev-av/opmin/issues/32)
+* **readme:** drop the opmin version from the results on real packages ([e835f6c](https://github.com/melentev-av/opmin/commit/e835f6c9437d65640598832ead85837b376aeca0)), closes [#53](https://github.com/melentev-av/opmin/issues/53)
+* **readme:** how to pick the image of the CI guard ([027287a](https://github.com/melentev-av/opmin/commit/027287aac6ebcf5edb14b06d3be3d10fdf025873))
+* **readme:** say what composer require installs today ([496daf8](https://github.com/melentev-av/opmin/commit/496daf82a443c183c9fe89c3da5651cafd334278)), closes [#33](https://github.com/melentev-av/opmin/issues/33)
+* **readme:** the original running out of memory stops a differential test too ([b0c9914](https://github.com/melentev-av/opmin/commit/b0c9914f5f25d6264c8197ee1431c0d39aa9f99f)), closes [#62](https://github.com/melentev-av/opmin/issues/62)
+* **report:** the not-proven group points to what to do next, not to --allow-unverified ([a260aee](https://github.com/melentev-av/opmin/commit/a260aee0464122caec6f95e5c09e339d7e58053f)), closes [#44](https://github.com/melentev-av/opmin/issues/44)
+
 ## [0.4.0](https://github.com/melentev-av/opmin/compare/v0.3.1...v0.4.0) (2026-10-11)
 
 

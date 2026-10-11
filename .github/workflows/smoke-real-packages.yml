@@ -10,6 +10,14 @@ name: 🔥 Smoke on real packages
 
 on:  # yamllint disable-line rule:truthy
   workflow_dispatch:
+    inputs:
+      php:
+        description: 'php.binary: edge — the oldest and the newest, all — every supported version'
+        type: choice
+        default: edge
+        options:
+          - edge
+          - all
 
 concurrency:
   cancel-in-progress: true
@@ -54,10 +62,8 @@ jobs:
           - symfony-string
           - league-csv
           - carbon
-        # The oldest and the newest php.binary.
-        php:
-          - '8.1'
-          - '8.5'
+        # The oldest and the newest php.binary, or every supported one.
+        php: ${{ fromJSON(inputs.php == 'all' && '["8.1", "8.2", "8.3", "8.4", "8.5"]' || '["8.1", "8.5"]') }}
     steps:
       - name: 📦 Check out the codebase
         uses: actions/checkout@v5
@@ -93,6 +99,23 @@ jobs:
                 $s["ops_before"] ?? "?", $s["ops_after"] ?? "?", $s["percent"] ?? "?", $s["functions_changed"] ?? "?",
                 $s["rolled_back"] ?? "?", $s["tests_before"], $s["tests_after"], intdiv($s["seconds"] + 59, 60));
           ' "$SUMMARY" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: ⏱️ Where the time went
+        if: always()
+        env:
+          RUNS: ${{ runner.temp }}/smoke/${{ matrix.package }}-php${{ matrix.php }}/.opmin/runs
+        run: |
+          [ -d "$RUNS" ] || exit 0
+          php -r '
+            foreach (glob($argv[1] . "/*/report.json") ?: [] as $file) {
+                $t = json_decode(file_get_contents($file), true)["timings"] ?? null;
+                if ($t === null) { continue; }
+                printf("\n**%s**: %.0f s\n\n| Level | Seconds | Calls |\n|---|---|---|\n", basename(dirname($file)), $t["wall_seconds"]);
+                uasort($t["levels"], fn($a, $b) => $b["seconds"] <=> $a["seconds"]);
+                foreach ($t["levels"] as $level => $l) { printf("| %s | %.1f | %d |\n", $level, $l["seconds"], $l["calls"]); }
+                foreach ($t["counters"] as $counter => $n) { printf("| %s | | %d |\n", $counter, $n); }
+            }
+          ' "$RUNS" >> "$GITHUB_STEP_SUMMARY"
 
       - name: 📤 Upload the report, the patch and the counterexamples
         if: always()

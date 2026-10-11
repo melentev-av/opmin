@@ -560,6 +560,40 @@ locally).
 frameless function (`trim`, `str_replace`, `implode`…) in a namespace compiles into both the frameless call and the
 fallback, and `\trim()` removes the fallback.
 
+## Troubleshooting
+
+Start with `opmin doctor` (`--with-tests` also runs your test suite once): it checks `php.binary`, OPcache, the
+harness, the tests, PHPStan, coverage and the cache, and names a fix for each problem.
+
+- **Every step runs the whole test suite, slowly.** `php.binary` has neither pcov nor Xdebug, so there is no
+  coverage map to pick the tests that cover a changed function (the run header and `opmin doctor` warn about it).
+  Install pcov into `php.binary` (`pecl install pcov`), or use the Docker image, which has it.
+- **«The project's tests fail on the original code».** `optimize` stops before it changes anything: a red
+  suite proves nothing. Fix the tests, exclude the failing ones (`tests.command` with PHPUnit's
+  `--exclude-group`, as in [Optimizing a git package](#optimizing-a-git-package)), or set `tests.runner: none`
+  to verify with the differential tests only.
+- **A git package does not install on macOS.** The workspace is on the case-insensitive file system Docker shares
+  with its VM; run opmin inside the image, as in [Optimizing a git package](#optimizing-a-git-package).
+- **«Cannot list the internal functions of …».** `php.binary` prints warnings to stdout at startup — usually
+  its ini is loaded twice (e.g. Laravel Herd, or `PHP_INI_SCAN_DIR` pointing at a directory that loads the same
+  extension again: `PHP Warning: Module "…" is already loaded`). Run that PHP with `-v`: it must print no
+  warnings. Remove the duplicate `extension=` line (`php --ini` lists the files), or set
+  `display_errors=stderr` in that ini. opmin 0.3.1 and later name the exit code and the output.
+- **`opmin check` exits with 2: «The baseline was taken with PHP X, php.binary is PHP Y».** Counts differ between
+  PHP minor versions and optimizer settings, so nothing is compared. Take the baseline with the same image as the
+  check (`docker run … opmin baseline`, see [CI guard](#ci-guard-baseline-and-check)) and commit it.
+- **The cache is corrupt or locked.** It only costs the cache, never the run; `opmin doctor` names the file.
+  Delete it (the next run creates it anew), or set `cache.recreate_corrupt: true` to let runs do it.
+- **A change was rolled back as «not proven».** Nothing proved the function behaves as before: the generated
+  inputs reached too little of its code, it has side effects, or no project test runs it. «What to do next» at
+  the top of the report (`opmin runs:show`) says what to fix — set `tests.runner`, enable coverage, add tests.
+- **``[WARNING] … `@opmin-ignore` lists `…`, which names no known rule``.** A typo in a mark excludes
+  nothing, so opmin may change that code: fix the name (the warning suggests the closest one).
+- **A run takes long.** `timings` in `.opmin/runs/<ts>/report.json` (`-v` prints them at the end) shows where the
+  time went: the project's tests, PHPStan or the differential tests. Without a coverage map every step runs all
+  tests (see above); `verification.jobs` (or `--jobs=N`) runs more differential tests at a time; `--plan` shows
+  the files, rules and settings a run would use without running it.
+
 ## Configuration
 
 `opmin.yaml` (or `opmin.yaml.dist`) in the project root; `opmin init` generates it with all keys. The commands that

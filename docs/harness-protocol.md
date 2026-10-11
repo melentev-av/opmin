@@ -24,7 +24,7 @@ location while the content comes from the version's copy.
 ## Transport
 
 ```
-php -d opcache.enable_cli=0 -d memory_limit=256M -d display_errors=0 harness/worker.php <token>
+php -d opcache.enable_cli=0 -d memory_limit=256M -d display_errors=0 harness/worker.php <token> [hold]
 ```
 
 - One JSON request per line on **stdin**, one response per line on **stdout**, prefixed with the token and a space:
@@ -36,6 +36,14 @@ php -d opcache.enable_cli=0 -d memory_limit=256M -d display_errors=0 harness/wor
 - `exit()` or a fatal error (also out of memory) during a request: the shutdown handler writes the response
   (`status: "exited"` / `"fatal"`), then the process ends. A crash (segfault) or a timeout gives no response —
   the orchestrator kills and restarts the worker and treats it as a result too.
+- `hold` (the orchestrator passes it on Windows, `WorkerOptions::$holdUntilStopped`): after the response of the
+  shutdown handler the process does not end but blocks on a read of stdin until the orchestrator stops it — any
+  line or the end of stdin ends it, a `shutdown` request is answered first. On Windows the transport is sockets
+  (pipes there ignore non-blocking mode), and the socket of a PHP 8.2+ process that ends loses what the
+  orchestrator has not read yet: an answer read late — the other version of the pair was called first — came
+  back as `crashed` instead of `fatal` (#58). The orchestrator reads the answer first and only then stops and
+  restarts the worker, so the wait never outlives it. Elsewhere (pipes keep the data) the worker ends at once.
+  A forked child (`isolate: "fork"`) never holds: it answers the worker, not the orchestrator.
 
 ## Commands
 

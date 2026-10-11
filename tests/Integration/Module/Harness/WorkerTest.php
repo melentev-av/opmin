@@ -291,6 +291,44 @@ final class WorkerTest
         Assert::false($this->worker()->isRunning());
     }
 
+    /**
+     * The Windows mode (#58): a worker that answered from its shutdown handler stays alive until the
+     * orchestrator has read the answer and stops it, so the answer cannot be lost with the process.
+     */
+    public function heldWorkerWaitsAfterItsLastAnswerUntilStopped(): void
+    {
+        $this->worker = new Worker(TestPhp::binary(), new WorkerOptions(timeoutMs: 10000, holdUntilStopped: true));
+        $this->load();
+
+        $result = $this->call(['kind' => 'function', 'name' => 'App\leave']);
+        \usleep(300_000);
+        $held = $this->worker()->isRunning();
+        $start = \hrtime(true);
+        $this->worker()->stop();
+        $seconds = (float) (\hrtime(true) - $start) / 1e9;
+
+        Assert::same($result['status'], 'exited');
+        Assert::true($held);
+        Assert::false($this->worker()->isRunning());
+        # It answers `shutdown` and ends: no request timeout (1000 ms).
+        Assert::true($seconds < 0.9, (string) $seconds);
+    }
+
+    public function heldWorkerStopsAfterRunningOutOfMemoryToo(): void
+    {
+        $this->worker = new Worker(TestPhp::binary(), new WorkerOptions(memoryLimit: '32M', timeoutMs: 10000, holdUntilStopped: true));
+        $this->load();
+
+        $result = $this->call(['kind' => 'function', 'name' => 'App\hog']);
+        $start = \hrtime(true);
+        $this->worker()->stop();
+        $seconds = (float) (\hrtime(true) - $start) / 1e9;
+
+        Assert::same($result['status'], 'fatal');
+        Assert::false($this->worker()->isRunning());
+        Assert::true($seconds < 0.9, (string) $seconds);
+    }
+
     public function outOfMemoryIsAFatalResult(): void
     {
         $this->worker = new Worker(TestPhp::binary(), new WorkerOptions(memoryLimit: '32M', timeoutMs: 10000));

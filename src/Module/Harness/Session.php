@@ -147,6 +147,8 @@ final class Session
             throw new HarnessException('The harness failed: ' . $e->getMessage(), previous: $e);
         }
 
+        # `exit()` or a fatal error during the request ended the worker (or it waits to be stopped).
+        \in_array($response['status'] ?? null, ['fatal', 'exited'], true) and $this->restart();
         ($response['ok'] ?? false) === true or throw new HarnessException('The harness refused the request: ' . self::error($response));
 
         return $response;

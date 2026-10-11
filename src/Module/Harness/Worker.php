@@ -75,6 +75,7 @@ final class Worker
             '-d', 'pcov.directory=/',
             (string) HarnessFiles::worker(),
             $this->token,
+            ...($this->options->holdUntilStopped ? ['hold'] : []),
         ];
         # Windows pipes ignore non-blocking mode and always pass stream_select(): a read from the silent
         # stderr would block forever. Sockets behave there as pipes do elsewhere.
@@ -192,7 +193,8 @@ final class Worker
     }
 
     /**
-     * Asks the worker to exit; kills it if it does not.
+     * Asks the worker to exit; kills it if it does not. A worker that holds after its last answer
+     * ({@see WorkerOptions::$holdUntilStopped}) reads this request in its shutdown handler and ends.
      */
     public function stop(): void
     {

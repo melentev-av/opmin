@@ -10,6 +10,7 @@ use Opmin\Module\Harness\WorkerOptions;
 use Opmin\Tests\Integration\TestPhp;
 use Testo\Assert;
 use Testo\Codecov\Covers;
+use Testo\Data\DataSet;
 use Testo\Expect;
 use Testo\Lifecycle\AfterTest;
 use Testo\Lifecycle\BeforeTest;
@@ -29,6 +30,8 @@ final class SessionTest
         function spin() { while (true) {} }
         function ok() { return 'ok'; }
         function version() { return 'v1'; }
+        function hog() { return str_repeat(' ', 1 << 40); }
+        spl_autoload_register(function ($class) { $class === 'Leaving' and exit(1); });
         PHP;
 
     private string $dir;
@@ -69,6 +72,44 @@ final class SessionTest
 
         Assert::same($result['status'], 'timeout');
         Assert::same($next['status'], 'done');
+    }
+
+    /**
+     * #58: the answer of a worker that ran out of memory is read late (the other version is called
+     * first) and must still be `fatal`, not `crashed`. On Windows it is lost unless the worker holds.
+     */
+    #[DataSet([false], 'exits after the answer')]
+    #[DataSet([true], 'holds until stopped')]
+    public function outOfMemoryAnswerSurvivesAPauseBeforeItIsRead(bool $hold): void
+    {
+        $session = $this->session(new WorkerOptions(timeoutMs: 10000, holdUntilStopped: $hold));
+
+        $session->begin(self::call('hog'));
+        \usleep(1_500_000);
+        $result = $session->end();
+        $next = $session->call(self::call('ok'));
+
+        Assert::same($result['status'], 'fatal');
+        Assert::string((string) $result['calls'][0]['message'])->contains('Allowed memory size');
+        Assert::same($next['status'], 'done');
+        Assert::same($session->starts(), 2);
+    }
+
+    #[DataSet([false], 'exits after the answer')]
+    #[DataSet([true], 'holds until stopped')]
+    public function queryThatEndsTheWorkerRestartsIt(bool $hold): void
+    {
+        $session = $this->session(new WorkerOptions(timeoutMs: 10000, holdUntilStopped: $hold));
+        try {
+            $session->query(['cmd' => 'class', 'name' => 'Leaving']);
+        } catch (HarnessException) {
+            # The worker refused it: exit() during class.
+        }
+
+        $next = $session->call(self::call('ok'));
+
+        Assert::same($next['status'], 'done');
+        Assert::same($session->starts(), 2);
     }
 
     public function staticVariablesSurviveInOneWorkerOnly(): void

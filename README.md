@@ -154,6 +154,10 @@ opmin verify src/Cart.php /tmp/Cart.php --with-tests    # + php -l, PHPStan "no 
   or unverified but executed by passing project tests, or with `verification.allow_unverified`. Branches the
   project's PHPStan proves dead (`--with-tests`: always-true or impossible conditions, unreachable code) are
   not counted. Functions with I/O are never called with generated inputs: only the project's tests prove them.
+  A call through a variable or a callback counts as I/O when the function names an I/O function in a string
+  (`$f = 'shell_exec'; $f(...)`), and the harness itself cannot start processes or send mail (`exec`,
+  `shell_exec`, `system`, `passthru`, `proc_open`, `popen`, `pcntl_exec`, `mail` are disabled): a function that
+  still reaches one stays unverified.
 - Flags of `opmin count` (`compact`, `static_var`, `eval`, `io`…) say which constructs restrict a function.
 
 ## Optimizing (Stage A: Rector)

@@ -19,6 +19,9 @@ use Opmin\Module\Php\PhpBinary;
  */
 final class Worker
 {
+    /** Functions the called code cannot run: processes and mail. */
+    public const DISABLED = ['exec', 'shell_exec', 'system', 'passthru', 'proc_open', 'popen', 'pcntl_exec', 'mail'];
+
     /** Keep at most this much of stderr for diagnostics. */
     private const STDERR_LIMIT = 8192;
 
@@ -62,6 +65,9 @@ final class Worker
             $this->php->path,
             ...$opcache,
             '-d', 'memory_limit=' . $this->options->memoryLimit,
+            # Generated inputs must never start a process or send mail, even through a call the flags miss
+            # (`$f = 'shell_exec'; $f(...)`). It replaces a `disable_functions` of php.ini: this is opmin's sandbox.
+            '-d', 'disable_functions=' . \implode(',', self::DISABLED),
             '-d', 'display_errors=0',
             '-d', 'log_errors=0',
             '-d', 'xdebug.mode=' . ($this->options->coverage === 'xdebug' ? 'coverage' : 'off'),

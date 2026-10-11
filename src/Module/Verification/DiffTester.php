@@ -12,6 +12,7 @@ use Opmin\Module\Config\Schema\CoverageDriver;
 use Opmin\Module\Config\Schema\Verification as Config;
 use Opmin\Module\Harness\HarnessException;
 use Opmin\Module\Harness\Session;
+use Opmin\Module\Harness\Worker;
 use Opmin\Module\Harness\WorkerOptions;
 use Opmin\Module\Php\PhpBinary;
 use Opmin\Module\Verification\Compare\ComparisonPolicy;
@@ -110,6 +111,33 @@ final class DiffTester
         $changed->begin($requests[1]);
 
         return [$original->end(), $changed->end()];
+    }
+
+    /**
+     * The function of {@see Worker::DISABLED} a call ran into: PHP reports a disabled function as undefined.
+     *
+     * @param array<string, mixed> $result
+     * @return non-empty-string|null
+     */
+    private static function disabledCall(array $result): ?string
+    {
+        /** @var list<array<string, mixed>> $calls */
+        $calls = \is_array($result['calls'] ?? null) ? $result['calls'] : [$result];
+        $pattern = '/^Call to undefined function (?:[\w\\\\]+\\\\)?(' . \implode('|', Worker::DISABLED) . ')\(\)$/';
+        foreach ($calls as $call) {
+            /** @var mixed $exception */
+            $exception = $call['exception'] ?? null;
+            for ($depth = 0; \is_array($exception) && $depth < 16; ++$depth) {
+                if (\is_string($exception['message'] ?? null) && \preg_match($pattern, $exception['message'], $m) === 1) {
+                    /** @var non-empty-string One of the names in the pattern. */
+                    return $m[1];
+                }
+
+                $exception = $exception['previous'] ?? null;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -283,15 +311,20 @@ final class DiffTester
         $range = [(int) ($describedOriginal['line'] ?? 0), (int) ($describedOriginal['end_line'] ?? 0)];
         $file = (string) $task->file;
         $timeouts = new TimeoutStreak(self::TIMEOUTS_IN_ROW);
-        $check = static function (Input $input) use ($original, $changed, $originalSession, $changedSession, $comparator, $feedback, $static, $lines, $range, $file, $deadLines, $timeouts, &$checked, &$inputs): void {
+        /** @var non-empty-string|null $disabled A function of {@see Worker::DISABLED} the code called. */
+        $disabled = null;
+        $check = static function (Input $input) use ($original, $changed, $originalSession, $changedSession, $comparator, $feedback, $static, $lines, $range, $file, $deadLines, $timeouts, &$disabled, &$checked, &$inputs): void {
             # Once stopped, no input is run any more: each one ends at once.
-            $timeouts->stopped() and throw new Stop();
+            $timeouts->stopped() || $disabled !== null and throw new Stop();
             $repeat = $static ? 3 : 1;
             $requests = [
                 ['target' => $original->call, 'input' => $input->toArray(), 'errors' => 'record', 'repeat' => $repeat],
                 ['target' => $changed->call, 'input' => $input->toArray(), 'errors' => 'record', 'repeat' => $repeat],
             ];
             [$o1, $c1] = self::both($originalSession, $changedSession, $requests);
+            # A process function on a generated input: what it would do is not to be tried here.
+            $disabled = self::disabledCall($o1) ?? self::disabledCall($c1);
+            $disabled === null or throw new Stop();
             $status = $o1['status'] ?? null;
             if ($status === 'timeout') {
                 # The original cannot take this input either, and it cost call_timeout_ms.
@@ -354,7 +387,7 @@ final class DiffTester
         $fuzzStart = \hrtime(true);
 
         $deadline = \min($budget, \hrtime(true) + $this->config->fuzzTimeMs * 1_000_000);
-        for ($round = 1; !$timeouts->stopped() && !$outcome->isFalsified() && !$feedback->complete() && \hrtime(true) < $deadline; ++$round) {
+        for ($round = 1; !$timeouts->stopped() && $disabled === null && !$outcome->isFalsified() && !$feedback->complete() && \hrtime(true) < $deadline; ++$round) {
             $planner->fuzz();
             $left = \max(1, \intdiv($deadline - \hrtime(true), 1_000_000));
             $outcome = $this->runner->run(
@@ -377,7 +410,7 @@ final class DiffTester
         $stopped and $this->timings->count('original_timeouts_stop');
         $this->checkedInputs = $inputs;
 
-        return $this->verdict($task, $original, $outcome, $feedback, $checked, $lines, $stopped);
+        return $this->verdict($task, $original, $outcome, $feedback, $checked, $lines, $stopped, $disabled);
     }
 
     /**
@@ -414,8 +447,9 @@ final class DiffTester
 
     /**
      * @param bool $stopped The original timed out on {@see self::TIMEOUTS_IN_ROW} inputs in a row.
+     * @param non-empty-string|null $disabled A process function the code called on an input.
      */
-    private function verdict(DiffTask $task, Target $original, PropertyOutcome $outcome, Feedback $feedback, int $checked, bool $lines, bool $stopped): Verdict
+    private function verdict(DiffTask $task, Target $original, PropertyOutcome $outcome, Feedback $feedback, int $checked, bool $lines, bool $stopped, ?string $disabled = null): Verdict
     {
         $flags = $original->flags;
         $coverage = $feedback->percent();
@@ -454,6 +488,10 @@ final class DiffTester
         }
 
         # Before every other reason: no later input was run, whatever the coverage of the earlier ones.
+        if ($disabled !== null) {
+            return $base(VerdictStatus::Unverified, "calls {$disabled}() on generated inputs (the harness does not start processes): only the project's tests can prove it");
+        }
+
         if ($stopped) {
             return $base(VerdictStatus::Unverified, \sprintf(
                 'the original times out on generated inputs: %d in a row ran past verification.call_timeout_ms (%d ms)',

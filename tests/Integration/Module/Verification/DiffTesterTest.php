@@ -241,6 +241,23 @@ final class DiffTesterTest
         Assert::true($seconds < 15.0, (string) $seconds);
     }
 
+    /**
+     * A process function the flags cannot see (its name is in a constant of the class) is never run on
+     * generated inputs: the harness disables it and the test stops.
+     */
+    public function aProcessFunctionIsNeverRunOnGeneratedInputs(): void
+    {
+        $marker = $this->dir . '/started';
+        $code = static fn(string $return): string => "<?php namespace App; final class Runner { private const RUN = 'shell_exec';"
+            . " public static function run(int \$a): int { \$f = self::RUN; \$f('touch {$marker}'); return {$return}; } }";
+
+        $verdict = $this->verify($code('$a'), $code('$a * 1'), 'App\\Runner::run');
+
+        Assert::same($verdict->status, VerdictStatus::Unverified);
+        Assert::same($verdict->reason, "calls shell_exec() on generated inputs (the harness does not start processes): only the project's tests can prove it");
+        Assert::false(\file_exists($marker));
+    }
+
     public function differenceFoundBeforeTheTimeoutsIsKept(): void
     {
         # Zero is a planned boundary value: the difference is found while the other inputs hang.

@@ -82,6 +82,15 @@ final class DynamicScopeDetectorTest
         yield 'I/O by prefix' => ['return stream_get_contents($h);', [Flag::Io]];
         yield 'arguments of an anonymous class' => ['return new class(compact("a")) { public function __construct($x) {} };', [Flag::Compact]];
         yield 'arrow function body is its own' => ['return fn() => $$name;', []];
+        yield 'I/O function called through a variable (Carbon\Cli\Invoker)' => [
+            '$function = (($parameters[1] ?? "") === "install" ? ($parameters[2] ?? null) : null) ?: "shell_exec"; $function("composer require x");',
+            [Flag::Io],
+        ];
+        yield 'I/O function name with a backslash, called through a variable' => ['$f = "\\\\unlink"; return $f($path);', [Flag::Io]];
+        yield 'I/O function by prefix, called through a variable' => ['$f = "proc_open"; return $f($cmd, [], $p);', [Flag::Io]];
+        yield 'I/O function given to call_user_func' => ['return call_user_func($cb ?? "system", "ls");', [Flag::Io]];
+        yield 'I/O function given to array_map' => ['return array_map("unlink", $files);', [Flag::Io]];
+        yield 'I/O function as a first-class callable' => ['$f = exec(...); return $f("ls");', [Flag::Io]];
         yield 'several, in declaration order' => ['static $n; return compact("n") + func_get_args();', [Flag::Compact, Flag::FuncArgs, Flag::StaticVar]];
     }
 
@@ -106,6 +115,10 @@ final class DynamicScopeDetectorTest
         yield 'DateTime with a fixed date' => ['return new \DateTimeImmutable("2020-01-02 03:04:05");'];
         yield 'Randomizer with an engine' => ['return new \Random\Randomizer(new \Random\Engine\Mt19937(1));'];
         yield 'reflection of another class' => ['return new \ReflectionClass(Other::class);'];
+        yield 'call through a variable without an I/O name' => ['$f = "strtoupper"; return $f($s);'];
+        yield 'I/O name as plain data' => ['return ["exec" => 1, "file" => 2][$key];'];
+        yield 'callback without an I/O name' => ['return array_map("trim", $xs);'];
+        yield 'immediately called closure with an I/O name as data' => ['return (function () { return 1; })() + strlen("exec");'];
         yield 'plain code' => ['$s = 0; foreach ($xs as $x) { $s += $x; } return $s;'];
     }
 

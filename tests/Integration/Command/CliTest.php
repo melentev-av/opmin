@@ -203,6 +203,48 @@ final class CliTest
         Assert::false(\file_exists($skill));
     }
 
+    public function initEndsWithTheNextStepsAndDoesNotRunDoctorWithoutATerminal(): void
+    {
+        \mkdir($this->dir . '/app');
+
+        [$code, $out] = $this->opmin('init', '--no-interaction', '--no-skill');
+
+        Assert::same($code, 0);
+        Assert::string($out)
+            ->contains('Next:')
+            ->contains('opmin doctor ')
+            ->contains('opmin count --top=10 ')
+            ->contains('opmin optimize --dry-run app ')
+            ->contains('.opmin/report_<ts>.md')
+            ->notContains('PHP version:')
+            ->notContains('doctor:');
+    }
+
+    public function initRunsDoctorOnTheWrittenConfig(): void
+    {
+        \mkdir($this->dir . '/src');
+        \mkdir($this->dir . '/bin');
+        \symlink(TestPhp::path(), $this->dir . '/bin/php');
+        # No php.binary at init: the target comes from composer.json, the written php.binary is `php` (bin/php).
+        \file_put_contents($this->dir . '/composer.json', '{"require": {"php": ">=8.0"}}');
+
+        [$code, $out] = $this->opminWithEnv(
+            ['PATH' => $this->dir . '/bin:' . (string) \getenv('PATH')],
+            'init',
+            '--no-interaction',
+            '--no-skill',
+            '--doctor',
+            '--set=php.binary=opmin-no-such-php',
+        );
+
+        Assert::same($code, 0);
+        Assert::string($out)
+            ->contains('✔ config: ')
+            ->contains('php.binary is PHP ' . TestPhp::binary()->version . ', php.target is 8.0')
+            ->matchesRegex('/doctor: \d+ blocker\(s\)/')
+            ->contains('Next:');
+    }
+
     public function skillIsInstalledAndUpdatedLocallyAndGlobally(): void
     {
         $home = ['HOME' => $this->dir . '/home'];

@@ -74,7 +74,8 @@ gh attestation verify opmin-<version>-linux-x86_64.tar.gz --repo melentev-av/opm
 ## Quick start
 
 ```bash
-opmin init        # opmin.yaml: every key with a comment; php.target from php.binary, paths, test runner, formatter, PHPStan
+opmin init        # opmin.yaml: every key with a comment; php.target from php.binary, paths, test runner, formatter, PHPStan;
+                  # ends with the next commands; on a terminal offers to run doctor (--doctor / --no-doctor)
 opmin doctor      # php.binary first, then OPcache, the harness, syntax, tests, PHPStan, coverage, git — with fixes
 opmin count       # opcodes per function
 opmin optimize    # Rector stage, every accepted step is a separate commit

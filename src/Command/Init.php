@@ -16,6 +16,7 @@ use Opmin\Module\Skill\Skill;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\QuestionHelper;
+use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -27,10 +28,12 @@ use Symfony\Component\Yaml\Yaml;
  * Creates `opmin.yaml` with every key, its value and a comment, and puts the Claude Code skill
  * `opcode-minimize` into `.claude/skills/` next to it (unless `--no-skill`). The PHP target, code
  * directories, test runner, formatter and PHPStan of the project are detected and written instead of the
- * defaults; the rest keeps the defaults.
+ * defaults; the rest keeps the defaults. It ends with the next commands (`doctor`, `count`, a dry run) and,
+ * on a terminal or with `--doctor`, runs `doctor` on the written config; the exit code stays 0.
  *
  * ```bash
  * opmin init
+ * opmin init -n --doctor
  * opmin init --config=./custom.yaml --overwrite
  * opmin init --no-skill
  * ```
@@ -56,6 +59,12 @@ final class Init extends Base
             'Overwrite existing configuration file without confirmation',
         );
         $this->addOption('no-skill', null, InputOption::VALUE_NONE, 'Do not put the Claude Code skill into .claude/skills');
+        $this->addOption(
+            'doctor',
+            null,
+            InputOption::VALUE_NEGATABLE,
+            'Check the written config with opmin doctor (default: ask on a terminal, skip otherwise)',
+        );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -88,6 +97,9 @@ final class Init extends Base
 
         Layout::ignore($configPath->parent()) and $style->text('Added ' . Layout::GITIGNORE . ' to .gitignore');
         $input->getOption('no-skill') or $this->installSkill($configPath->parent(), $style);
+
+        $this->shouldRunDoctor($input) and $this->runDoctor($configPath, $style);
+        $this->printNextSteps($input, $style, $configPath, $detected);
 
         return Command::SUCCESS;
     }
@@ -149,6 +161,86 @@ final class Init extends Base
             $style->text('Claude Code skill: ' . (string) Skill::install($skills));
         } catch (\RuntimeException $e) {
             $style->warning('The Claude Code skill is not installed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * `--doctor` / `--no-doctor`; without either, asks only on a terminal: an agent or a CI step without `-n`
+     * would block reading a pipe that stays open.
+     */
+    private function shouldRunDoctor(InputInterface $input): bool
+    {
+        /** @var bool|null $flag */
+        $flag = $input->getOption('doctor');
+        if ($flag !== null) {
+            return $flag;
+        }
+
+        if (!$input->isInteractive() || !\defined('STDIN') || !\stream_isatty(\STDIN)) {
+            return false;
+        }
+
+        /** @var QuestionHelper $helper */
+        $helper = $this->getHelper('question');
+
+        return (bool) $helper->ask(
+            $input,
+            $this->container->get(OutputInterface::class),
+            new ConfirmationQuestion('Check the environment with opmin doctor now? [Y/n] ', true),
+        );
+    }
+
+    /**
+     * Runs `doctor` on the written config: the container of `init` is built without it, so it would check the
+     * defaults. The exit code of `init` stays 0 — the config was written; `opmin doctor` exits with 1 itself.
+     */
+    private function runDoctor(Path $configPath, StyleInterface $style): void
+    {
+        $application = $this->getApplication();
+        $doctor = $application !== null && $application->has('doctor') ? $application->find('doctor') : null;
+        $doctor instanceof Doctor or $doctor = new Doctor();
+
+        $input = new ArrayInput(['--config' => (string) $configPath]);
+        $input->setInteractive(false);
+        $style->newLine();
+        $code = $doctor->run($input, $this->container->get(OutputInterface::class));
+
+        $blockers = $doctor->blockers();
+        $style->text(match (true) {
+            $code === Command::INVALID => '<error>doctor: the written config does not load, see above</error>',
+            $blockers > 0 => "<error>doctor: {$blockers} blocker(s)</error>",
+            default => '<info>doctor: 0 blocker(s)</info>',
+        });
+    }
+
+    /**
+     * What to run after `init`, printed always (also with `-n`): nothing of it is run here — `count` on a cold
+     * cache is slow and a dry run is the user's decision.
+     *
+     * @param array<non-empty-string, array{mixed, non-empty-string}> $detected
+     */
+    private function printNextSteps(InputInterface $input, StyleInterface $style, Path $configPath, array $detected): void
+    {
+        $config = $input->getOption('config') === null ? '' : ' --config=' . (string) $configPath;
+        /** @var Schema\Project $project */
+        $project = $this->container->get(Schema\Project::class);
+        /** @var list<string> $paths */
+        $paths = \is_array($detected['paths'][0] ?? null) ? $detected['paths'][0] : $project->paths;
+        $runs = $input->getOption('config') === null ? Path::create('.') : $configPath->parent();
+        $report = (string) $runs->join(Layout::DIR, 'report_<ts>.md');
+        $patch = (string) $runs->join(Layout::RUNS, '<ts>', 'opmin.patch');
+
+        $steps = [
+            "opmin doctor{$config}" => 'check php.binary, OPcache, the tests, PHPStan',
+            "opmin count{$config} --top=10" => 'the functions with the most opcodes',
+            "opmin optimize{$config} --dry-run " . \implode(' ', $paths) => "change nothing: the report goes to {$report}, the patch to {$patch}",
+        ];
+        $width = \max(\array_map('strlen', \array_keys($steps)));
+
+        $style->newLine();
+        $style->text('<options=bold>Next:</>');
+        foreach ($steps as $command => $what) {
+            $style->text(\sprintf('  %s  <fg=gray># %s</>', \str_pad($command, $width), $what));
         }
     }
 }

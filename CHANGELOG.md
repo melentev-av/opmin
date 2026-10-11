@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/melentev-av/opmin/compare/v0.3.0...v0.3.1) (2026-10-11)
+
+
+### Bug Fixes
+
+* **php:** list the internal symbols of php.binary with startup noise out of stdout ([ded8d15](https://github.com/melentev-av/opmin/commit/ded8d15618b835411944fa8c78df94c8a4a01fe6))
+
 ## [0.3.0](https://github.com/melentev-av/opmin/compare/v0.2.0...v0.3.0) (2026-10-10)
 
 

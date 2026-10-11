@@ -37,7 +37,7 @@ dload's `OperatingSystem` and `Architecture` recognize all of them; the pattern 
 <dload xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
        xsi:noNamespaceSchemaLocation="vendor/internal/dload/dload.xsd">
     <actions>
-        <download software="opmin" version="^0.2" />
+        <download software="opmin" version="^x.y" /> <!-- the line you use; for 0.x ^0.4 is >=0.4.0 <0.5.0 -->
     </actions>
 </dload>
 ```

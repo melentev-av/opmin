@@ -41,8 +41,9 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * left, `rewrite` the next unfinished target in the session order (with its `context`, the same as
  * `llm:context --format=json` prints), or `finish` when none is left.
  *
- * Exit codes: 0 — accepted; 1 — rejected (the reason is printed); 2 — no session, not a target,
- * no attempts left, a dirty git tree or one without commits, invalid usage.
+ * Exit codes: 0 — accepted; 1 — rejected (the reason is printed), or an error stopped the check (not
+ * an attempt); 2 — no session, not a target, no attempts left, a dirty git tree or one without commits,
+ * invalid usage.
  *
  * @internal
  */
@@ -93,8 +94,14 @@ final class ApplyCandidate extends LlmStage
         $candidate = $session->saveCandidate($number, $source);
         $file = $project->root->join($target->file);
         $optimizer = $this->optimizer($project, $php, $workspace, $output, (bool) $input->getOption('allow-public-signatures'));
-        $optimizer->open([$file], null);
-        $step = $optimizer->candidate($target->file, $target->key, $source);
+        try {
+            $optimizer->open([$file], null);
+            $step = $optimizer->candidate($target->file, $target->key, $source);
+        } catch (\RuntimeException $e) {
+            # Not an attempt: nothing is recorded, the attempt is not used up.
+            $style->error($e->getMessage());
+            return Command::FAILURE;
+        }
 
         $accepted = $step->accepted !== [] && $step->error === null;
         $rejection = $step->rejected[0] ?? null;

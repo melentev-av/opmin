@@ -57,7 +57,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * Every run writes `.opmin/runs/<ts>/`: the counts before and after, `report.json`, `opmin.patch`, counterexamples.
  *
  * Exit codes: 0 — done (also when nothing could be improved); 1 — the full test run fails after the
- * optimization even with every step taken back, or a step failed; 2 — invalid config or usage, a
+ * optimization even with every step taken back, a step failed, or an error stopped the run; 2 — invalid config or usage, a
  * dirty git tree or one without commits, an unusable `php.binary`.
  *
  * @internal
@@ -234,6 +234,9 @@ final class Optimize extends Stage
         # Red tests prove nothing about a change: every change would be rolled back, so stop before any.
         try {
             $red = $optimizer->failingTestsOnOriginal();
+        } catch (\RuntimeException $e) {
+            $progress->clear();
+            return $this->stoppedOn($e, $style, $workspace, $project, $runDir);
         } finally {
             $progress->clear();
         }
@@ -249,6 +252,9 @@ final class Optimize extends Stage
         $signalled = $this->onSignals($optimizer, $errorOutput, $progress);
         try {
             $report = $optimizer->run($files, $rules, $state);
+        } catch (\RuntimeException $e) {
+            $progress->clear();
+            return $this->stoppedOn($e, $style, $workspace, $project, $runDir);
         } finally {
             $progress->clear();
         }
@@ -424,6 +430,22 @@ final class Optimize extends Stage
         $warning === null or $style->warning($warning);
 
         return true;
+    }
+
+    /**
+     * An error that stopped the run (git refused, a file could not be written): an error of the
+     * command with exit 1, not a trace. The workspace is finished, so a dry run restores the files.
+     */
+    private function stoppedOn(\RuntimeException $e, SymfonyStyle $style, Workspace $workspace, Project $project, Path $runDir): int
+    {
+        $workspace->finish();
+        $style->error([
+            $e->getMessage(),
+            'The run stopped: what it did so far is in ' . $project->relative($runDir)
+                . ($workspace->dryRun ? ' (dry run: files restored).' : '.'),
+        ]);
+
+        return Command::FAILURE;
     }
 
     /**

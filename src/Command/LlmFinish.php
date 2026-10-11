@@ -23,8 +23,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * tests of its function; while the full run fails, accepted attempts are taken back from the last
  * one), then `report.json` and `opmin.patch` in the run directory.
  *
- * Exit codes: 0 — done; 1 — the full test run fails even with every attempt taken back; 2 — no
- * session, a dirty git tree or one without commits, invalid usage.
+ * Exit codes: 0 — done; 1 — the full test run fails even with every attempt taken back, or an error
+ * stopped it (the session stays open); 2 — no session, a dirty git tree or one without commits, invalid usage.
  *
  * @internal
  */
@@ -65,38 +65,45 @@ final class LlmFinish extends LlmStage
 
         $optimizer = $this->optimizer($project, $php, $workspace, $output, false);
         [$environment, $warnings] = $this->environment($project, $php, $optimizer, $session->runDir);
-        $report = $optimizer->open(\array_values($files), null, 'llm');
-        foreach ($attempts as $attempt) {
-            $step = new StepReport(LlmCandidate::class, $attempt->number);
-            if ($attempt->accepted) {
-                $step->accepted[] = [
-                    'file' => $attempt->file,
-                    'function' => $attempt->function,
-                    'gain' => $attempt->gain,
-                    'status' => (string) $attempt->status,
-                    'checks' => $attempt->checks ?? [],
-                ];
-                $attempt->before === null or $step->before[$attempt->file] = (string) \file_get_contents((string) $session->runDir->join($attempt->before));
-                $step->commit = $attempt->commit;
-            } else {
-                $step->reject($attempt->file, $attempt->function, $attempt->reason, $attempt->counterexample);
+        try {
+            $report = $optimizer->open(\array_values($files), null, 'llm');
+            foreach ($attempts as $attempt) {
+                $step = new StepReport(LlmCandidate::class, $attempt->number);
+                if ($attempt->accepted) {
+                    $step->accepted[] = [
+                        'file' => $attempt->file,
+                        'function' => $attempt->function,
+                        'gain' => $attempt->gain,
+                        'status' => (string) $attempt->status,
+                        'checks' => $attempt->checks ?? [],
+                    ];
+                    $attempt->before === null or $step->before[$attempt->file] = (string) \file_get_contents((string) $session->runDir->join($attempt->before));
+                    $step->commit = $attempt->commit;
+                } else {
+                    $step->reject($attempt->file, $attempt->function, $attempt->reason, $attempt->counterexample);
+                }
+
+                $report->steps[] = $step;
             }
 
-            $report->steps[] = $step;
+            # The files are counted after the accepted attempts: the session started with their gains on top.
+            $report->opsBefore += \array_sum(\array_map(static fn(Attempt $a): int => $a->accepted ? $a->gain : 0, $attempts));
+            $optimizer->close($report);
+            $patch = $workspace->finish();
+            $report->patch = $patch === null ? null : $project->relative($patch);
+            $report->environment = $environment;
+            $report->warnings = $warnings;
+            $data = $report->write([
+                'run' => $project->relative($session->runDir),
+                'attempts' => \array_map(static fn(Attempt $a): array => $a->toArray(), $attempts),
+            ]);
+            $session->markFinished();
+        } catch (\RuntimeException $e) {
+            # The session stays open: `llm:finish` runs again once the cause is fixed.
+            $style->error($e->getMessage());
+            return Command::FAILURE;
         }
 
-        # The files are counted after the accepted attempts: the session started with their gains on top.
-        $report->opsBefore += \array_sum(\array_map(static fn(Attempt $a): int => $a->accepted ? $a->gain : 0, $attempts));
-        $optimizer->close($report);
-        $patch = $workspace->finish();
-        $report->patch = $patch === null ? null : $project->relative($patch);
-        $report->environment = $environment;
-        $report->warnings = $warnings;
-        $data = $report->write([
-            'run' => $project->relative($session->runDir),
-            'attempts' => \array_map(static fn(Attempt $a): array => $a->toArray(), $attempts),
-        ]);
-        $session->markFinished();
         $this->logTimings($optimizer, $output);
 
         $kept = \array_filter($report->steps, static fn(StepReport $s): bool => $s->accepted !== []);

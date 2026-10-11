@@ -86,9 +86,13 @@ final class OptimizeTest
 
     private string $dir = '';
 
+    /** @var array<string, string> Environment variables of the opmin processes on top of the inherited ones. */
+    private array $env = [];
+
     #[BeforeTest]
     public function createProject(): void
     {
+        $this->env = [];
         $this->dir = (string) \realpath(\sys_get_temp_dir()) . '/opmin-optimize-' . \bin2hex(\random_bytes(4));
         \mkdir($this->dir . '/src', 0777, true);
         \file_put_contents($this->dir . '/composer.json', '{"require": {"php": ">=8.1"}, "autoload": {"psr-4": {"App\\\\": "src/"}}}');
@@ -100,7 +104,7 @@ final class OptimizeTest
     #[AfterTest]
     public function removeProject(): void
     {
-        \exec('rm -rf ' . \escapeshellarg($this->dir));
+        \exec('rm -rf ' . \escapeshellarg($this->dir) . ' ' . \escapeshellarg($this->dir . '-bin'));
     }
 
     public function commitsEveryAcceptedStepAndRollsBackTheRest(): void
@@ -639,6 +643,27 @@ final class OptimizeTest
         Assert::same(\file_get_contents($this->dir . '/src/Text.php'), self::CODE);
     }
 
+    /**
+     * A failure in the middle of the run is an error of the command, not a trace with the usage line;
+     * a dry run still restores the files.
+     */
+    public function aFailureDuringTheRunIsAnErrorWithExitOne(): void
+    {
+        $this->commitAll();
+        # HEAD is read after the first counting and after every step: fail after the first step changed the file.
+        $this->failingGit('rev-parse HEAD', skip: 1);
+
+        [$code, $out, $err] = $this->opmin('optimize', '--format=none', '--dry-run');
+
+        Assert::same($code, 1, $out . $err);
+        Assert::string($err)->ignoringWhitespace(lineBreaks: true)
+            ->contains('[ERROR] git rev-parse failed: simulated failure')
+            ->contains('The run stopped: what it did so far is in .opmin/runs/')
+            ->notContains('In Workspace.php')
+            ->notContains('optimize [--config');
+        Assert::same(\file_get_contents($this->dir . '/src/Text.php'), self::CODE);
+    }
+
     public function jobsMustBeANumber(): void
     {
         [$code, , $err] = $this->opmin('optimize', '--jobs=many');
@@ -674,6 +699,37 @@ final class OptimizeTest
         $this->git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init');
     }
 
+    /**
+     * Puts a `git` first in the PATH of opmin that fails the given command line after it ran it
+     * `$skip` times, and runs the real git for the rest.
+     */
+    private function failingGit(string $command, int $skip = 0): void
+    {
+        $real = \trim((string) \shell_exec('command -v git'));
+        $bin = $this->dir . '-bin';
+        \mkdir($bin);
+        \file_put_contents($bin . '/git', \sprintf(
+            <<<'SH'
+                #!/bin/sh
+                if [ "$*" = %1$s ]; then
+                  echo x >> %2$s
+                  if [ "$(wc -l < %2$s)" -gt %3$d ]; then
+                    echo 'simulated failure' >&2
+                    exit 128
+                  fi
+                fi
+                exec %4$s "$@"
+
+                SH,
+            \escapeshellarg($command),
+            \escapeshellarg($bin . '/calls'),
+            $skip,
+            \escapeshellarg($real),
+        ));
+        \chmod($bin . '/git', 0755);
+        $this->env['PATH'] = $bin . \PATH_SEPARATOR . (string) \getenv('PATH');
+    }
+
     private function git(string ...$args): string
     {
         $out = [];
@@ -698,7 +754,7 @@ final class OptimizeTest
             \array_merge(\getenv(), [
                 'OPMIN_PHP_BINARY' => TestPhp::path(),
                 'GIT_AUTHOR_NAME' => 't', 'GIT_AUTHOR_EMAIL' => 't@t', 'GIT_COMMITTER_NAME' => 't', 'GIT_COMMITTER_EMAIL' => 't@t',
-            ]),
+            ], $this->env),
         );
         if ($stdin !== null) {
             \fwrite($pipes[0], $stdin);

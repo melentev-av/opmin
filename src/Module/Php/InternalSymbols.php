@@ -39,7 +39,8 @@ final readonly class InternalSymbols
      */
     public static function of(PhpBinary $php): self
     {
-        $process = new Process($php->command(['-r', self::SCRIPT]), timeout: 60);
+        # Startup warnings and Xdebug messages go to stdout by default and would break the JSON.
+        $process = new Process($php->command(['-d', 'display_errors=stderr', '-d', 'xdebug.mode=off', '-r', self::SCRIPT]), timeout: 60);
         $process->run();
         /** @var mixed $data */
         $data = \json_decode($process->getOutput(), true);
@@ -48,7 +49,12 @@ final readonly class InternalSymbols
         /** @var mixed $constants */
         $constants = \is_array($data) ? ($data['constants'] ?? null) : null;
         if (!$process->isSuccessful() || !\is_array($functions) || !\is_array($constants)) {
-            throw new PhpBinaryException("Cannot list the internal functions of `{$php->path}`: " . \trim($process->getErrorOutput()));
+            throw new PhpBinaryException(\sprintf(
+                'Cannot list the internal functions of `%s` (exit code %s): %s',
+                $php->path,
+                $process->getExitCode() ?? '?',
+                self::head(\trim($process->getErrorOutput()) ?: \trim($process->getOutput())) ?: 'no output',
+            ));
         }
 
         /** @var list<string> $functions */
@@ -65,5 +71,13 @@ final readonly class InternalSymbols
     public function toArray(): array
     {
         return ['functions' => $this->functions, 'constants' => $this->constants];
+    }
+
+    /**
+     * The start of what the PHP printed: the reason is there, the rest is the JSON or a trace.
+     */
+    private static function head(string $text): string
+    {
+        return \mb_strlen($text) > 500 ? \mb_substr($text, 0, 500) . '…' : $text;
     }
 }

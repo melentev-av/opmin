@@ -171,7 +171,7 @@ jobs:
           test -s /tmp/phar-smoke/opmin.yaml
 
       # The harness, Rector and PHPStan from inside the PHAR, next to the project's own php-parser and Rector.
-      - name: 📦 PHAR as a composer package in a project with other php-parser and Rector
+      - name: 📦 PHAR in a project with other php-parser and Rector
         run: tests/Phar/composer-project.sh .build/phar/opmin.phar
 
 ...

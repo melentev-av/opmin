@@ -165,9 +165,8 @@ final class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedRe
   playground (`bin/playground run git-package`) and by the smoke tests of the release images.
 - `tests/Unit/Module/Harness/HarnessFilesTest.php` extracts the harness from a `phar://` URL: `Internal\Path`
   collapses `phar://` into `phar:/`, which broke every PHAR run of the differential tester until M7.
-- `tests/Phar/composer-project.sh <phar>` (CI job «PHAR builds and runs»): the PHAR as a composer package (the
-  unpublished wrapper in `resources/composer-package/`, through a local `path` repository) in a project with
-  nikic/php-parser 4 and Rector 1 — count, verify and optimize from `vendor/bin/opmin`. Run it
+- `tests/Phar/composer-project.sh <phar>` (CI job «PHAR builds and runs»): the PHAR in a project with
+  nikic/php-parser 4 and Rector 1 in its `vendor/` — count, verify and optimize from `php opmin.phar`. Run it
   locally after `make phar` whenever the scoper config, `box.json.dist` or the internal entry points change.
 
 ## Property tests (`rasuvaeff/property-testing-testo`)

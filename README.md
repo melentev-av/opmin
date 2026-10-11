@@ -343,10 +343,21 @@ check:
   base_ref: origin/main        # base of the changed-files mode (--base=)
 ```
 
-The baseline must be taken with the same PHP minor version as the check: in CI use the image with the PHP of
-your production, and create the baseline with the same image
-(`docker run --rm -v "$PWD:/app" ghcr.io/melentev-av/opmin:<version>-php8.3 opmin baseline`), `<version>` being
-the opmin release.
+**Which image.** The check runs in `ghcr.io/melentev-av/opmin:<version>-php<X.Y>`, `<X.Y>` being the PHP minor
+of your production — ask production itself, not `composer.json` (`"php": "^8.1"` says nothing about the PHP
+that runs the code):
+
+```bash
+php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;'   # on production: e.g. 8.3
+```
+
+- Pin the opmin version: `:0.4.0-php8.3`, not the floating `:php8.3`. The floating tag follows the latest
+  release, and a new opmin may count some functions differently (a counting fix) — the check of an unchanged
+  PR would then fail or ask to update the baseline. Bump the version on purpose, together with the baseline.
+- The baseline must be taken with the same image as the check: the same PHP minor and the same optimizer
+  settings (`optimizer_hash`: the OPcache INI of opmin and the loaded Zend extensions); another one is
+  rejected with exit code 2. Create it with that image and commit `opmin.baseline.json`:
+  `docker run --rm -v "$PWD:/app" ghcr.io/melentev-av/opmin:<version>-php8.3 opmin baseline`.
 
 GitHub Actions (`.github/workflows/opcodes.yml`):
 

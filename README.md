@@ -542,18 +542,18 @@ docker run --rm -v "$PWD:/out" ghcr.io/melentev-av/opmin:php8.4 sh -c \
 ## Results on real packages
 
 An example: real packages optimized in git package mode with Stage A (the four own Rector rules), then their own
-tests run on the patched code and stay green. Measured on 2026-10-08 with opmin 0.2 in CI; the run can be repeated by
-hand ([smoke-real-packages.yml](.github/workflows/smoke-real-packages.yml), or `tests/Smoke/run.sh <package> <php>`
+tests run on the patched code and stay green. Measured in CI; the run can be repeated by hand
+([smoke-real-packages.yml](.github/workflows/smoke-real-packages.yml), or `tests/Smoke/run.sh <package> <php>`
 locally).
 
 | Package | PHP | Opcodes | Saved | Functions changed | Package's tests after the patch | Time |
 |---|---|---|---|---|---|---|
-| symfony/string 6.4.46 | 8.1 | 5 940 → 5 863 | −77 (−1.3%) | 50 | green | 2.5 min |
-| | 8.5 | 6 358 → 6 083 | −275 (−4.3%) | 45 | green | 2.5 min |
-| league/csv 9.28.0 | 8.1 | 16 679 → 16 605 | −74 (−0.4%) | 24 | green (without `network`) | 5 min |
-| | 8.5 | 16 512 → 16 404 | −108 (−0.7%) | 26 | green (without `network`) | 1 min |
-| nesbot/carbon 3.14.2 | 8.1 | 26 823 → 26 630 | −193 (−0.7%) | 52 | green (without `localization`) | 7 min |
-| | 8.5 | 27 413 → 26 161 | −1 252 (−4.6%) | 105 | green (without `localization`) | 21 min |
+| symfony/string 6.4.46 | 8.1 | 5 940 → 5 863 | −77 (−1.3%) | 50 | green | 2 min |
+| | 8.5 | 6 358 → 6 083 | −275 (−4.3%) | 45 | green | 2 min |
+| league/csv 9.28.0 | 8.1 | 16 679 → 16 605 | −74 (−0.4%) | 24 | green (without `network`) | 1.5 min |
+| | 8.5 | 16 512 → 16 404 | −108 (−0.7%) | 26 | green (without `network`) | 1.5 min |
+| nesbot/carbon 3.14.2 | 8.1 | 26 823 → 26 629 | −194 (−0.7%) | 53 | green (without `localization`) | 5.5 min |
+| | 8.5 | 27 413 → 26 160 | −1 253 (−4.6%) | 106 | green (without `localization`) | 8 min |
 
 `php.binary` and `php.target` are the PHP of the row; CI runners, the static binary. Most of the gain is
 `FullyQualifyGlobalCallsRector`, and the gap between 8.1 and 8.5 is its: since PHP 8.4 an unqualified call of a

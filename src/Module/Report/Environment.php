@@ -75,7 +75,7 @@ final readonly class Environment
     }
 
     /**
-     * The environment of the latest earlier run under `runs/` with a report; null when there is none.
+     * The environment of the latest earlier run under `.opmin/runs/` with a report; null when there is none.
      *
      * @return array{string, self}|null The run directory (relative to `$runsDir`) and its environment.
      */

@@ -7,13 +7,15 @@ namespace Opmin\Module\Project;
 use Internal\Path;
 use Opmin\Module\Config\Schema\TestRunner;
 use Opmin\Module\Optimize\Formatter;
+use Opmin\Module\Php\PhpBinary;
 use Opmin\Module\Tests\PestAdapter;
 use Opmin\Module\Tests\PhpUnitAdapter;
 use Opmin\Module\Tests\TestoAdapter;
 
 /**
  * What `opmin init` writes instead of the defaults: the project's PHP target, code directories, test
- * runner, formatter and PHPStan, read from `composer.json` and the config files in the project root.
+ * runner, formatter and PHPStan, read from `php.binary`, `composer.json` and the config files in the
+ * project root.
  * A key that cannot be detected keeps its default.
  *
  * @internal
@@ -24,17 +26,24 @@ final class InitDetector
     private const CODE_DIRS = ['src', 'app', 'lib'];
 
     /**
+     * @param PhpBinary|null $php `php.binary`, when it starts: the PHP the code runs on gives the target,
+     *        not the lowest version `require.php` of composer.json allows.
      * @return array<non-empty-string, array{mixed, non-empty-string}> Value and where it comes from, by key path.
      *         An enum is its backed value, as in YAML.
      */
-    public static function detect(Path $root): array
+    public static function detect(Path $root, ?PhpBinary $php = null): array
     {
         # The config's own directory is the project: a composer.json further up belongs to another one.
         $hasComposer = $root->join('composer.json')->isFile();
         $project = $hasComposer ? Project::detect($root, $root) : new Project($root, false, null);
         $found = [];
 
-        $project->phpTarget === null or $found['php.target'] = [$project->phpTarget, 'composer.json'];
+        if ($php !== null) {
+            $minor = \implode('.', \array_slice(\explode('.', $php->version), 0, 2));
+            $found['php.target'] = [$minor, "php.binary {$php->path}, PHP {$php->version}"];
+        } elseif ($project->phpTarget !== null) {
+            $found['php.target'] = [$project->phpTarget, 'composer.json'];
+        }
 
         $dirs = \array_values(\array_filter(self::CODE_DIRS, static fn(string $dir): bool => $root->join($dir)->isDir()));
         if ($dirs !== []) {

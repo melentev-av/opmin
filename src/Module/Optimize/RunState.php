@@ -10,7 +10,7 @@ use Opmin\Module\Optimize\Rector\RuleSpec;
 
 /**
  * Where an `opmin optimize` run is, so `--resume` continues it after Ctrl+C or a crash (brief,
- * «Скорость самой тулзы»): `runs/<ts>/state.json` is written after every step.
+ * «Скорость самой тулзы»): `.opmin/runs/<ts>/state.json` is written after every step.
  *
  * - `state.json` — the arguments of the run (files, rules, options), the position (pass, next rule,
  *   phase), the git HEAD after the last step, the steps so far, the optimizer's memory;

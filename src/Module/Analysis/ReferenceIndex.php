@@ -32,7 +32,7 @@ final class ReferenceIndex
 
     /**
      * Never scanned. `.*` is every hidden entry — VCS, IDE, agent and CI tooling (`.agents/`,
-     * `.github/`), a stale `.opmin-cache/` of another root: their scripts do not run as the
+     * `.github/`), the `.opmin/` of opmin or a stale one of another root: their scripts do not run as the
      * application, yet one `new \ReflectionClass($class)` or `$f()` there flags every method. Not the
      * config's `exclude`: it lists `tests` by default, and tests call application code by name.
      */

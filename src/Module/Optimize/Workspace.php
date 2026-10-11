@@ -17,10 +17,10 @@ use Symfony\Component\Process\Process;
  * - in a git working tree (the project's files are tracked) every accepted step is a commit of the
  *   files it changed, so those should be clean (checked under `git.require_clean`, off by default);
  *   other files may stay dirty, and every git command that changes the tree names its paths;
- * - outside git, the originals are copied to `runs/<ts>/original/` before the first change;
+ * - outside git, the originals are copied to `.opmin/runs/<ts>/original/` before the first change;
  * - with `--dry-run` nothing stays changed: the originals are restored at the end.
  *
- * In every mode the originals are backed up and the run ends with `runs/<ts>/opmin.patch`.
+ * In every mode the originals are backed up and the run ends with `.opmin/runs/<ts>/opmin.patch`.
  *
  * @internal
  */
@@ -128,7 +128,7 @@ final class Workspace
     }
 
     /**
-     * Copies the original of a file to `runs/<ts>/original/` before anything touches it.
+     * Copies the original of a file to `.opmin/runs/<ts>/original/` before anything touches it.
      *
      * @param string|null $original The original content when the file on disk is already changed
      *        (by Rector); null — read it from disk.

@@ -8,6 +8,7 @@ use Internal\Path;
 use Opmin\Info;
 use Opmin\Module\Common\FileSystem\FS;
 use Opmin\Module\Project\FileFinder;
+use Opmin\Module\Project\Layout;
 use Opmin\Module\Project\Project;
 
 /**
@@ -27,7 +28,7 @@ final class ShadowIndex
     private const FORMAT = 1;
 
     /** Directories never scanned. */
-    private const SKIP = ['node_modules', '.git', 'runs', 'playground'];
+    private const SKIP = ['node_modules', '.git', Layout::DIR, 'runs', 'playground'];
 
     /** @var array<lowercase-string, true> */
     private array $functions = [];

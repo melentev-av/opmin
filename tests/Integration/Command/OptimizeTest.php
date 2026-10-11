@@ -90,7 +90,7 @@ final class OptimizeTest
         \mkdir($this->dir . '/src', 0777, true);
         \file_put_contents($this->dir . '/composer.json', '{"require": {"php": ">=8.1"}, "autoload": {"psr-4": {"App\\\\": "src/"}}}');
         \file_put_contents($this->dir . '/src/Text.php', self::CODE);
-        \file_put_contents($this->dir . '/.gitignore', "/runs/\n/.opmin-cache/\n");
+        \file_put_contents($this->dir . '/.gitignore', ".opmin/\n");
         \file_put_contents($this->dir . '/opmin.yaml', "ignore:\n  functions: ['App\\Text::upp*']\n");
     }
 
@@ -169,7 +169,7 @@ final class OptimizeTest
 
         Assert::same($code, 0);
         Assert::string((string) \file_get_contents($this->dir . '/src/Text.php'))->contains('\strlen($s)');
-        $original = \glob($this->dir . '/runs/*/original/src/Text.php') ?: [];
+        $original = \glob($this->dir . '/.opmin/runs/*/original/src/Text.php') ?: [];
         Assert::count($original, 1);
         Assert::same(\file_get_contents($original[0]), self::CODE);
     }
@@ -178,7 +178,7 @@ final class OptimizeTest
     {
         [$code] = $this->opmin('optimize', '--format=none');
         Assert::same($code, 0);
-        $json = \glob($this->dir . '/runs/*/report.json') ?: [];
+        $json = \glob($this->dir . '/.opmin/runs/*/report.json') ?: [];
         Assert::count($json, 1);
         /** @var array<string, mixed> $report */
         $report = \json_decode((string) \file_get_contents($json[0]), true, flags: \JSON_THROW_ON_ERROR);
@@ -215,7 +215,7 @@ final class OptimizeTest
         Assert::same($code, 0);
         Assert::same(\file_get_contents($this->dir . '/src/Text.php'), self::CODE);
         Assert::string($out)->contains('dry run: files restored');
-        $patch = \glob($this->dir . '/runs/*/opmin.patch') ?: [];
+        $patch = \glob($this->dir . '/.opmin/runs/*/opmin.patch') ?: [];
         Assert::count($patch, 1);
         Assert::string((string) \file_get_contents($patch[0]))->contains('+        return \strlen($s)');
     }
@@ -290,7 +290,7 @@ final class OptimizeTest
         Assert::false(\is_file($this->dir . '/opmin.baseline.yaml'));
         $report = $this->report();
         Assert::true($report['interrupted']);
-        $markdown = \glob($this->dir . '/runs/*/report.md') ?: [];
+        $markdown = \glob($this->dir . '/.opmin/runs/*/report.md') ?: [];
         Assert::string((string) \file_get_contents($markdown[0] ?? ''))->contains('The run was interrupted');
 
         \exec('rm -rf ' . \escapeshellarg($this->dir . '/runs'));
@@ -347,7 +347,7 @@ final class OptimizeTest
      */
     private function report(): array
     {
-        $files = \glob($this->dir . '/runs/*/report.json') ?: [];
+        $files = \glob($this->dir . '/.opmin/runs/*/report.json') ?: [];
         Assert::count($files, 1);
 
         /** @var array{totals: array{ops_before: int, ops_after: int}, patch: ?string, interrupted: bool, rejected: list<array<string, mixed>>, functions: array<string, mixed>, steps: list<array{rejected: list<array{function: string, reason: string}>}>} */

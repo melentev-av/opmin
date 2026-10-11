@@ -233,7 +233,7 @@ function buildComposerProject(string $name, string $namespace, string $withTests
             PHP);
     }
 
-    \file_put_contents($dir . '/.gitignore', "/vendor/\n/.phpunit.cache/\n/.opmin-cache/\n/runs/\n");
+    \file_put_contents($dir . '/.gitignore', "/vendor/\n/.phpunit.cache/\n.opmin/\n");
     sh('composer install --no-interaction --no-progress --quiet', $dir);
 }
 
@@ -528,7 +528,7 @@ function guardAfter(string $dir, ?array $guard): string
  */
 function optimizeResult(string $dir): string
 {
-    $reports = \glob($dir . '/runs/*/report.json') ?: [];
+    $reports = \glob($dir . '/.opmin/runs/*/report.json') ?: [];
     \sort($reports);
     $file = \end($reports);
     /** @var mixed $report */
@@ -637,7 +637,7 @@ function findFile(string $dir, string $name): ?string
 {
     $iterator = new \RecursiveIteratorIterator(new \RecursiveCallbackFilterIterator(
         new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
-        static fn(\SplFileInfo $f): bool => !\in_array($f->getFilename(), ['vendor', '.opmin-cache', 'runs', 'node_modules', '.git', 'storage'], true),
+        static fn(\SplFileInfo $f): bool => !\in_array($f->getFilename(), ['vendor', '.opmin', 'node_modules', '.git', 'storage'], true),
     ));
     foreach ($iterator as $file) {
         if ($file->getFilename() === $name) {
@@ -668,8 +668,8 @@ function rewrite(string $source, array $replacements, string $dir): ?string
         $code = \str_replace($search, $replace, $code);
     }
 
-    @\mkdir($dir . '/.opmin-cache/rewrites', 0777, true);
-    $candidate = $dir . '/.opmin-cache/rewrites/' . \bin2hex(\random_bytes(4)) . '-' . \basename($source);
+    @\mkdir($dir . '/.opmin/cache/rewrites', 0777, true);
+    $candidate = $dir . '/.opmin/cache/rewrites/' . \bin2hex(\random_bytes(4)) . '-' . \basename($source);
     \file_put_contents($candidate, $code);
 
     return $candidate;
@@ -760,7 +760,7 @@ function summary(array $rows): void
  */
 function ignoreOpminFiles(string $dir): void
 {
-    \file_put_contents($dir . '/.gitignore', "/.opmin-cache/\n/runs/\n", \FILE_APPEND);
+    \file_put_contents($dir . '/.gitignore', ".opmin/\n", \FILE_APPEND);
 }
 
 /**

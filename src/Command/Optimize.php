@@ -21,6 +21,7 @@ use Opmin\Module\Package\PackageRun;
 use Opmin\Module\Php\InternalSymbols;
 use Opmin\Module\Php\PhpBinaryException;
 use Opmin\Module\Php\PhpBinaryProbe;
+use Opmin\Module\Project\Layout;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Project\Targets;
 use Opmin\Module\Verification\Verifier;
@@ -45,8 +46,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * current directory.
  *
  * In a git working tree every accepted step is a commit (`--with-git`: its target files must be clean); outside
- * git the originals are copied to `runs/<ts>/original/`; `--dry-run` restores everything at the end.
- * Every run writes `runs/<ts>/`: the counts before and after, `report.json`, `opmin.patch`, counterexamples.
+ * git the originals are copied to `.opmin/runs/<ts>/original/`; `--dry-run` restores everything at the end.
+ * Every run writes `.opmin/runs/<ts>/`: the counts before and after, `report.json`, `opmin.patch`, counterexamples.
  *
  * Exit codes: 0 — done (also when nothing could be improved); 1 — the full test run fails after the
  * optimization even with every step taken back, or a step failed; 2 — invalid config or usage, a
@@ -378,8 +379,8 @@ final class Optimize extends Stage
             $dir = Path::create($value);
             $dir->isAbsolute() or $dir = $project->root->join($value);
         } else {
-            $dir = RunState::latest($project->root->join('runs'))
-                ?? throw new \RuntimeException('No interrupted run in runs/: nothing to resume.');
+            $dir = RunState::latest($project->root->join(Layout::RUNS))
+                ?? throw new \RuntimeException('No interrupted run in ' . Layout::RUNS . '/: nothing to resume.');
         }
 
         $state = RunState::load($dir);

@@ -97,7 +97,7 @@ final class WorkspaceTest
     {
         $this->commitProject('');
         $this->dirtyOthers();
-        $workspace = Workspace::create($this->project(), $this->runDir(), false, ['runs'], RequireClean::Targets, ['src/A.php']);
+        $workspace = Workspace::create($this->project(), $this->runDir(), false, ['.opmin'], RequireClean::Targets, ['src/A.php']);
 
         $workspace->write(Path::create($this->root . '/src/A.php'), "<?php // optimized\n");
         $workspace->commit([Path::create($this->root . '/src/A.php')], 'opmin: step');
@@ -161,7 +161,7 @@ final class WorkspaceTest
 
     private function runDir(): Path
     {
-        return Path::create($this->root . '/runs/1');
+        return Path::create($this->root . '/.opmin/runs/1');
     }
 
     /**

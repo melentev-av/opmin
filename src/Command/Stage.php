@@ -23,6 +23,7 @@ use Opmin\Module\Optimize\Rector\RectorRunner;
 use Opmin\Module\Optimize\Workspace;
 use Opmin\Module\Php\PhpBinary;
 use Opmin\Module\Project\FileFinder;
+use Opmin\Module\Project\Layout;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Project\Targets;
 use Opmin\Module\Report\Environment;
@@ -72,14 +73,14 @@ abstract class Stage extends Base
     }
 
     /**
-     * `runs/<timestamp>`, with a suffix when a run of the same second exists.
+     * `.opmin/runs/<timestamp>`, with a suffix when a run of the same second exists.
      */
     protected function newRunDir(Project $project): Path
     {
         $base = \date('Ymd-His');
-        $dir = $project->root->join('runs', $base);
+        $dir = $project->root->join(Layout::RUNS, $base);
         for ($i = 2; $dir->exists(); ++$i) {
-            $dir = $project->root->join('runs', "{$base}-{$i}");
+            $dir = $project->root->join(Layout::RUNS, "{$base}-{$i}");
         }
 
         return $dir;
@@ -104,7 +105,7 @@ abstract class Stage extends Base
     protected function ignoredPaths(Project $project): array
     {
         # The review writes opmin.baseline.yaml and commits it at the end of the run.
-        return \array_values(\array_unique(['runs', $project->relative($this->cacheDir()), Declined::FILE]));
+        return \array_values(\array_unique([Layout::DIR, $project->relative($this->cacheDir()), Declined::FILE]));
     }
 
     #[\Override]

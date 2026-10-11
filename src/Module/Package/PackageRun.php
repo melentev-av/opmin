@@ -9,6 +9,7 @@ use Opmin\Info;
 use Opmin\Module\Common\FileSystem\FS;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Project\InitDetector;
+use Opmin\Module\Project\Layout;
 use Opmin\Module\Release\Installation;
 use Symfony\Component\Console\Style\StyleInterface;
 use Symfony\Component\Process\Process;
@@ -22,7 +23,7 @@ use Symfony\Component\Process\Process;
  * 3. `composer install --no-scripts --no-plugins` (`--allow-scripts` runs them).
  * 4. opmin optimizes the clone — in Docker by default: no network, a read-only root file system except the
  *    workspace and /tmp, CPU and memory limits; without Docker only after a confirmation (`--yes`).
- * 5. `runs/` with the report and the patch are copied to the current directory; the workspace is removed.
+ * 5. `.opmin/runs/` with the report and the patch are copied to the current directory; the workspace is removed.
  *
  * @internal
  */
@@ -386,21 +387,21 @@ final readonly class PackageRun
     }
 
     /**
-     * Copies `runs/` of the clone into the current directory, and every patch next to it as
+     * Copies `.opmin/runs/` of the clone into the current directory, and every patch next to it as
      * `opmin-<package>[-<ref>].patch`.
      */
     private function collect(Checkout $checkout): void
     {
-        $runs = $checkout->dir->join('runs');
+        $runs = $checkout->dir->join(Layout::RUNS);
         $entries = \is_dir((string) $runs) ? \scandir((string) $runs) : false;
         foreach ($entries === false ? [] : $entries as $run) {
             if ($run === '.' || $run === '..' || !\is_dir((string) $runs->join($run))) {
                 continue;
             }
 
-            $target = $this->cwd->join('runs', $run);
+            $target = $this->cwd->join(Layout::RUNS, $run);
             for ($i = 2; $target->exists(); ++$i) {
-                $target = $this->cwd->join('runs', "{$run}-{$i}");
+                $target = $this->cwd->join(Layout::RUNS, "{$run}-{$i}");
             }
 
             self::copyTree((string) $runs->join($run), (string) $target);

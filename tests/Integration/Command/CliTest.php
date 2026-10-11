@@ -10,6 +10,7 @@ use Opmin\Command\SkillUpdate;
 use Opmin\Info;
 use Opmin\Module\Config\ConfigLoader;
 use Opmin\Module\Config\Schema\TestRunner;
+use Opmin\Tests\Integration\TestPhp;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Lifecycle\AfterTest;
@@ -60,7 +61,7 @@ final class CliTest
         Assert::string((string) \file_get_contents($this->dir . '/opmin.yaml'))
             ->startsWith('# yaml-language-server: $schema=');
         Assert::array(ConfigLoader::loadFile($this->dir . '/opmin.yaml'))->hasKeys('verification.seed', 'cache.dir');
-        Assert::same(\file_get_contents($this->dir . '/.gitignore'), "/.opmin-cache/\n");
+        Assert::same(\file_get_contents($this->dir . '/.gitignore'), ".opmin/\n");
     }
 
     public function initWritesWhatItDetectsInTheProject(): void
@@ -70,7 +71,8 @@ final class CliTest
         \file_put_contents($this->dir . '/phpunit.xml', '<phpunit/>');
         \file_put_contents($this->dir . '/pint.json', '{}');
 
-        [$code, $out] = $this->opmin('init', '--no-interaction', '--no-skill');
+        # Without a php.binary that starts, composer.json gives the target.
+        [$code, $out] = $this->opmin('init', '--no-interaction', '--no-skill', '--set=php.binary=opmin-no-such-php');
 
         Assert::same($code, 0);
         Assert::string($out)->contains("php.target: '8.2'")->contains('paths: [app]')->contains('tests.runner: phpunit');
@@ -82,13 +84,35 @@ final class CliTest
         Assert::same(\array_key_exists('commands.phpstan', $values) ? $values['commands.phpstan'] : 'missing', null);
     }
 
+    public function initTakesTheTargetFromPhpBinary(): void
+    {
+        \file_put_contents($this->dir . '/composer.json', '{"require": {"php": ">=8.1"}}');
+
+        [$code, $out] = $this->opmin('init', '--no-interaction', '--no-skill', '--set=php.binary=' . TestPhp::path());
+
+        Assert::same($code, 0);
+        Assert::string($out)->contains('php.binary ' . TestPhp::path());
+        Assert::same(ConfigLoader::loadFile($this->dir . '/opmin.yaml')['php.target'] ?? null, TestPhp::minor());
+    }
+
     public function initKeepsExistingGitignoreEntry(): void
     {
-        \file_put_contents($this->dir . '/.gitignore', "/vendor/\n.opmin-cache/\n");
+        \file_put_contents($this->dir . '/.gitignore', "/vendor/\n/.opmin\n");
 
         $this->opmin('init', '--no-interaction');
 
-        Assert::same(\file_get_contents($this->dir . '/.gitignore'), "/vendor/\n.opmin-cache/\n");
+        Assert::same(\file_get_contents($this->dir . '/.gitignore'), "/vendor/\n/.opmin\n");
+    }
+
+    public function aProjectCommandIgnoresTheOpminDirectory(): void
+    {
+        \file_put_contents($this->dir . '/opmin.yaml', '');
+        \file_put_contents($this->dir . '/.gitignore', "/vendor/\n");
+
+        [, , $err] = $this->opmin('count');
+
+        Assert::same(\file_get_contents($this->dir . '/.gitignore'), "/vendor/\n.opmin/\n");
+        Assert::string($err)->ignoringWhitespace(lineBreaks: true)->contains('Added .opmin/ to .gitignore');
     }
 
     public function initRefusesToOverwriteWithoutFlag(): void

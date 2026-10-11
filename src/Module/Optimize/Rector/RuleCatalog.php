@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Opmin\Module\Optimize\Rector;
 
+use Opmin\Module\Analysis\IgnoreMarks;
 use Opmin\Module\Config\Schema;
+use Opmin\Module\Optimize\LlmCandidate;
 use Rector\Contract\Rector\ConfigurableRectorInterface;
 use Rector\Contract\Rector\RectorInterface;
 use Opmin\Module\Release\Installation;
@@ -56,6 +58,33 @@ final class RuleCatalog
         }
 
         return $selected;
+    }
+
+    /**
+     * The names an ignore mark may use in this run ({@see IgnoreMarks}): the aliases (`fqn`, `llm`)
+     * and the short class names of the rules, opmin's own ones even when disabled or not selected.
+     *
+     * @param list<RuleSpec> $rules
+     * @return array{list<string>, list<string>} The aliases, the short class names.
+     */
+    public static function ignoreNames(Schema\Rector $rector, array $rules): array
+    {
+        $specs = $rules;
+        foreach ($rector->customRules as $class => $_) {
+            \class_exists($class) and $specs[] = new RuleSpec($class);
+        }
+
+        $aliases = [];
+        $short = [];
+        foreach ($specs as $spec) {
+            $alias = $spec->alias();
+            $alias === null || $alias === '' or $aliases[$alias] = true;
+            $short[$spec->shortName()] = true;
+        }
+
+        $aliases[LlmCandidate::alias()] = true;
+
+        return [\array_map(\strval(...), \array_keys($aliases)), \array_map(\strval(...), \array_keys($short))];
     }
 
     /**

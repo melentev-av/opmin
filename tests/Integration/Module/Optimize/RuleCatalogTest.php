@@ -112,6 +112,24 @@ final class RuleCatalogTest
         RuleCatalog::build(new Schema\Rector(), new Schema\RectorStandard(), null, ['App\NoSuchRector'], '8.3');
     }
 
+    public function ignoreNamesAreTheAliasesAndShortNamesOfOwnRulesAndTheRun(): void
+    {
+        $config = new Schema\Rector();
+        $config->customRules[HoistLoopInvariantCountRector::class] = false;
+        $rules = [new RuleSpec(FullyQualifyGlobalCallsRector::class), new RuleSpec('Rector\CodeQuality\Rector\If_\SimplifyIfReturnBoolRector')];
+
+        [$aliases, $short] = RuleCatalog::ignoreNames($config, $rules);
+
+        Assert::same($aliases, ['fqn', 'property_fetch', 'array_dim_fetch', 'count', 'llm']);
+        Assert::same($short, [
+            'FullyQualifyGlobalCallsRector',
+            'SimplifyIfReturnBoolRector',
+            'ExtractRepeatedPropertyFetchRector',
+            'ExtractRepeatedArrayDimFetchRector',
+            'HoistLoopInvariantCountRector',
+        ]);
+    }
+
     public function upToPhpTargetNeedsTheTarget(): never
     {
         Expect::exception(\InvalidArgumentException::class)->withMessageContaining('needs php.target');

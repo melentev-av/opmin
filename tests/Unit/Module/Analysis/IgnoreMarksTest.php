@@ -45,6 +45,11 @@ final class IgnoreMarksTest
         yield 'docblock, the rule listed' => [$fn('/** @opmin-ignore fqn, llm */'), ['llm'], true];
         yield 'docblock, another rule listed' => [$fn('/** @opmin-ignore fqn,isset */'), ['llm'], false];
         yield 'docblock, short class name of a rule' => [$fn('/** @opmin-ignore SimplifyIfReturnBoolRector */'), ['simplifyifreturnboolrector'], true];
+        yield 'docblock, full class name of a rule' => [$fn('/** @opmin-ignore \Opmin\Rector\Rule\FullyQualifyGlobalCallsRector */'), ['fqn', 'fullyqualifyglobalcallsrector'], true];
+        yield 'docblock, full class name without the leading backslash' => [$fn('/** @opmin-ignore Opmin\Rector\Rule\FullyQualifyGlobalCallsRector */'), ['fqn', 'fullyqualifyglobalcallsrector'], true];
+        yield 'docblock, full class name of another rule' => [$fn('/** @opmin-ignore \Opmin\Rector\Rule\HoistLoopInvariantCountRector */'), ['fqn', 'fullyqualifyglobalcallsrector'], false];
+        yield 'attribute, full class name of a rule' => [$fn("#[\\Opmin\\Ignore(rules: ['Opmin\\Rector\\Rule\\FullyQualifyGlobalCallsRector'])]"), ['fullyqualifyglobalcallsrector'], true];
+        yield 'docblock, a typo excludes nothing' => [$fn('/** @opmin-ignore fqm */'), ['fqn', 'fullyqualifyglobalcallsrector'], false];
         yield 'line comment' => [$fn('// @opmin-ignore'), ['fqn'], true];
         yield 'line comment, the rule listed' => [$fn('// @opmin-ignore fqn'), ['fqn'], true];
         yield 'line comment, another rule listed' => [$fn('// @opmin-ignore llm'), ['fqn'], false];
@@ -121,6 +126,58 @@ final class IgnoreMarksTest
 
         Assert::true(IgnoreMarks::ignored($closures[0], ['fqn']));
         Assert::false(IgnoreMarks::ignored($closures[1], ['fqn']));
+    }
+
+    public function unknownNamesAreFoundWithTheirLines(): void
+    {
+        $code = <<<'PHP'
+            <?php
+            namespace App;
+
+            /** @opmin-ignore fqm, count */
+            function f() {}
+
+            final class Svc
+            {
+                #[\Opmin\Ignore(rules: ['llm', 'Vendor\Rule\PropertyFetchRector'])]
+                public function m(): void {}
+
+                /**
+                 * Sums.
+                 *
+                 * @opmin-ignore \Opmin\Rector\Rule\HoistLoopInvariantCountRector
+                 */
+                public function n(): void {}
+
+                // @opmin-ignore
+                public function o(): void {}
+            }
+            PHP;
+
+        $unknown = IgnoreMarks::unknown($code, ['fqn', 'count', 'llm', 'HoistLoopInvariantCountRector']);
+
+        Assert::same($unknown, [
+            ['line' => 4, 'mark' => '@opmin-ignore', 'name' => 'fqm'],
+            ['line' => 9, 'mark' => '#[\Opmin\Ignore]', 'name' => 'Vendor\Rule\PropertyFetchRector'],
+        ]);
+    }
+
+    public function aWarningNamesTheMarkAndTheClosestName(): void
+    {
+        $code = "<?php\n/** @opmin-ignore property_fech */\nfunction f() {}\n";
+
+        $warnings = IgnoreMarks::warnings($code, 'src/f.php', ['fqn', 'property_fetch', 'llm'], ['ExtractRepeatedPropertyFetchRector']);
+
+        Assert::same($warnings, [
+            'src/f.php:2: `@opmin-ignore` lists `property_fech`, which names no known rule, so it excludes nothing.'
+            . ' Did you mean `property_fetch`? Known names: fqn, property_fetch, llm, or the short class name of a rule.',
+        ]);
+    }
+
+    public function aFileWithoutMarksOrInvalidCodeHasNoUnknownNames(): void
+    {
+        Assert::same(IgnoreMarks::unknown("<?php\nfunction f() {}\n", []), []);
+        Assert::same(IgnoreMarks::unknown("<?php\n/** @opmin-ignore x */\nfunction f( {}\n", []), []);
     }
 
     #[DataProvider('patterns')]

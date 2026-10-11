@@ -471,7 +471,18 @@ ignore:
 - The attribute is recognized by its name in the source: the class `Opmin\Ignore` need not be installed (PHP
   checks attributes only in `newInstance()`); with opmin in `require-dev` the IDE knows it.
 - A mark on a class covers all its methods and closures. `vendor/` and files marked `@generated` are never touched.
-- Rule names in `rules:` and `@opmin-ignore` — an alias or the short class name of any rule, case-insensitive:
+- Rule names in `rules:` and `@opmin-ignore` — an alias, the short or the full class name of any rule,
+  case-insensitive (`\Opmin\Rector\Rule\FullyQualifyGlobalCallsRector` counts as its short name). A name that is
+  none of the names below nor a rule of the run excludes nothing — a typo would let opmin change the code —
+  so `optimize` warns about it, with the closest name, in the console and in the report:
+
+  ```text
+  [WARNING] src/Cart.php:12: `@opmin-ignore` lists `fqm`, which names no known rule, so it excludes nothing.
+            Did you mean `fqn`? Known names: fqn, property_fetch, array_dim_fetch, count, llm, or the short
+            class name of a rule.
+  ```
+
+  It is a warning, not an error: a mark may name a standard Rector rule that this run does not enable.
 
   | Alias | Rule |
   |---|---|

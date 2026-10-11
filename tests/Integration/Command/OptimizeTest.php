@@ -285,6 +285,25 @@ final class OptimizeTest
         Assert::string((string) \file_get_contents($patch[0]))->contains('+        return \strlen($s)');
     }
 
+    public function aTypoInAnIgnoreMarkIsAWarningAndExcludesNothing(): void
+    {
+        \copy(__DIR__ . '/../../Fixtures/Ignore/Typo.php', $this->dir . '/src/Typo.php');
+
+        [$code, $out, $err] = $this->opmin('optimize', '--dry-run', '--format=none', '--rector-rule=Opmin\Rector\Rule\FullyQualifyGlobalCallsRector', 'src/Typo.php');
+
+        Assert::same($code, 0, $out . $err);
+        Assert::string($out . $err)->ignoringWhitespace(lineBreaks: true)
+            ->contains('src/Typo.php:9: `@opmin-ignore` lists `fqm`, which names no known rule, so it excludes nothing. Did you mean `fqn`?');
+        $report = $this->report();
+        Assert::count($report['warnings'], 1);
+        Assert::string($report['warnings'][0])->contains('`fqm`');
+        # The typo excludes nothing (guessing the rule would be worse); a full class name excludes in both forms.
+        $patch = \glob($this->dir . '/.opmin/runs/*/opmin.patch') ?: [];
+        Assert::count($patch, 1);
+        Assert::same(\substr_count((string) \file_get_contents($patch[0]), '+        return \count($a);'), 1);
+        Assert::string((string) \file_get_contents($patch[0]))->contains("     public function typo(array \$a): int\n     {\n-        return count(\$a);\n+        return \\count(\$a);");
+    }
+
     public function redTestsOnTheOriginalStopTheRunWithTheReason(): void
     {
         \file_put_contents($this->dir . '/opmin.yaml', "tests:\n  runner: command\n  command: 'echo \"vendor/bin/phpunit: not found\"; exit 127'\n");
@@ -472,14 +491,14 @@ final class OptimizeTest
     }
 
     /**
-     * @return array{totals: array{ops_before: int, ops_after: int}, patch: ?string, interrupted: bool, rejected: list<array<string, mixed>>, functions: array<string, mixed>, steps: list<array{rejected: list<array{function: string, reason: string}>}>}
+     * @return array{totals: array{ops_before: int, ops_after: int}, warnings: list<string>, patch: ?string, interrupted: bool, rejected: list<array<string, mixed>>, functions: array<string, mixed>, steps: list<array{rejected: list<array{function: string, reason: string}>}>}
      */
     private function report(): array
     {
         $files = \glob($this->dir . '/.opmin/runs/*/report.json') ?: [];
         Assert::count($files, 1);
 
-        /** @var array{totals: array{ops_before: int, ops_after: int}, patch: ?string, interrupted: bool, rejected: list<array<string, mixed>>, functions: array<string, mixed>, steps: list<array{rejected: list<array{function: string, reason: string}>}>} */
+        /** @var array{totals: array{ops_before: int, ops_after: int}, warnings: list<string>, patch: ?string, interrupted: bool, rejected: list<array<string, mixed>>, functions: array<string, mixed>, steps: list<array{rejected: list<array{function: string, reason: string}>}>} */
         return \json_decode((string) \file_get_contents($files[0]), true, flags: \JSON_THROW_ON_ERROR);
     }
 

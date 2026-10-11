@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Opmin\Command;
 
 use Internal\Path;
+use Opmin\Module\Analysis\IgnoreMarks;
 use Opmin\Module\Analysis\Shadow\ShadowIndex;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Config\Schema\NativeTypesPolicy;
@@ -221,6 +222,7 @@ final class Optimize extends Stage
         $progress = Renderers::for($errorOutput);
         $optimizer = $this->optimizer($project, $php, $workspace, $output, (bool) ($options['allow_public_signatures'] ?? false), $progress);
         [$environment, $warnings] = $this->environment($project, $php, $optimizer, $runDir);
+        $warnings = [...$warnings, ...$this->ignoreWarnings($project, $files, $rules)];
         $warnings === [] or $style->warning($warnings);
         if ($input->getOption('review')) {
             # Without a terminal (-n, CI, an agent) every change that passes the checks is applied.
@@ -476,6 +478,27 @@ final class Optimize extends Stage
         return static function () use (&$count): bool {
             return $count > 0;
         };
+    }
+
+    /**
+     * Ignore marks naming no rule of this run: a typo would exclude nothing, silently.
+     *
+     * @param list<Path> $files
+     * @param list<RuleSpec> $rules
+     * @return list<string>
+     */
+    private function ignoreWarnings(Project $project, array $files, array $rules): array
+    {
+        /** @var Schema\Rector $rector */
+        $rector = $this->container->get(Schema\Rector::class);
+        [$aliases, $short] = RuleCatalog::ignoreNames($rector, $rules);
+        $warnings = [];
+        foreach ($files as $file) {
+            $code = @\file_get_contents((string) $file);
+            \is_string($code) and \array_push($warnings, ...IgnoreMarks::warnings($code, $project->relative($file), $aliases, $short));
+        }
+
+        return $warnings;
     }
 
     /**

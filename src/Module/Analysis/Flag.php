@@ -44,9 +44,15 @@ enum Flag: string
     case Backtrace = 'backtrace';
 
     /**
-     * `__LINE__`, `__FUNCTION__`, `__METHOD__`.
+     * `__LINE__`; `__FUNCTION__`/`__METHOD__` where the name carries the line: in a closure
+     * (`{closure:App\\f():3}` since PHP 8.4) and in a method of an anonymous class.
      */
     case MagicConstant = 'magic_constant';
+
+    /**
+     * `__FUNCTION__`, `__METHOD__` of a named function or method: the name, whatever the line.
+     */
+    case FunctionName = 'function_name';
 
     /**
      * `eval()`: evaluated code sees the local scope.
@@ -169,7 +175,8 @@ enum Flag: string
             self::DefinedVars => 'reads the set of its local variables (`get_defined_vars()`)',
             self::FuncArgs => 'reads its arguments by position (`func_get_args()`)',
             self::Backtrace => 'reads the call stack (`debug_backtrace()`)',
-            self::MagicConstant => 'uses `__LINE__`, `__FUNCTION__` or `__METHOD__`',
+            self::MagicConstant => 'sees its line (`__LINE__`, or `__FUNCTION__`/`__METHOD__` in a closure or an anonymous class)',
+            self::FunctionName => 'uses its own name (`__FUNCTION__`, `__METHOD__`)',
             self::Eval => 'runs `eval()`',
             self::Include => 'includes a file that sees its local variables',
             self::StaticVar => 'keeps state between calls (`static $var`)',
@@ -195,6 +202,7 @@ enum Flag: string
             self::DefinedVars => [Restriction::Variables, Restriction::VariableSet],
             self::FuncArgs => [Restriction::Signature, Restriction::ReassignParams],
             self::Backtrace, self::MagicConstant => [Restriction::Inline, Restriction::LineSensitive],
+            self::FunctionName => [Restriction::Inline],
             self::Eval, self::Include => [Restriction::Skip],
             self::StaticVar => [Restriction::StaticChain],
             self::Global => [Restriction::Globals, Restriction::SideEffecting],
@@ -218,7 +226,8 @@ enum Flag: string
             self::DefinedVars => '`get_defined_vars()` returns the set of local variables',
             self::FuncArgs => '`func_get_args()` and friends see the passed arguments',
             self::Backtrace => 'a backtrace is taken: frames and line numbers are visible',
-            self::MagicConstant => '`__LINE__`, `__FUNCTION__` or `__METHOD__` is used',
+            self::MagicConstant => '`__LINE__` is used, or `__FUNCTION__`/`__METHOD__` whose value carries the line',
+            self::FunctionName => '`__FUNCTION__` or `__METHOD__` is used: the code must stay in this function',
             self::Eval => '`eval()` sees the local scope',
             self::Include => '`include`/`require` inside the function sees the local scope',
             self::StaticVar => '`static` variables keep state between calls',

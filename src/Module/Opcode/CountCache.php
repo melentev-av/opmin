@@ -20,7 +20,7 @@ use Opmin\Module\Php\PhpBinary;
 final class CountCache
 {
     /** Bump when the stored data or the way it is computed changes. */
-    private const FORMAT = 2;
+    private const FORMAT = 3;
 
     public function __construct(
         private readonly Store $store,

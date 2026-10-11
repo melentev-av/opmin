@@ -112,6 +112,12 @@ final class DynamicScopeDetector
     private bool $namesIo = false;
 
     /**
+     * The name of the function carries its line: a closure (`{closure:App\\f():3}` since PHP 8.4)
+     * or a method of an anonymous class (`class@anonymous\0/path.php:3$0::m`).
+     */
+    private bool $nameHasLine = false;
+
+    /**
      * Whether the class routes member access through user code (magic methods, `ArrayAccess`).
      */
     public static function isMagicClass(Stmt\ClassLike $class): bool
@@ -161,6 +167,8 @@ final class DynamicScopeDetector
         $this->flags = [];
         $this->class = $class;
         $this->callsDynamically = $this->namesIo = false;
+        # The detector does not know `php.binary`: a closure counts as named by its line on every version.
+        $this->nameHasLine = $function instanceof Expr\Closure || $function instanceof Expr\ArrowFunction;
         $class === null || !self::isMagicClass($class) or $this->flags[Flag::Magic->value] = Flag::Magic;
         $this->walk($function instanceof Node\PropertyHook ? $function->body : $function->getStmts());
         $function instanceof Expr\ArrowFunction and $this->walk($function->expr);
@@ -240,9 +248,11 @@ final class DynamicScopeDetector
             $node instanceof Expr\Variable => \is_string($node->name)
                 ? $node->name === 'GLOBALS' && $this->add(Flag::Global)
                 : $this->add(Flag::VariableVariable),
-            $node instanceof Node\Scalar\MagicConst\Line,
-            $node instanceof Node\Scalar\MagicConst\Function_,
-            $node instanceof Node\Scalar\MagicConst\Method => $this->add(Flag::MagicConstant),
+            $node instanceof Node\Scalar\MagicConst\Line => $this->add(Flag::MagicConstant),
+            $node instanceof Node\Scalar\MagicConst\Function_ => $this->add($this->nameHasLine ? Flag::MagicConstant : Flag::FunctionName),
+            $node instanceof Node\Scalar\MagicConst\Method => $this->add(
+                $this->nameHasLine || ($this->class instanceof Stmt\Class_ && $this->class->name === null) ? Flag::MagicConstant : Flag::FunctionName,
+            ),
             $node instanceof Expr\Eval_ => $this->add(Flag::Eval),
             $node instanceof Expr\Include_ => $this->add(Flag::Include),
             $node instanceof Stmt\Static_ => $this->add(Flag::StaticVar),

@@ -285,6 +285,70 @@ final class OptimizeTest
         Assert::string((string) \file_get_contents($patch[0]))->contains('+        return \strlen($s)');
     }
 
+    /**
+     * `__METHOD__` in a method is its name, whatever the line (#52); `__LINE__`, a backtrace, the trace of
+     * an exception and `__FUNCTION__` in a closure (`{closure:App\Lines::m():12}` since PHP 8.4) are not.
+     */
+    public function onlyCodeThatSeesItsLineIsNeverChanged(): void
+    {
+        \file_put_contents($this->dir . '/src/Lines.php', <<<'PHP'
+            <?php
+
+            declare(strict_types=1);
+
+            namespace App;
+
+            final class Lines
+            {
+                public function withMethod(string $s): int
+                {
+                    if ($s === '') {
+                        throw new \InvalidArgumentException(__METHOD__ . '(): empty string');
+                    }
+
+                    return strlen($s);
+                }
+
+                public function withLine(string $s): int
+                {
+                    return strlen($s) + __LINE__;
+                }
+
+                public function withBacktrace(string $s): int
+                {
+                    return strlen($s) + count(debug_backtrace());
+                }
+
+                public function withTrace(string $s): string
+                {
+                    return strlen($s) . (new \Exception())->getTraceAsString();
+                }
+
+                public function inClosure(array $xs): array
+                {
+                    return array_map(fn(string $x): string => __FUNCTION__ . strlen($x), $xs);
+                }
+            }
+
+            PHP);
+
+        [$code, $out, $err] = $this->opmin('optimize', '--dry-run', '--format=none', '--rector-rule=fqn', 'src/Lines.php');
+
+        Assert::same($code, 0, $out . $err);
+        $report = $this->report();
+        $reasons = [];
+        foreach ($report['steps'] as $step) {
+            foreach ($step['rejected'] as $rejected) {
+                $reasons[$rejected['function']] = $rejected['reason'];
+            }
+        }
+
+        Assert::same(\array_keys($report['functions']), ['App\Lines::withMethod'], \print_r($reasons, true));
+        foreach (['withLine', 'withBacktrace', 'withTrace', 'inClosure'] as $method) {
+            Assert::string($reasons["App\\Lines::{$method}"] ?? '')->contains('depends on line numbers: never changed');
+        }
+    }
+
     public function aTypoInAnIgnoreMarkIsAWarningAndExcludesNothing(): void
     {
         \copy(__DIR__ . '/../../Fixtures/Ignore/Typo.php', $this->dir . '/src/Typo.php');

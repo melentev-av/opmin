@@ -241,6 +241,11 @@
                     "type": "integer",
                     "default": 2000
                 },
+                "time_budget_ms": {
+                    "description": "Time limit of the whole differential test of one function (planned, random and fuzzed inputs), ms; when it runs out, coverage decides on the inputs checked so far",
+                    "type": "integer",
+                    "default": 15000
+                },
                 "seed": {
                     "description": "Seed of input generation",
                     "type": "integer",
@@ -261,6 +266,11 @@
                     "type": "string",
                     "minLength": 1,
                     "default": "256M"
+                },
+                "jobs": {
+                    "description": "Differential tests at a time, each in its own process; 0 — auto: half of the CPU cores, at most 4, within the free memory (2 × memory_limit per test); 1 — one after another in the opmin process",
+                    "type": "integer",
+                    "default": 0
                 },
                 "allow_unverified": {
                     "description": "Change functions whose behavior is not proven",
@@ -500,6 +510,24 @@
                     "description": "Delete a corrupt SQLite cache and start an empty one; off: the run works without the cache, opmin doctor reports the file to delete",
                     "type": "boolean",
                     "default": false
+                }
+            }
+        },
+        "runs": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "keep": {
+                    "description": "After optimize and llm:targets create a run, delete the older finished runs beyond this many, as opmin runs:clean --keep does (interrupted runs, open LLM sessions and the only backups of code outside git stay); null — never delete",
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
                 }
             }
         }

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Entry point of a harness worker: `php worker.php <token>`.
+ * Entry point of a harness worker: `php worker.php <token> [hold]` (`hold`: see `Worker::awaitStop()`).
  *
  * Reads one JSON request per line from stdin, writes one response per line to stdout, each prefixed
  * with the token: anything else on stdout is output of the analyzed code that escaped capture.

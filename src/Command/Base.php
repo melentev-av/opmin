@@ -169,6 +169,39 @@ abstract class Base extends Command
     }
 
     /**
+     * Adds `--jobs`: `verification.jobs` for one run.
+     */
+    protected function addJobsOption(): void
+    {
+        $this->addOption('jobs', null, InputOption::VALUE_REQUIRED, 'Differential tests at a time (verification.jobs): 0 — auto, 1 — one after another');
+    }
+
+    /**
+     * Applies `--jobs` to the config.
+     *
+     * @return string|null Why the value is invalid.
+     */
+    protected function applyJobsOption(InputInterface $input): ?string
+    {
+        /** @var mixed $jobs */
+        $jobs = $input->getOption('jobs');
+        if ($jobs === null) {
+            return null;
+        }
+
+        $value = \filter_var($jobs, \FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+        if ($value === false) {
+            return '--jobs takes a number: 0 (auto), 1 (one after another) or more.';
+        }
+
+        /** @var Schema\Verification $verification */
+        $verification = $this->container->get(Schema\Verification::class);
+        $verification->jobs = $value;
+
+        return null;
+    }
+
+    /**
      * `cache.dir`, absolute. A relative one resolves next to the config, not in the project root: in a
      * monorepo the root is the package of the analyzed paths, and every package would get a cache.
      */

@@ -7,6 +7,7 @@ namespace Opmin\Command;
 use Internal\Path;
 use Opmin\Module\Analysis\ReferenceIndex;
 use Opmin\Module\Common\Cpu;
+use Opmin\Module\Common\Timings;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Config\Schema\RequireClean;
 use Opmin\Module\Opcode\CountCache;
@@ -22,16 +23,21 @@ use Opmin\Module\Config\Exception\ConfigException;
 use Opmin\Module\Optimize\Rector\RectorRunner;
 use Opmin\Module\Optimize\Workspace;
 use Opmin\Module\Php\PhpBinary;
+use Opmin\Module\Progress\Listener;
+use Opmin\Module\Progress\Renderers;
 use Opmin\Module\Project\FileFinder;
 use Opmin\Module\Project\Layout;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Project\Targets;
 use Opmin\Module\Report\Environment;
+use Opmin\Module\Runs\Run;
+use Opmin\Module\Runs\RunCleaner;
 use Opmin\Module\Verification\Verifier;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Style\StyleInterface;
 
 /**
  * What the commands that change or guard code share (`optimize`, the LLM stage, `baseline`, `check`):
@@ -84,6 +90,33 @@ abstract class Stage extends Base
         }
 
         return $dir;
+    }
+
+    /**
+     * `runs.keep`: deletes the older runs once the new one exists, with the rules of `opmin runs:clean`.
+     * A failure is a warning: pruning never fails the run.
+     */
+    protected function pruneRuns(Project $project, Path $runDir, StyleInterface $style): void
+    {
+        /** @var Schema\Runs $config */
+        $config = $this->container->get(Schema\Runs::class);
+        if ($config->keep === null) {
+            return;
+        }
+
+        [$deleted, $warnings] = RunCleaner::prune(
+            $config->keep,
+            $project->root->join(Layout::RUNS),
+            $runDir,
+            Workspace::gitRoot($project->root) !== null,
+        );
+        $deleted === [] or $style->note(\sprintf(
+            'runs.keep: %d: deleted %d old run(s): %s',
+            $config->keep,
+            \count($deleted),
+            \implode(', ', \array_map(static fn(Run $r): string => $r->id, $deleted)),
+        ));
+        $warnings === [] or $style->warning($warnings);
     }
 
     /**
@@ -184,12 +217,16 @@ abstract class Stage extends Base
         );
     }
 
+    /**
+     * @param Listener|null $progress The progress of the run; null — lines on stderr ({@see Renderers::lines()}).
+     */
     protected function optimizer(
         Project $project,
         PhpBinary $php,
         Workspace $workspace,
         OutputInterface $output,
         bool $allowPublicSignatures,
+        ?Listener $progress = null,
     ): Optimizer {
         $errorOutput = $output instanceof ConsoleOutputInterface ? $output->getErrorOutput() : $output;
         $cacheDir = $this->cacheDir();
@@ -200,9 +237,7 @@ abstract class Stage extends Base
         $commands = $this->container->get(Schema\Commands::class);
         /** @var Schema\Tests $tests */
         $tests = $this->container->get(Schema\Tests::class);
-        $verbose = static function (string $message) use ($errorOutput): void {
-            $errorOutput->isVerbose() and $errorOutput->writeln("  {$message}");
-        };
+        $progress ??= Renderers::lines($errorOutput);
         /** @var Schema\Rector $rectorConfig */
         $rectorConfig = $this->container->get(Schema\Rector::class);
         /** @var Schema\Readability $readability */
@@ -214,6 +249,7 @@ abstract class Stage extends Base
         /** @var Schema\GuardPerf $guardPerf */
         $guardPerf = $this->container->get(Schema\GuardPerf::class);
 
+        $timings = new Timings();
         try {
             $declined = Declined::load($project->root);
         } catch (\InvalidArgumentException $e) {
@@ -225,20 +261,30 @@ abstract class Stage extends Base
             $php,
             $workspace,
             $this->counter($php),
-            ReferenceIndex::build($project, $cacheDir, $this->cacheStore()),
+            $timings->measure('once.references', fn(): ReferenceIndex => ReferenceIndex::build($project, $cacheDir, $this->cacheStore())),
             new RectorRunner($project, $cacheDir, $phpTarget),
             Formatter::create($project, $php, $commands->format),
-            new Verifier($project, $php, $verification, $commands, $tests, $cacheDir, $phpTarget, $verbose, $guardPerf),
+            new Verifier($project, $php, $verification, $commands, $tests, $cacheDir, $phpTarget, $progress, $guardPerf, $timings),
             $rectorConfig,
             $readability,
             $signatures,
             $ignore,
             $cacheDir->join('tmp'),
             $allowPublicSignatures,
-            static function (string $message) use ($errorOutput): void {
-                $errorOutput->writeln("  {$message}", OutputInterface::VERBOSITY_NORMAL);
-            },
+            $progress,
             $declined,
+            $timings,
         );
+    }
+
+    /**
+     * Where the time of the run went, in the verbose log.
+     */
+    protected function logTimings(Optimizer $optimizer, OutputInterface $output): void
+    {
+        $errorOutput = $output instanceof ConsoleOutputInterface ? $output->getErrorOutput() : $output;
+        foreach ($optimizer->timings()->lines() as $line) {
+            $errorOutput->writeln($line, OutputInterface::VERBOSITY_VERBOSE);
+        }
     }
 }

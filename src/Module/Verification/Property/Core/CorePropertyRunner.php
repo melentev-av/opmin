@@ -65,7 +65,7 @@ final readonly class CorePropertyRunner implements PropertyRunner
 
         return match (true) {
             $result instanceof Passed => PropertyOutcome::held(\max(0, $result->statistics->checks), $spec->seed),
-            $result instanceof TimeBudgetExceeded => PropertyOutcome::held(\max(0, $result->statistics->checks), $spec->seed),
+            $result instanceof TimeBudgetExceeded => PropertyOutcome::held(\max(0, $result->statistics->checks), $spec->seed, outOfTime: true),
             $result instanceof GaveUp => PropertyOutcome::held(\max(0, $result->statistics->checks), $spec->seed, gaveUp: true),
             $result instanceof Falsified => $this->falsified($result, $spec->seed),
             $result instanceof RegressionFailed => $this->regression($result),

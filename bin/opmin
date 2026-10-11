@@ -52,6 +52,9 @@ use Symfony\Component\Console\CommandLoader\FactoryCommandLoader;
         case 'rector':
             require Opmin\Module\Optimize\Rector\RectorRunner::binary();
             exit(0);
+        case 'diff-test':
+            echo Opmin\Module\Verification\DiffPool::child((string) \stream_get_contents(\STDIN));
+            exit(0);
         case 'expand-sets':
             echo \json_encode(Opmin\Module\Optimize\Rector\RuleCatalog::expandHere(\array_slice($_SERVER['argv'] ?? [], 1)));
             exit(0);
@@ -75,6 +78,9 @@ use Symfony\Component\Console\CommandLoader\FactoryCommandLoader;
             Command\LlmFinish::getCommandName() => static fn() => new Command\LlmFinish(),
             Command\Baseline::getCommandName() => static fn() => new Command\Baseline(),
             Command\Check::getCommandName() => static fn() => new Command\Check(),
+            Command\Runs::getCommandName() => static fn() => new Command\Runs(),
+            Command\RunsShow::getCommandName() => static fn() => new Command\RunsShow(),
+            Command\RunsClean::getCommandName() => static fn() => new Command\RunsClean(),
             Command\Doctor::getCommandName() => static fn() => new Command\Doctor(),
             Command\SelfUpdate::getCommandName() => static fn() => new Command\SelfUpdate(),
             Command\SkillInstall::getCommandName() => static fn() => new Command\SkillInstall(),

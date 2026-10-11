@@ -17,7 +17,8 @@ interface PropertyRunner
 {
     /**
      * @param \Closure(Input): void $check Returns for a passing input, throws {@see Discard} for an
-     *        input that says nothing, throws anything else for a failing one.
+     *        input that says nothing, throws {@see Stop} when no further input can say anything (the
+     *        run ends without a failure), throws anything else for a failing one.
      */
     public function run(PropertySpec $spec, InputGenerator $generator, InputShrinker $shrinker, \Closure $check): PropertyOutcome;
 }

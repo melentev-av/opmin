@@ -33,6 +33,10 @@ final class Verification
     #[ConfigKey('verification.fuzz_time_ms', 'Time limit of coverage-guided input search per function, ms')]
     public int $fuzzTimeMs = 2000;
 
+    /** @var positive-int */
+    #[ConfigKey('verification.time_budget_ms', 'Time limit of the whole differential test of one function (planned, random and fuzzed inputs), ms; when it runs out, coverage decides on the inputs checked so far')]
+    public int $timeBudgetMs = 15000;
+
     #[ConfigKey('verification.seed', 'Seed of input generation')]
     public int $seed = 42;
 
@@ -46,6 +50,10 @@ final class Verification
     /** @var non-empty-string */
     #[ConfigKey('verification.memory_limit', 'memory_limit of harness workers')]
     public string $memoryLimit = '256M';
+
+    /** @var non-negative-int */
+    #[ConfigKey('verification.jobs', 'Differential tests at a time, each in its own process; 0 — auto: half of the CPU cores, at most 4, within the free memory (2 × memory_limit per test); 1 — one after another in the opmin process')]
+    public int $jobs = 0;
 
     #[ConfigKey('verification.allow_unverified', 'Change functions whose behavior is not proven')]
     public bool $allowUnverified = false;

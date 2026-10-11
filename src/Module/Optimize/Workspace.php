@@ -41,7 +41,8 @@ final class Workspace
      *        (the run directory, the cache).
      * @param list<non-empty-string> $targets Relative paths of the files the run may change: with
      *        {@see RequireClean::Targets} only they must be clean.
-     * @throws \RuntimeException When the git working tree is not clean.
+     * @throws \RuntimeException When the git repository has no commits or the working tree is not clean;
+     *         the run directory is not created then.
      */
     public static function create(
         Project $project,
@@ -51,15 +52,8 @@ final class Workspace
         RequireClean $requireClean = RequireClean::All,
         array $targets = [],
     ): self {
-        $top = new Process(['git', 'rev-parse', '--show-toplevel'], (string) $project->root);
-        $top->run();
-        $gitRoot = $top->isSuccessful() && \trim($top->getOutput()) !== '' ? Path::create(\trim($top->getOutput())) : null;
-        if ($gitRoot !== null) {
-            # A project in an ignored directory of another repository is not under git.
-            $tracked = new Process(['git', 'ls-files', '--', '.'], (string) $project->root);
-            $tracked->run();
-            \trim($tracked->getOutput()) === '' and $gitRoot = null;
-        }
+        $gitRoot = self::gitRoot($project->root);
+        $gitRoot === null or self::ensureCommitted($project->root);
         $workspace = new self($project, $runDir, $gitRoot, $dryRun);
         # A dry run commits nothing and restores every file: the tree may be dirty.
         $gitRoot === null || $dryRun || $requireClean === RequireClean::Off
@@ -68,6 +62,37 @@ final class Workspace
         $workspace->loadOriginals();
 
         return $workspace;
+    }
+
+    /**
+     * The top of the git work tree whose tracked files the project is; null outside git, where a run
+     * backs the originals up to `original/` and that copy is the only way back.
+     */
+    public static function gitRoot(Path $root): ?Path
+    {
+        $top = new Process(['git', 'rev-parse', '--show-toplevel'], (string) $root);
+        $top->run();
+        $gitRoot = $top->isSuccessful() && \trim($top->getOutput()) !== '' ? Path::create(\trim($top->getOutput())) : null;
+        if ($gitRoot !== null) {
+            # A project in an ignored directory of another repository is not under git.
+            $tracked = new Process(['git', 'ls-files', '--', '.'], (string) $root);
+            $tracked->run();
+            \trim($tracked->getOutput()) === '' and $gitRoot = null;
+        }
+
+        return $gitRoot;
+    }
+
+    /**
+     * Refuses a git work tree without commits (files staged after `git init`): its steps would have
+     * no commit to go on top of, and HEAD, saved after every step, does not exist (#57). Outside git
+     * it checks nothing: the run copies the originals.
+     *
+     * @throws \RuntimeException
+     */
+    public static function requireCommits(Path $root): void
+    {
+        self::gitRoot($root) === null or self::ensureCommitted($root);
     }
 
     /**
@@ -223,6 +248,18 @@ final class Workspace
         \file_put_contents((string) $file, $patch);
 
         return $file;
+    }
+
+    /**
+     * @throws \RuntimeException When HEAD does not name a commit yet.
+     */
+    private static function ensureCommitted(Path $root): void
+    {
+        $head = new Process(['git', 'rev-parse', '--verify', '-q', 'HEAD'], (string) $root);
+        $head->run();
+        $head->isSuccessful() or throw new \RuntimeException(
+            'The git repository has no commits yet: commit the files first (every accepted step becomes a commit), or run outside git.',
+        );
     }
 
     /**

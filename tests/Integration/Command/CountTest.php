@@ -183,6 +183,81 @@ final class CountTest
         Assert::string($out)->contains('in 3 functions of 1 files');
     }
 
+    public function topSortsByOptimizedOpcodesAndSkipsMainCode(): void
+    {
+        $this->writeSizes();
+
+        [$code, $out] = $this->opmin('count', '--top=2');
+
+        Assert::same($code, 0);
+        Assert::same(self::functionsOf($out), ['z_big', 'y_mid']);
+        Assert::string($out)->contains('Shown: 2 of 7 functions, main code skipped.');
+        Assert::string($out)->notContains(' Functions ');
+    }
+
+    public function minFiltersOnOptimizedOpcodesAndKeepsFileOrder(): void
+    {
+        $this->writeSizes();
+        [, $json] = $this->opmin('count', '--format=json');
+        $mid = self::decode($json)['functions']['y_mid']['ops_opt'];
+
+        [$code, $out] = $this->opmin('count', "--min={$mid}");
+        [, $all] = $this->opmin('count', '--min=0');
+
+        Assert::same($code, 0);
+        Assert::same(self::functionsOf($out), ['y_mid', 'z_big']);
+        Assert::same(self::functionsOf($all), ['a_tiny', 'b_small', 'y_mid', 'z_big', 'other']);
+    }
+
+    public function sortByOpcodesKeepsMainCodeWithoutTopOrMin(): void
+    {
+        $this->writeSizes();
+
+        [$code, $out] = $this->opmin('count', '--sort=ops_raw');
+
+        Assert::same($code, 0);
+        $functions = self::functionsOf($out);
+        Assert::same(\array_slice($functions, 0, 2), ['z_big', 'y_mid']);
+        Assert::array($functions)->contains('src/A.php::<main>');
+        Assert::string($out)->notContains('Shown:');
+    }
+
+    /**
+     * @param non-empty-string $option
+     * @param non-empty-string $message
+     */
+    #[DataSet(['--sort=name', 'Unknown sort `name`'], 'unknown sort')]
+    #[DataSet(['--top=-1', '--top must be an integer of at least 1'], 'negative top')]
+    #[DataSet(['--top=0', '--top must be an integer of at least 1'], 'zero top')]
+    #[DataSet(['--min=-3', '--min must be an integer of at least 0'], 'negative min')]
+    #[DataSet(['--min=x', '`x` given'], 'not a number')]
+    public function rejectsInvalidTableOptions(string $option, string $message): void
+    {
+        $this->writeSizes();
+
+        [$code, , $err] = $this->opmin('count', $option);
+
+        Assert::same($code, 2);
+        Assert::string($err)->contains($message);
+    }
+
+    /**
+     * @param non-empty-string $option
+     */
+    #[DataSet(['--sort=file'], 'sort')]
+    #[DataSet(['--top=3'], 'top')]
+    #[DataSet(['--min=0'], 'min')]
+    public function refusesToCutTheJsonReport(string $option): void
+    {
+        $this->writeSizes();
+
+        [$code, $out, $err] = $this->opmin('count', '--format=json', $option);
+
+        Assert::same($code, 2);
+        Assert::same($out, '');
+        Assert::string($err)->ignoringWhitespace(lineBreaks: true)->contains('full report for `opmin diff`');
+    }
+
     public function reportsFlagsOfDynamicConstructs(): void
     {
         \file_put_contents("{$this->dir}/src/F.php", <<<'PHP'
@@ -254,10 +329,42 @@ final class CountTest
         return \is_file("{$dir}/cache.sqlite") || \is_dir("{$dir}/count");
     }
 
+    /**
+     * @return list<string> First column of the function table, in order.
+     */
+    private static function functionsOf(string $out): array
+    {
+        \preg_match_all('/^  (\S+)\s+src\/\S+:\d+\s/m', $out, $matches);
+
+        return $matches[1];
+    }
+
     private static function decode(string $json): array
     {
         /** @var array{php: string, php_target: string, totals: array{files: int}, functions: array<string, array{file: string, ops_opt: int}>, errors: array<string, string>} */
         return \json_decode($json, true, flags: \JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * Functions of different sizes, small first in the file, named so that the file order, the key order and the
+     * size order all differ; main code in both files.
+     */
+    private function writeSizes(): void
+    {
+        \file_put_contents("{$this->dir}/src/A.php", <<<'PHP'
+            <?php
+            function a_tiny() { return 1; }
+            function b_small($a) { return $a + 1; }
+            function y_mid($a, $b) { if ($a > $b) { return $a * 2; } return $b - 1; }
+            function z_big($a, $b, $c) {
+                $x = $a + $b;
+                if ($x > $c) { $x = $x * $c; } elseif ($x < 0) { $x = -$x; } else { $x = $x - $c; }
+                foreach ([$a, $b, $c] as $v) { $x += \strlen((string) $v); }
+                return $x;
+            }
+            echo a_tiny();
+            PHP);
+        \file_put_contents("{$this->dir}/src/B.php", "<?php\nfunction other() { return 2; }\n");
     }
 
     /**

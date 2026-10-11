@@ -26,7 +26,7 @@ opmin needs **two PHPs**, and the binary brings one of them:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/melentev-av/opmin/master/install.sh | sh
-curl -fsSL https://raw.githubusercontent.com/melentev-av/opmin/master/install.sh | sh -s -- --dir=/usr/local/bin --version=0.2.0
+curl -fsSL https://raw.githubusercontent.com/melentev-av/opmin/master/install.sh | sh -s -- --dir=/usr/local/bin --version=<version>
 opmin self-update            # the latest release; --check only tells; --to=<version> installs that one
 ```
 
@@ -35,23 +35,26 @@ release and, with `openssl`, the signature of `sha256sum.txt`. `self-update` alw
 binary once before replacing the old one. Archives are also on
 [GitHub Releases](https://github.com/melentev-av/opmin/releases) — see «Verifying a download» below.
 
-**2. PHAR** — the same scoped build for your own PHP 8.3+: `opmin.phar` on the release page, or as a composer
-package without dependencies (`composer require --dev melentev-av/opmin`, the PHAR inside, never conflicting
-with your `vendor/`).
+**2. PHAR** — the same scoped build for your own PHP 8.3+: `opmin.phar` on the release page.
+
+**Composer** — `composer require --dev melentev-av/opmin` installs the sources with their dependencies (Rector
+2.7, nikic/php-parser 5, Symfony Console/Process/Yaml 7.3+ or 8, PHPStan phpdoc-parser) into your `vendor/`. If
+they conflict with the project (e.g. it is on Rector 1 or php-parser 4), use the PHAR or the static binary.
 
 **3. Docker** — `ghcr.io/melentev-av/opmin:<version>-php<8.1…8.5>`: the binary plus the PHP of production with
 OPcache (JIT off), pcov, git and composer. Pick the tag of your production PHP; the images are meant for CI and
-for git packages.
+for git packages. The floating `php<8.1…8.5>` tag follows the latest release.
 
 ```bash
-docker run --rm -v "$PWD:/app" ghcr.io/melentev-av/opmin:0.2.0-php8.3 opmin doctor
+docker run --rm -v "$PWD:/app" ghcr.io/melentev-av/opmin:<version>-php8.3 opmin doctor
 ```
 
-**Pinning the version per project.** Commit a `.opmin-version` (`0.2.3`, or a constraint like `^0.2`) or set
-`requires: '^0.2'` in `opmin.yaml`: another opmin stops with exit code 2 and the `opmin self-update --to=` command
-to run. A global `opmin` started inside a project that has its own — `vendor/bin/opmin` (the composer package) or
-an `opmin` binary in the project root (e.g. downloaded by [dload](https://github.com/php-internal/dload)) — runs
-that one instead (`OPMIN_NO_DELEGATE=1` keeps the global one).
+**Pinning the version per project.** Commit a `.opmin-version` (an exact version `x.y.z`, or a constraint like
+`^x.y`; for 0.x `^0.4` means `>=0.4.0 <0.5.0`) or set `requires:` the same way in `opmin.yaml`: another opmin
+stops with exit code 2 and the `opmin self-update --to=` command to run. A global `opmin` started inside a
+project that has its own — `vendor/bin/opmin` (installed by composer) or an `opmin` binary in the project root
+(e.g. downloaded by [dload](https://github.com/php-internal/dload)) — runs that one instead
+(`OPMIN_NO_DELEGATE=1` keeps the global one).
 
 **From sources** (development): `git clone git@github.com:melentev-av/opmin.git && cd opmin && composer install &&
 bin/opmin list`.
@@ -65,13 +68,14 @@ one kept offline):
 ```bash
 sha256sum --check --ignore-missing sha256sum.txt
 openssl dgst -sha256 -verify primary.pub.pem -signature sha256sum.txt.sig sha256sum.txt
-gh attestation verify opmin-0.2.0-linux-x86_64.tar.gz --repo melentev-av/opmin
+gh attestation verify opmin-<version>-linux-x86_64.tar.gz --repo melentev-av/opmin
 ```
 
 ## Quick start
 
 ```bash
-opmin init        # opmin.yaml: every key with a comment; php.target from php.binary, paths, test runner, formatter, PHPStan
+opmin init        # opmin.yaml: every key with a comment; php.target from php.binary, paths, test runner, formatter, PHPStan;
+                  # ends with the next commands; on a terminal offers to run doctor (--doctor / --no-doctor)
 opmin doctor      # php.binary first, then OPcache, the harness, syntax, tests, PHPStan, coverage, git — with fixes
 opmin count       # opcodes per function
 opmin optimize    # Rector stage, every accepted step is a separate commit
@@ -103,6 +107,8 @@ runs the whole test suite — do not); `--with-tests` also runs your test suite 
 ```bash
 opmin count src lib/Legacy.php                      # table: function, file:line, ops_raw, ops_opt, vars, tmps
 opmin count --filter='App\Service\*' --exclude=tests
+opmin count --top=20                                # the 20 largest functions by ops_opt
+opmin count --min=50 --sort=ops_raw                 # functions of 50+ ops_opt, largest ops_raw first
 opmin count --format=json > before.json             # deterministic report, keys sorted
 opmin diff before.json after.json                   # per function: fewer / more opcodes, new, removed
 ```
@@ -113,6 +119,11 @@ opmin diff before.json after.json                   # per function: fewer / more
   counted but not optimized) gets a stable key: `App\Foo::bar`, `App\Foo::bar::{closure:2}`,
   `App\Foo::bar::{class:1}::baz` for anonymous classes — ordinals, not line numbers. Trait methods are counted
   once, in the trait; abstract and interface methods are not reported.
+- `--sort=file|ops_opt|ops_raw` orders the table: by file and line (default), or by opcodes, most first.
+  `--top=N` keeps the first N rows and sorts by `ops_opt` unless `--sort` is given; `--min=N` keeps functions
+  with at least N `ops_opt`. Both leave out main code (it is not optimized) and the per-file table; the totals
+  stay those of the whole report. The three shape the table only: `--format=json` is the full report `diff`
+  reads, so with them it exits with code 2 — cut the JSON with `jq` instead.
 - Counts depend on the PHP version: reports carry `php` and `optimizer_hash`, and `diff` refuses to compare
   reports taken with different ones.
 - Counts are cached in `.opmin/cache/` by file content, PHP version, optimizer settings and opmin version:
@@ -139,12 +150,29 @@ opmin verify src/Cart.php /tmp/Cart.php --with-tests    # + php -l, PHPStan "no 
   output, warnings (also thrown as `ErrorException`), by-ref arguments, `$this`, mock calls, globals and statics
   are compared. Time and randomness in the function's namespace are faked; a function that disagrees with
   itself is nondeterministic and stays unverified.
+- Each call is limited by `verification.call_timeout_ms` (1000 ms); an input the original hangs on is dropped,
+  and after 5 such inputs in a row the function stays unverified ("the original times out on generated
+  inputs"). An input on which the original runs out of `verification.memory_limit` (and the candidate does the
+  same) is dropped and counted in that row too ("the original runs out of memory on generated inputs").
+  The whole test of one function is limited by `verification.time_budget_ms` (15 s; a typical function takes
+  0.1–3.5 s): when it runs out, the inputs checked so far decide through the coverage threshold below, as
+  with the search limit `verification.fuzz_time_ms`. The shrinking of a difference is never cut short.
 - A difference is shrunk to a minimal input and saved to `.opmin/runs/<timestamp>/counterexamples/` as JSON and as a
   test for the project's runner (PHPUnit, Pest, Testo; a plain script otherwise).
 - Accepted: proven by differential tests with `verification.min_branch_coverage` of the original's branches,
   or unverified but executed by passing project tests, or with `verification.allow_unverified`. Branches the
   project's PHPStan proves dead (`--with-tests`: always-true or impossible conditions, unreachable code) are
   not counted. Functions with I/O are never called with generated inputs: only the project's tests prove them.
+  A call through a variable or a callback counts as I/O when the function names an I/O function in a string
+  (`$f = 'shell_exec'; $f(...)`), and the harness itself cannot start processes or send mail (`exec`,
+  `shell_exec`, `system`, `passthru`, `proc_open`, `popen`, `pcntl_exec`, `mail` are disabled): a function that
+  still reaches one stays unverified.
+- The differential tests of one step run `verification.jobs` at a time, each in a process of its own
+  (`--jobs=N` for one run). `0` (auto, the default) is half of the CPU cores — a test keeps two harness workers
+  busy — at most 4, within the free memory (2 × `verification.memory_limit` per test); `1` runs them one after
+  another in the opmin process. The inputs do not depend on it (`verification.seed`), but the time limits
+  (`call_timeout_ms`, `fuzz_time_ms`, `time_budget_ms`) do: for verdicts reproducible across machines, e.g. in
+  CI, use `--jobs=1`. `--guard-perf` times the kept changes afterwards, one by one.
 - Flags of `opmin count` (`compact`, `static_var`, `eval`, `io`…) say which constructs restrict a function.
 
 ## Optimizing (Stage A: Rector)
@@ -156,9 +184,30 @@ opmin optimize --with-standard-rector  # also the standard Rector rules (off by 
 opmin optimize --review                # confirm every change: y / n / a (all of this rule) / q
 opmin optimize --resume                # continue the latest interrupted run (or --resume=.opmin/runs/<ts>)
 opmin optimize --guard-perf            # also roll back changes that make a function slower
-opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
+opmin optimize --rector-rule=fqn --rector-rule=count   # only these rules: alias, short or full class name
+opmin optimize --plan                  # say what the run would use and exit: nothing is changed or tested
 ```
 
+- `--rector-rule` takes the alias of a rule (see [Excluding code](#excluding-code)), the short class name of a
+  rule of the run (`HoistLoopInvariantCountRector`) or the full class name of any installed rule; an unknown name
+  is an error with the closest one (``Unknown Rector rule `fqm` in --rector-rule. Did you mean `fqn`? …``).
+
+- Every run starts with a header on stderr: the files and how many functions they have (the counts come from the
+  cache), the rules, the test runner, whether `php.binary` has a coverage driver, PHPStan, the formatter and the
+  differential tests at a time (`verification.jobs` resolved). When the runner is a plain `tests.command` or
+  there is neither pcov nor Xdebug, a warning says at once that every step runs the whole test suite.
+  `--plan` prints the header and exits with 0: no tests run, no files change, no run directory is written.
+
+  ```
+  Optimizing 12 file(s) of /app with 4 rule(s), PHP 8.4.1 (target 8.1), git: a commit per accepted step.
+    Functions: 230, 214 of them optimizable
+    Rules: FullyQualifyGlobalCallsRector, ExtractRepeatedPropertyFetchRector, ExtractRepeatedArrayDimFetchRector, HoistLoopInvariantCountRector
+    Tests: phpunit, the tests that cover a changed function
+    Coverage driver: yes (pcov or Xdebug in php.binary)
+    PHPStan: vendor/bin/phpstan
+    Formatter: vendor/bin/php-cs-fixer fix --quiet --path-mode=intersection {files} (detected)
+    Differential tests: 4 at a time (verification.jobs: 0, auto)
+  ```
 - Rules are applied one by one, in passes until a pass changes nothing (`rector.max_passes`). After each rule:
   the project's formatter on the changed files (Pint, PHP-CS-Fixer, ECS, PHPCBF — detected, or `commands.format`,
   `--format=none`), `php -l`, a count. A changed function is kept only when it saves opcodes, the gain is worth
@@ -184,6 +233,14 @@ opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
   report says the run was interrupted. Every step is saved to `.opmin/runs/<ts>/state.json`; `--resume` puts the files
   back to the last accepted step (also after a crash or `kill -9`, dropping an opmin commit the state missed) and
   continues with the same files, rules and options, ending as an uninterrupted run would.
+- The progress goes to stderr, the summary to stdout. In a terminal it is one line redrawn in place — pass, rule,
+  phase, `verifying 12/47` (functions of the round whose differential test is done), `round 2` after a take-back,
+  the current function, the time since the start — with the result of every step and the warnings above it.
+  Without a terminal (CI, a pipe, `--no-ansi`) it is a log: every line with the time and the seconds since the
+  start (`[14:02:11 +83s] Pass 1: FullyQualifyGlobalCallsRector`), a result line per step (`kept 4, rolled back 1,
+  -12 opcodes (51s)`), the tests on the original code and the coverage map. `-v` adds the phases inside a
+  verification: PHPStan, the project's tests, each differential test. A missing coverage map is a warning at the
+  first verification: every step then runs the whole test suite.
 - A change rolled back for a reason of its own (no gain, a difference, not proven…) is not tried again in later
   passes while the function stays the same.
 - opmin's own rules, on by default, prove their safety conditions themselves (native types through PHPStan):
@@ -207,9 +264,14 @@ the installed opmin. The skill drives these commands:
 opmin llm:targets src --format=json            # starts a session in .opmin/runs/<ts>/: the llm.top_n functions with the most opcodes
 opmin llm:context 'App\Cart::total'            # source, opcode listing, histogram, dynamic constructs with their rules,
                                                # readability and signature rules, rejected attempts with their reasons
-opmin apply-candidate 'App\Cart::total' .opmin/runs/<ts>/candidate.php --format=json
+opmin apply-candidate 'App\Cart::total' .opmin/runs/<ts>/candidate.php --next --format=json
 opmin llm:finish                               # the full test run (taking back attempts while it fails), report, patch
 ```
+
+- `apply-candidate --next` adds `next` to the result, so a target costs one `llm:context` call at most: `retry`
+  the same function (a rejection with attempts left; the reason is in `attempt`), `rewrite` the next unfinished
+  target in the session order with its `context` (as `llm:context --format=json` prints it), or `finish`. The
+  candidate can come on stdin (`-`) instead of a file.
 
 - A candidate is the new source of **only that function**; anything else changed (another function, an import) is
   refused. It is kept only with strictly fewer opcodes, within `readability.*` and `signatures.*`, and proven by
@@ -226,17 +288,64 @@ Every run (`optimize`, `llm:finish`) writes `.opmin/runs/<ts>/report.md` for peo
 `.opmin/report_<ts>.md`, next to the reports of the earlier runs — and `.opmin/runs/<ts>/report.json` for tools:
 
 - the total: opcodes before → after, %; whether the full run of the project's tests passes;
+- what to do next (`advice` in `report.json`, at the top of `report.md`, and at the end of the console output
+  next to the functions that saved most): keyed on the cause of the rolled-back changes and on what the run had
+  to prove them with — set `tests.runner`; enable pcov or Xdebug in `php.binary` when the runner gives no
+  coverage map; fix the autoload (`composer install`, then `opmin doctor`) when the harness could not load the
+  code; add tests for functions with side effects; the counterexamples of a difference; the `signatures.*`
+  settings. Expected rollbacks (no gain, readability, excluded, declined in the review) are only counted.
+  `--allow-unverified` is never the advice: it comes last, with a warning;
 - every changed function: before → after, what saved the opcodes (rule or LLM), how it is proven (`diff-tested`,
   `tests`, `unverified`), the branch coverage of the differential tests, the project's tests that run it, the flags
   of dynamic constructs; changes that save executed opcodes rather than static ones are listed apart;
 - every rolled-back change grouped by reason (a difference with its counterexample input, failing tests, PHPStan,
-  not proven, signature, dynamic constructs, readability, no gain, excluded);
+  not proven, signature, dynamic constructs, readability, no gain, excluded); in `report.json` each one has a
+  `kind` (the group) and a machine-readable `cause` — what to fix first so that it could be kept, e.g.
+  `not_proven.no_runner`, `not_proven.no_coverage_map`, `not_proven.harness_load`, `not_proven.side_effects`,
+  `not_proven.no_inputs`, `diff_test`, `signature.public_api`;
 - counterexamples as tests of the project's runner in `.opmin/runs/<ts>/counterexamples/`;
 - the environment: PHP runtime, `php.target`, the optimizer settings, opmin, Rector, the project's PHPStan. A run
   warns when one of them changed since the previous run, `opmin diff` when the reports come from other opmin
-  versions or targets.
+  versions or targets;
+- where the time went (`report.json`, `timings`): seconds and calls per level — Rector, the formatter, `php -l`,
+  counting, PHPStan before and after, the project's tests, the differential tests (worker start, planned inputs,
+  fuzzing, guard-perf), commits — with the once-per-run work (`once.*`: the tests on the original code, the
+  coverage map, the final test run) apart, and counters of steps, verification rounds, differential tests cut
+  by `verification.time_budget_ms` (`time_budget_spent`) and stopped by timeouts of the original
+  (`original_timeouts_stop`) or by running out of memory (`original_out_of_memory_stop`); `-v` prints the same
+  at the end of the run. Every check of a function also has its `seconds`.
 
 `report.json` has `"schema": 1`; its fields change only in a major release (new fields may be added).
+
+## Runs: `runs`, `runs:show`, `runs:clean`
+
+Every `optimize`, LLM session (`llm:targets` … `llm:finish`) and `verify` with a counterexample leaves a
+directory in `.opmin/runs/<ts>/` (`-2`, `-3`… for runs of the same second and for the runs of a git package
+copied from its clone). They are kept until you delete them:
+
+```bash
+opmin runs                          # id, kind, state, opcodes before → after, size; newest first
+opmin runs --format=json            # {"runs": [{id, kind, state, ops_before, ops_after, size, report, backup, path}]}
+opmin runs:show                     # report.md of the newest run that has a report, to stdout
+opmin runs:show 20261011-062031 --format=json   # report.json as it is; --format=path prints where report.md is
+opmin runs:clean --keep=5 --dry-run # what would be deleted
+opmin runs:clean --keep=5           # delete it, with the copies .opmin/report_<ts>.md
+```
+
+- kinds: `optimize` (`state.json`), `llm` (`llm.json`), `verify` (only `counterexamples/`), `package` (copied
+  from the clone of `optimize <git-url>`), `broken` (no state and no report: a run that failed before it saved
+  anything); states: `finished`, `interrupted` (an optimize run `--resume=<dir>` continues), `open` (an LLM
+  session not finished yet), `broken`;
+- `runs:show` never opens a viewer; exit code 2 when there is no such run or it has no report (an interrupted, a
+  verify or a broken run);
+- `runs:clean` keeps the `--keep` newest finished runs, **every** interrupted optimize run and every open LLM
+  session (any of them can still be continued), and a broken run written in the last hour (it may be one that
+  is still starting). Outside git the `original/` of a run that changed the code (it has a patch, or it did not
+  finish) and was not a dry run is the only copy of the code before the run: such runs are listed and kept
+  unless `--include-backups`. The command asks nothing and prints
+  what it deletes; exit code 2 for a missing or negative `--keep`;
+- `runs.keep: N` in `opmin.yaml` (default `null`, off) prunes with the same rules (never the backups) every time
+  `optimize` or `llm:targets` creates a run; a failure to delete is a warning and never fails the run.
 
 ## CI guard: `baseline` and `check`
 
@@ -274,10 +383,26 @@ check:
   base_ref: origin/main        # base of the changed-files mode (--base=)
 ```
 
-The baseline must be taken with the same PHP minor version as the check: in CI use the image with the PHP of
-your production, and create the baseline with the same image
-(`docker run --rm -v "$PWD:/app" ghcr.io/melentev-av/opmin:<version>-php8.3 opmin baseline`), `<version>` being
-the opmin release.
+**Which image.** The check runs in `ghcr.io/melentev-av/opmin:<version>-php<X.Y>`, `<X.Y>` being the PHP minor
+of your production — ask production itself, not `composer.json` (`"php": "^8.1"` says nothing about the PHP
+that runs the code):
+
+```bash
+php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;'   # on production: e.g. 8.3
+```
+
+- Pin the opmin version: `:0.4.0-php8.3`, not the floating `:php8.3`. The floating tag follows the latest
+  release, and a new opmin may count some functions differently (a counting fix) — the check of an unchanged
+  PR would then fail or ask to update the baseline. Bump the version on purpose, together with the baseline.
+- The baseline must be taken with the same image as the check: the same PHP minor and the same optimizer
+  settings (`optimizer_hash`: the OPcache INI of opmin and the loaded Zend extensions); another one is
+  rejected with exit code 2. Create it with that image and commit `opmin.baseline.json`:
+  `docker run --rm -v "$PWD:/app" ghcr.io/melentev-av/opmin:<version>-php8.3 opmin baseline`.
+- `opmin init --ci=github` writes `.github/workflows/opcodes.yml` (the action below), `--ci=gitlab` writes
+  `.gitlab/opmin.yml` and prints the `include:` line for `.gitlab-ci.yml` (which it never edits). The PHP is
+  the minor of `php.binary` (not `php.target`: that may be the lowest `require.php` of composer.json) and the
+  image is the running opmin's; it prints both and the `docker run … opmin baseline` command. An existing file
+  is never overwritten (exit code 2).
 
 GitHub Actions (`.github/workflows/opcodes.yml`):
 
@@ -294,6 +419,30 @@ jobs:
           fetch-depth: 0            # the base branch is needed for the changed-files mode
       - run: opmin check --base="origin/${{ github.base_ref }}" --format=github
 ```
+
+Or the action of this repository (`action.yml`, composite): it runs `opmin check` in the same image with
+`docker run`, so it needs a Linux runner. The version of the image is the tag of the action — Dependabot
+(`package-ecosystem: github-actions`) bumps it like any other `uses:`; bump the baseline with it.
+
+```yaml
+name: Opcodes
+on: pull_request
+jobs:
+  opmin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0            # the base branch is needed for the changed-files mode
+      - uses: melentev-av/opmin@v<version>
+        with:
+          php: '8.3'                # the PHP minor of your production
+```
+
+Inputs: `php` (required), `version` (the opmin release of the image; default — the tag of the action, required
+when it is used at a branch or a commit), `base` (default `origin/<base branch>` of the pull request,
+`check.base_ref` outside one), `format` (default `github`), `args` (more arguments of `opmin check`, e.g.
+`--suggest`).
 
 GitLab CI (`.gitlab-ci.yml`):
 
@@ -332,7 +481,18 @@ ignore:
 - The attribute is recognized by its name in the source: the class `Opmin\Ignore` need not be installed (PHP
   checks attributes only in `newInstance()`); with opmin in `require-dev` the IDE knows it.
 - A mark on a class covers all its methods and closures. `vendor/` and files marked `@generated` are never touched.
-- Rule names in `rules:` and `@opmin-ignore` — an alias or the short class name of any rule, case-insensitive:
+- Rule names in `rules:` and `@opmin-ignore` — an alias, the short or the full class name of any rule,
+  case-insensitive (`\Opmin\Rector\Rule\FullyQualifyGlobalCallsRector` counts as its short name). A name that is
+  none of the names below nor a rule of the run excludes nothing — a typo would let opmin change the code —
+  so `optimize` warns about it, with the closest name, in the console and in the report:
+
+  ```text
+  [WARNING] src/Cart.php:12: `@opmin-ignore` lists `fqm`, which names no known rule, so it excludes nothing.
+            Did you mean `fqn`? Known names: fqn, property_fetch, array_dim_fetch, count, llm, or the short
+            class name of a rule.
+  ```
+
+  It is a warning, not an error: a mark may name a standard Rector rule that this run does not enable.
 
   | Alias | Rule |
   |---|---|
@@ -382,29 +542,63 @@ instead, with the workspace on the file system of the container:
 
 ```bash
 docker run --rm -v "$PWD:/out" ghcr.io/melentev-av/opmin:php8.4 sh -c \
-  'cd /tmp && opmin optimize https://github.com/briannesbitt/Carbon.git --ref=3.14.2 --no-docker --yes -n; cp -r runs *.patch /out/'
+  'cd /tmp && opmin optimize https://github.com/briannesbitt/Carbon.git --ref=3.14.2 --no-docker --yes -n; cp -r .opmin opmin-*.patch /out/'
 ```
 
 ## Results on real packages
 
 An example: real packages optimized in git package mode with Stage A (the four own Rector rules), then their own
-tests run on the patched code and stay green. Measured on 2026-10-08 with opmin 0.2 in CI; the run can be repeated by
-hand ([smoke-real-packages.yml](.github/workflows/smoke-real-packages.yml), or `tests/Smoke/run.sh <package> <php>`
+tests run on the patched code and stay green. Measured in CI; the run can be repeated by hand
+([smoke-real-packages.yml](.github/workflows/smoke-real-packages.yml), or `tests/Smoke/run.sh <package> <php>`
 locally).
 
 | Package | PHP | Opcodes | Saved | Functions changed | Package's tests after the patch | Time |
 |---|---|---|---|---|---|---|
-| symfony/string 6.4.46 | 8.1 | 5 940 → 5 863 | −77 (−1.3%) | 50 | green | 2.5 min |
-| | 8.5 | 6 358 → 6 083 | −275 (−4.3%) | 45 | green | 2.5 min |
-| league/csv 9.28.0 | 8.1 | 16 679 → 16 605 | −74 (−0.4%) | 24 | green (without `network`) | 5 min |
-| | 8.5 | 16 512 → 16 404 | −108 (−0.7%) | 26 | green (without `network`) | 1 min |
-| nesbot/carbon 3.14.2 | 8.1 | 26 823 → 26 630 | −193 (−0.7%) | 52 | green (without `localization`) | 7 min |
-| | 8.5 | 27 413 → 26 161 | −1 252 (−4.6%) | 105 | green (without `localization`) | 21 min |
+| symfony/string 6.4.46 | 8.1 | 5 940 → 5 863 | −77 (−1.3%) | 50 | green | 2 min |
+| | 8.5 | 6 358 → 6 083 | −275 (−4.3%) | 45 | green | 2 min |
+| league/csv 9.28.0 | 8.1 | 16 679 → 16 605 | −74 (−0.4%) | 24 | green (without `network`) | 1.5 min |
+| | 8.5 | 16 512 → 16 404 | −108 (−0.7%) | 26 | green (without `network`) | 1.5 min |
+| nesbot/carbon 3.14.2 | 8.1 | 26 823 → 26 629 | −194 (−0.7%) | 53 | green (without `localization`) | 5.5 min |
+| | 8.5 | 27 413 → 26 160 | −1 253 (−4.6%) | 106 | green (without `localization`) | 8 min |
 
 `php.binary` and `php.target` are the PHP of the row; CI runners, the static binary. Most of the gain is
 `FullyQualifyGlobalCallsRector`, and the gap between 8.1 and 8.5 is its: since PHP 8.4 an unqualified call of a
 frameless function (`trim`, `str_replace`, `implode`…) in a namespace compiles into both the frameless call and the
 fallback, and `\trim()` removes the fallback.
+
+## Troubleshooting
+
+Start with `opmin doctor` (`--with-tests` also runs your test suite once): it checks `php.binary`, OPcache, the
+harness, the tests, PHPStan, coverage and the cache, and names a fix for each problem.
+
+- **Every step runs the whole test suite, slowly.** `php.binary` has neither pcov nor Xdebug, so there is no
+  coverage map to pick the tests that cover a changed function (the run header and `opmin doctor` warn about it).
+  Install pcov into `php.binary` (`pecl install pcov`), or use the Docker image, which has it.
+- **«The project's tests fail on the original code».** `optimize` stops before it changes anything: a red
+  suite proves nothing. Fix the tests, exclude the failing ones (`tests.command` with PHPUnit's
+  `--exclude-group`, as in [Optimizing a git package](#optimizing-a-git-package)), or set `tests.runner: none`
+  to verify with the differential tests only.
+- **A git package does not install on macOS.** The workspace is on the case-insensitive file system Docker shares
+  with its VM; run opmin inside the image, as in [Optimizing a git package](#optimizing-a-git-package).
+- **«Cannot list the internal functions of …».** `php.binary` prints warnings to stdout at startup — usually
+  its ini is loaded twice (e.g. Laravel Herd, or `PHP_INI_SCAN_DIR` pointing at a directory that loads the same
+  extension again: `PHP Warning: Module "…" is already loaded`). Run that PHP with `-v`: it must print no
+  warnings. Remove the duplicate `extension=` line (`php --ini` lists the files), or set
+  `display_errors=stderr` in that ini. opmin 0.3.1 and later name the exit code and the output.
+- **`opmin check` exits with 2: «The baseline was taken with PHP X, php.binary is PHP Y».** Counts differ between
+  PHP minor versions and optimizer settings, so nothing is compared. Take the baseline with the same image as the
+  check (`docker run … opmin baseline`, see [CI guard](#ci-guard-baseline-and-check)) and commit it.
+- **The cache is corrupt or locked.** It only costs the cache, never the run; `opmin doctor` names the file.
+  Delete it (the next run creates it anew), or set `cache.recreate_corrupt: true` to let runs do it.
+- **A change was rolled back as «not proven».** Nothing proved the function behaves as before: the generated
+  inputs reached too little of its code, it has side effects, or no project test runs it. «What to do next» at
+  the top of the report (`opmin runs:show`) says what to fix — set `tests.runner`, enable coverage, add tests.
+- **``[WARNING] … `@opmin-ignore` lists `…`, which names no known rule``.** A typo in a mark excludes
+  nothing, so opmin may change that code: fix the name (the warning suggests the closest one).
+- **A run takes long.** `timings` in `.opmin/runs/<ts>/report.json` (`-v` prints them at the end) shows where the
+  time went: the project's tests, PHPStan or the differential tests. Without a coverage map every step runs all
+  tests (see above); `verification.jobs` (or `--jobs=N`) runs more differential tests at a time; `--plan` shows
+  the files, rules and settings a run would use without running it.
 
 ## Configuration
 
@@ -414,7 +608,15 @@ without it (exit code 2): they read their settings from it and keep the cache ne
 writes goes to `.opmin/` next to the config — `.opmin/runs/<ts>/` (reports, patches, counterexamples) and
 `.opmin/cache/` — and `init` or the first such command adds `.opmin/` to `.gitignore` of a git project. A git package
 (`opmin optimize <git-url>`) without its own config gets an empty one beside the clone. Unknown keys and
-wrong types are errors naming the key. Any key can be overridden for one run:
+wrong types are errors naming the key (exit code 2), with the closest key when there is one — a typo or a key in
+the wrong section:
+
+```text
+Unknown config key `seed` (opmin.yaml). Did you mean `verification.seed`?
+Unknown config key `verification.sed` (--set). Did you mean `verification.seed`?
+```
+
+Any key can be overridden for one run:
 
 ```bash
 OPMIN_VERIFICATION_SEED=7 opmin optimize .

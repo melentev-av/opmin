@@ -5,8 +5,12 @@ declare(strict_types=1);
 namespace Opmin\Command;
 
 use Internal\Path;
+use Opmin\Module\Analysis\ReferenceIndex;
 use Opmin\Module\Config\Schema;
+use Opmin\Module\Llm\Context;
 use Opmin\Module\Llm\Session;
+use Opmin\Module\Llm\Target;
+use Opmin\Module\Optimize\Units;
 use Opmin\Module\Php\PhpBinary;
 use Opmin\Module\Php\PhpBinaryProbe;
 use Opmin\Module\Project\Layout;
@@ -80,6 +84,46 @@ abstract class LlmStage extends Stage
         return Session::open(
             $project->root->join(Layout::RUNS),
             \is_string($run) && $run !== '' ? Targets::absolute($run, Path::create((string) \getcwd())) : null,
+        );
+    }
+
+    /**
+     * What the model needs to rewrite `$target`, from the current state of its file.
+     *
+     * @throws \RuntimeException When the file does not count or the function is no longer in it.
+     */
+    protected function context(Project $project, PhpBinary $php, Session $session, Target $target): Context
+    {
+        $file = $project->root->join($target->file);
+        $counter = $this->counter($php);
+        $result = $counter->count($project, [$file]);
+        $result->errors === [] or throw new \RuntimeException(\implode("\n", $result->errors));
+        $listings = $counter->listings($project, $file);
+
+        $counts = [];
+        foreach (ReferenceIndex::build($project, $this->cacheDir(), $this->cacheStore())->apply($result->functions) as $function) {
+            $function->file === $target->file and $counts[$function->key] = $function;
+        }
+
+        $units = Units::of((string) \file_get_contents((string) $file), $target->file);
+        isset($units->units[$target->key]) or throw new \RuntimeException("`{$target->key}` is no longer in {$target->file}.");
+
+        /** @var Schema\Llm $llm */
+        $llm = $this->container->get(Schema\Llm::class);
+        /** @var Schema\Readability $readability */
+        $readability = $this->container->get(Schema\Readability::class);
+        /** @var Schema\Signatures $signatures */
+        $signatures = $this->container->get(Schema\Signatures::class);
+
+        return new Context(
+            $target,
+            $units,
+            $counts,
+            $listings,
+            $session->attempts($target->key),
+            $llm->attemptsPerFunction,
+            $readability,
+            $signatures,
         );
     }
 }

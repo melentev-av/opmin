@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Opmin\Module\Optimize\Rector;
 
 use Internal\Path;
+use Opmin\Info;
 use Opmin\Module\Common\Cpu;
 use Opmin\Module\Common\FileSystem\FS;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Release\Installation;
+use Opmin\Rector\Rule\FullyQualifyGlobalCallsRector;
 use Symfony\Component\Process\Process;
 
 /**
@@ -50,6 +52,36 @@ final readonly class RectorRunner
     }
 
     /**
+     * Name of the rule's cache directory. Rector skips a file whose hash it saw unchanged under the
+     * same rule, so the key holds everything that decides what the rule does: the class and options,
+     * `php.target` and the opmin version (a new opmin may improve the rule). An option that points to
+     * a data file of the run ({@see FullyQualifyGlobalCallsRector::FILE_OPTIONS}) enters with the
+     * content hash of the file instead of its path: the run directory is new every run, the data
+     * mostly is not.
+     *
+     * @param non-empty-string|null $phpTarget
+     * @param non-empty-string|null $version Default: {@see Info::version()}.
+     * @return non-empty-string
+     */
+    public static function cacheKey(RuleSpec $rule, ?string $phpTarget, ?string $version = null): string
+    {
+        $options = $rule->options;
+        if ($options !== null && \is_a($rule->class, FullyQualifyGlobalCallsRector::class, true)) {
+            foreach (FullyQualifyGlobalCallsRector::FILE_OPTIONS as $name) {
+                /** @var mixed $path */
+                $path = $options[$name] ?? null;
+                if (\is_string($path)) {
+                    $hash = @\hash_file('xxh128', $path);
+                    # A missing file keeps its path in the key: the rule fails on it anyway.
+                    $options[$name] = $hash === false ? ['path' => $path] : ['content' => $hash];
+                }
+            }
+        }
+
+        return \hash('xxh128', \serialize([$rule->class, $options, $phpTarget, $version ?? Info::version()]));
+    }
+
+    /**
      * @param list<Path> $files Absolute.
      * @return list<string> Errors Rector reported (a rule crashed on a file); empty on success.
      * @throws \RuntimeException When Rector cannot run.
@@ -66,10 +98,12 @@ final readonly class RectorRunner
         # A cache per rule: Rector hashes the config by the registered rules, which are the same for
         # every rule taken out of one set — a shared cache would let the first rule hide the files
         # from the others.
-        $cache = $dir->join('cache', \hash('xxh128', \serialize([$rule->class, $rule->options, $this->phpTarget])));
+        $cache = $dir->join('cache', self::cacheKey($rule, $this->phpTarget));
         \file_put_contents((string) $config, $this->config($rule, $files, $cache));
 
-        $args = ['process', '--config=' . (string) $config, '--output-format=json', '--no-progress-bar', '--no-diffs'];
+        # No `process`: it is the default command, and Rector takes a first argument that exists as a file or
+        # a directory in the working directory (a `process/` in the project root) for a path to process.
+        $args = ['--config=' . (string) $config, '--output-format=json', '--no-progress-bar', '--no-diffs'];
         $installation = Installation::current();
         $process = $installation->kind === Installation::SOURCES
             ? new Process([\PHP_BINARY, '-d', 'memory_limit=-1', self::binary(), ...$args], (string) $this->project->root, timeout: $this->timeout)

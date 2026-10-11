@@ -9,7 +9,8 @@ namespace Opmin\Harness;
  *
  * Responses are written to a duplicate of stdout, each line prefixed with the session token: the
  * analyzed code may write to stdout too, and such lines are not responses. A fatal error or `exit()`
- * during a call still produces a response from the shutdown handler, then the process ends.
+ * during a call still produces a response from the shutdown handler, then the process ends — on
+ * Windows only after the orchestrator has read it ({@see self::awaitStop()}).
  *
  * @internal
  */
@@ -24,8 +25,12 @@ final class Worker
     private bool $busy = false;
     private string $command = '';
 
+    /**
+     * @param bool $hold After the answer of the shutdown handler, wait until the orchestrator stops the worker.
+     */
     private function __construct(
         private string $token,
+        private bool $hold,
     ) {
         $out = \fopen('php://stdout', 'wb');
         $out === false and throw new \RuntimeException('Cannot open stdout');
@@ -39,11 +44,11 @@ final class Worker
     {
         $token = $argv[1] ?? '';
         if ($token === '') {
-            \fwrite(\STDERR, "Usage: php worker.php <token>\n");
+            \fwrite(\STDERR, "Usage: php worker.php <token> [hold]\n");
             return 2;
         }
 
-        (new self($token))->run();
+        (new self($token, ($argv[2] ?? '') === 'hold'))->run();
 
         return 0;
     }
@@ -73,18 +78,19 @@ final class Worker
         $message = $fatal ? $error['message'] : null;
         if ($this->command !== 'call' || Calls::$pending === null) {
             $this->send(['ok' => false, 'status' => $status, 'error' => $message ?? 'exit() during ' . $this->command]);
-            return;
+        } else {
+            /** @var array{calls: list<array<string, mixed>>, collector: ?ErrorCollector, level: int} $pending */
+            $pending = Calls::$pending;
+            $collector = $pending['collector'];
+            $current = ['status' => $status, 'message' => $message];
+            $current['output'] = Value::string(Calls::output($pending['level']));
+            $current['errors'] = $collector === null ? [] : $collector->errors();
+            $calls = $pending['calls'];
+            $calls[] = $current;
+            $this->send(['ok' => true, 'status' => $status, 'calls' => $calls]);
         }
 
-        /** @var array{calls: list<array<string, mixed>>, collector: ?ErrorCollector, level: int} $pending */
-        $pending = Calls::$pending;
-        $collector = $pending['collector'];
-        $current = ['status' => $status, 'message' => $message];
-        $current['output'] = Value::string(Calls::output($pending['level']));
-        $current['errors'] = $collector === null ? [] : $collector->errors();
-        $calls = $pending['calls'];
-        $calls[] = $current;
-        $this->send(['ok' => true, 'status' => $status, 'calls' => $calls]);
+        $this->hold and $this->awaitStop();
     }
 
     /**
@@ -106,6 +112,8 @@ final class Worker
 
         if ($pid === 0) {
             \fclose($pair[0]);
+            # The child answers the worker over the pair, never reads the orchestrator's input.
+            $this->hold = false;
             $this->out = $pair[1];
             $this->send(Calls::call($request));
             $this->busy = false;
@@ -162,6 +170,22 @@ final class Worker
         }
 
         return \substr($buffer, 0, (int) \strpos($buffer, "\n"));
+    }
+
+    /**
+     * Holds the ended process until the orchestrator stops it: on Windows the stdout socket of a PHP 8.2+
+     * process loses the answer the orchestrator has not read yet when the process ends (#58). The
+     * orchestrator reads the answer, then stops the worker: any line (or the end of the input) ends the
+     * wait, `shutdown` is answered. A blocking read: `stream_select()` on stdin does not wake up on Windows.
+     */
+    private function awaitStop(): void
+    {
+        /** @psalm-suppress RedundantCondition The analyzed code may have closed STDIN. */
+        $in = \is_resource(\STDIN) ? \STDIN : @\fopen('php://stdin', 'rb');
+        $line = \is_resource($in) ? \fgets($in) : false;
+        /** @var mixed $request */
+        $request = \is_string($line) ? \json_decode($line, true) : null;
+        \is_array($request) && ($request['cmd'] ?? null) === 'shutdown' and $this->send(['ok' => true]);
     }
 
     private function run(): void

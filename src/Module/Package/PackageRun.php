@@ -10,6 +10,7 @@ use Opmin\Module\Common\FileSystem\FS;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Project\InitDetector;
 use Opmin\Module\Project\Layout;
+use Opmin\Module\Runs\RunIndex;
 use Opmin\Module\Release\Installation;
 use Symfony\Component\Console\Style\StyleInterface;
 use Symfony\Component\Process\Process;
@@ -405,6 +406,11 @@ final readonly class PackageRun
             }
 
             self::copyTree((string) $runs->join($run), (string) $target);
+            # The copy is of a clone that is gone: `opmin runs` must not take it for a run to resume here.
+            \file_put_contents((string) $target->join(RunIndex::PACKAGE_MARKER), \json_encode(
+                ['package' => $checkout->name, 'ref' => $checkout->ref, 'run' => $run],
+                \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_THROW_ON_ERROR,
+            ) . "\n");
             $report = $target->join('report.md');
             $copy = Layout::report($target);
             $copy === null || !$report->isFile() or \copy((string) $report, (string) $copy);

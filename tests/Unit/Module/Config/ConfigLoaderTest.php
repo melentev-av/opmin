@@ -49,6 +49,36 @@ final class ConfigLoaderTest
         yield 'not a bool' => ['guard_perf.enabled=maybe', 'expects bool'];
     }
 
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function hints(): iterable
+    {
+        yield 'typo in a nested key' => ["verification:\n  sed: 1\n", 'Unknown config key `verification.sed` (opmin.yaml). Did you mean `verification.seed`?'];
+        yield 'typo in a section' => ["verificaton:\n  seed: 1\n", 'Unknown config key `verificaton` (opmin.yaml). Did you mean `verification`?'];
+        yield 'typo in a deep key' => ["rector:\n  standard:\n    enable: true\n", 'Unknown config key `rector.standard.enable` (opmin.yaml). Did you mean `rector.standard.enabled`?'];
+        yield 'key at the top level' => ["seed: 1\n", 'Unknown config key `seed` (opmin.yaml). Did you mean `verification.seed`?'];
+        yield 'key in another section' => ["rector:\n  seed: 1\n", 'Unknown config key `rector.seed` (opmin.yaml). Did you mean `verification.seed`?'];
+        yield 'key in another section with a typo' => ["rector:\n  sed: 1\n", 'Unknown config key `rector.sed` (opmin.yaml). Did you mean `verification.seed`?'];
+        yield 'key of several sections' => ["enabled: true\n", 'Unknown config key `enabled` (opmin.yaml). Did you mean `rector.standard.enabled` or `guard_perf.enabled`?'];
+        yield 'nothing close' => ["foo: 1\n", 'Unknown config key `foo` (opmin.yaml).'];
+    }
+
+    #[DataProvider('hints')]
+    public function unknownKeyNamesTheClosestKey(string $yaml, string $message): never
+    {
+        Expect::exception(ConfigException::class)->withMessage($message);
+
+        ConfigLoader::loadString($yaml);
+    }
+
+    public function unknownOverrideNamesTheClosestKey(): never
+    {
+        Expect::exception(ConfigException::class)->withMessage('Unknown config key `verification.sed` (--set). Did you mean `verification.seed`?');
+
+        ConfigLoader::parseOverrides(['verification.sed=7']);
+    }
+
     public function emptyDocumentGivesNoValues(): void
     {
         Assert::same(ConfigLoader::loadString(''), []);

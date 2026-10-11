@@ -46,6 +46,16 @@ final class Doctor extends Base
         'skipped' => '<fg=gray>-</>',
     ];
 
+    private int $blockers = 0;
+
+    /**
+     * Problems that block `count`/`optimize` found by the last run: `init --doctor` reports them.
+     */
+    public function blockers(): int
+    {
+        return $this->blockers;
+    }
+
     public function configure(): void
     {
         parent::configure();
@@ -91,6 +101,7 @@ final class Doctor extends Base
         }
 
         $errors = \count(\array_filter($checks, static fn(Check $c): bool => $c->status === Status::Error));
+        $this->blockers = $errors;
         $warnings = \count(\array_filter($checks, static fn(Check $c): bool => $c->status === Status::Warning));
         $output->writeln('');
         $output->writeln(match (true) {

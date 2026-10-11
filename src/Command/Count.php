@@ -32,8 +32,11 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 /**
  * Count opcodes per function, method and closure.
  *
+ * `--sort`, `--top` and `--min` shape the table only: the JSON is the full report `diff` reads, and a
+ * cut one would show the functions left out as removed and sum wrong totals.
+ *
  * Exit codes: 0 — counted; 1 — some files could not be counted (they are listed, the rest is
- * reported); 2 — invalid config, a missing path or an unusable `php.binary`.
+ * reported); 2 — invalid config or options, a missing path or an unusable `php.binary`.
  *
  * @internal
  */
@@ -50,6 +53,9 @@ final class Count extends Base
         $this->addOption('filter', null, InputOption::VALUE_REQUIRED, 'Only functions matching the FQN pattern, e.g. App\\Service\\*');
         $this->addOption('exclude', null, InputOption::VALUE_REQUIRED, 'Comma-separated paths to skip (overrides `exclude`)');
         $this->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table | json', 'table');
+        $this->addOption('sort', null, InputOption::VALUE_REQUIRED, 'Table order: file | ops_opt | ops_raw (numbers descending; default: file, ops_opt with --top)');
+        $this->addOption('top', null, InputOption::VALUE_REQUIRED, 'Table: only the first N functions, main code skipped');
+        $this->addOption('min', null, InputOption::VALUE_REQUIRED, 'Table: only functions with at least N ops_opt, main code skipped');
     }
 
     #[\Override]
@@ -67,6 +73,13 @@ final class Count extends Base
         $format = (string) $input->getOption('format');
         if (!\in_array($format, ['table', 'json'], true)) {
             $style->error("Unknown format `{$format}`: use table or json.");
+            return Command::INVALID;
+        }
+
+        try {
+            $view = $this->view($input, $format);
+        } catch (\InvalidArgumentException $e) {
+            $style->error($e->getMessage());
             return Command::INVALID;
         }
 
@@ -118,7 +131,7 @@ final class Count extends Base
 
         $format === 'json'
             ? $output->write($report->toJson(), false, OutputInterface::OUTPUT_RAW)
-            : $this->table($report, new SymfonyStyle($input, $output));
+            : $this->table($report, new SymfonyStyle($input, $output), ...$view);
 
         $errorOutput->isVerbose() and $errorOutput->writeln(\sprintf(
             '  %d file(s): %d from the cache, %d compiled by PHP %s (%s)',
@@ -138,6 +151,30 @@ final class Count extends Base
     }
 
     /**
+     * @param int<0, max> $least
+     * @return int<0, max>|null
+     * @throws \InvalidArgumentException
+     */
+    private static function integer(mixed $value, string $option, int $least): ?int
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $value = (string) $value;
+        if (\preg_match('/^\d+$/', $value) !== 1 || (int) $value < $least) {
+            throw new \InvalidArgumentException(\sprintf(
+                '%s must be an integer of at least %d, `%s` given.',
+                $option,
+                $least,
+                $value,
+            ));
+        }
+
+        return \max(0, (int) $value);
+    }
+
+    /**
      * @param list<FunctionCount> $functions
      * @return list<FunctionCount>
      */
@@ -154,16 +191,63 @@ final class Count extends Base
         return \array_values(\array_filter($functions, static fn(FunctionCount $f): bool => \preg_match($regex, $f->key) === 1));
     }
 
-    private function table(CountReport $report, SymfonyStyle $style): void
+    /**
+     * Validated `--sort`, `--top` and `--min`.
+     *
+     * @return array{'file'|'ops_opt'|'ops_raw', positive-int|null, int<0, max>|null}
+     * @throws \InvalidArgumentException
+     */
+    private function view(InputInterface $input, string $format): array
+    {
+        /** @var string|null $sort A value-required option. */
+        $sort = $input->getOption('sort');
+        /** @var positive-int|null $top */
+        $top = self::integer($input->getOption('top'), '--top', 1);
+        $min = self::integer($input->getOption('min'), '--min', 0);
+
+        if ($format === 'json' && ($sort !== null || $top !== null || $min !== null)) {
+            throw new \InvalidArgumentException(
+                '--sort, --top and --min shape the table only: --format=json is the full report for `opmin diff`. '
+                . "Cut it with jq, e.g. jq '.functions | to_entries | sort_by(-.value.ops_opt) | .[:20]'.",
+            );
+        }
+
+        $sort ??= $top !== null ? 'ops_opt' : 'file';
+        if (!\in_array($sort, ['file', 'ops_opt', 'ops_raw'], true)) {
+            throw new \InvalidArgumentException(\sprintf('Unknown sort `%s`: use file, ops_opt or ops_raw.', $sort));
+        }
+
+        return [$sort, $top, $min];
+    }
+
+    /**
+     * @param 'file'|'ops_opt'|'ops_raw' $sort
+     * @param positive-int|null $top
+     * @param int<0, max>|null $min
+     */
+    private function table(CountReport $report, SymfonyStyle $style, string $sort, ?int $top, ?int $min): void
     {
         $functions = [];
         foreach ($report->functions as $key => $function) {
+            # Main code is counted but never optimized, so it is no answer to "what to optimize".
+            if (($top !== null || $min !== null) && !$function->optimizable) {
+                continue;
+            }
+            if ($min !== null && $function->opsOpt < $min) {
+                continue;
+            }
             $functions[] = [$key, $function];
         }
         \usort($functions, /**
              * @param array{non-empty-string, FunctionCount} $a
              * @param array{non-empty-string, FunctionCount} $b
-             */ static fn(array $a, array $b): int => [$a[1]->file, $a[1]->line, $a[0]] <=> [$b[1]->file, $b[1]->line, $b[0]]);
+             */ static fn(array $a, array $b): int => match ($sort) {
+            'file' => [$a[1]->file, $a[1]->line, $a[0]] <=> [$b[1]->file, $b[1]->line, $b[0]],
+            'ops_opt' => [$b[1]->opsOpt, $a[0]] <=> [$a[1]->opsOpt, $b[0]],
+            'ops_raw' => [$b[1]->opsRaw, $a[0]] <=> [$a[1]->opsRaw, $b[0]],
+        });
+        $selected = $top !== null || $min !== null;
+        $top !== null and $functions = \array_slice($functions, 0, $top);
         $rows = [];
         $files = [];
         foreach ($functions as [$key, $function]) {
@@ -176,11 +260,13 @@ final class Count extends Base
 
         $style->table(['Function', 'File:line', 'ops_raw', 'ops_opt', 'vars', 'tmps'], $rows);
 
-        if (\count($files) > 1) {
+        # Per-file sums of a selection would read as the files' totals.
+        if (!$selected && \count($files) > 1) {
             \ksort($files, \SORT_STRING);
             $style->table(['File', 'Functions', 'ops_raw', 'ops_opt'], \array_values($files));
         }
 
+        $selected and $style->writeln(\sprintf('Shown: %d of %d functions, main code skipped.', \count($rows), \count($report->functions)));
         $style->writeln(\sprintf(
             'Total: <info>%d</info> opcodes after the optimizer (%d before) in %d functions of %d files, PHP %s, optimizer %s.',
             $report->opsOpt(),

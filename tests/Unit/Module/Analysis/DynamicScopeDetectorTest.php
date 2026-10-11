@@ -43,8 +43,9 @@ final class DynamicScopeDetectorTest
         yield 'exception trace' => ['return (new \Exception())->getTrace();', [Flag::Backtrace]];
         yield 'trace as string' => ['return $e->getTraceAsString();', [Flag::Backtrace]];
         yield '__LINE__' => ['return __LINE__;', [Flag::MagicConstant]];
-        yield '__FUNCTION__' => ['return __FUNCTION__;', [Flag::MagicConstant]];
-        yield '__METHOD__' => ['return __METHOD__;', [Flag::MagicConstant]];
+        yield '__FUNCTION__' => ['return __FUNCTION__;', [Flag::FunctionName]];
+        yield '__METHOD__' => ['return __METHOD__;', [Flag::FunctionName]];
+        yield '__LINE__ and __METHOD__' => ['return __METHOD__ . __LINE__;', [Flag::MagicConstant, Flag::FunctionName]];
         yield 'eval' => ['return eval("return 1;");', [Flag::Eval]];
         yield 'include' => ['return include __DIR__ . "/x.php";', [Flag::Include]];
         yield 'require_once' => ['require_once "x.php";', [Flag::Include]];
@@ -57,7 +58,7 @@ final class DynamicScopeDetectorTest
         yield 'unset of a property' => ['unset($o->x);', [Flag::Magic]];
         yield 'reflection of a static class' => ['return new \ReflectionClass(static::class);', [Flag::Reflection]];
         yield 'reflection of $this' => ['return new \ReflectionObject($this);', [Flag::Reflection]];
-        yield 'reflection of the function' => ['return new \ReflectionFunction(__FUNCTION__);', [Flag::MagicConstant, Flag::Reflection]];
+        yield 'reflection of the function' => ['return new \ReflectionFunction(__FUNCTION__);', [Flag::FunctionName, Flag::Reflection]];
         yield 'file I/O' => ['return file_get_contents("/etc/hosts");', [Flag::Io]];
         yield 'curl' => ['return curl_init();', [Flag::Io]];
         yield 'PDO' => ['return new \PDO("sqlite::memory:");', [Flag::Io]];
@@ -74,7 +75,7 @@ final class DynamicScopeDetectorTest
         yield 'reflection of self' => ['return new \\ReflectionClass(self::class);', [Flag::Reflection]];
         yield 'reflection of __CLASS__' => ['return new \\ReflectionClass(__CLASS__);', [Flag::Reflection]];
         yield 'reflection of get_class($this)' => ['return new \\ReflectionClass(get_class($this));', [Flag::Reflection]];
-        yield 'reflection of __METHOD__' => ['return new \\ReflectionMethod(__METHOD__);', [Flag::MagicConstant, Flag::Reflection]];
+        yield 'reflection of __METHOD__' => ['return new \\ReflectionMethod(__METHOD__);', [Flag::FunctionName, Flag::Reflection]];
         yield 'DateTime of today' => ['return new \\DateTime(" Today ");', [Flag::Time]];
         yield 'DateTime of a variable' => ['return new \\DateTime($when);', [Flag::Time]];
         yield 'DateTime without a date' => ['return new \\DateTimeImmutable("+1 day");', [Flag::Time]];
@@ -82,6 +83,15 @@ final class DynamicScopeDetectorTest
         yield 'I/O by prefix' => ['return stream_get_contents($h);', [Flag::Io]];
         yield 'arguments of an anonymous class' => ['return new class(compact("a")) { public function __construct($x) {} };', [Flag::Compact]];
         yield 'arrow function body is its own' => ['return fn() => $$name;', []];
+        yield 'I/O function called through a variable (Carbon\Cli\Invoker)' => [
+            '$function = (($parameters[1] ?? "") === "install" ? ($parameters[2] ?? null) : null) ?: "shell_exec"; $function("composer require x");',
+            [Flag::Io],
+        ];
+        yield 'I/O function name with a backslash, called through a variable' => ['$f = "\\\\unlink"; return $f($path);', [Flag::Io]];
+        yield 'I/O function by prefix, called through a variable' => ['$f = "proc_open"; return $f($cmd, [], $p);', [Flag::Io]];
+        yield 'I/O function given to call_user_func' => ['return call_user_func($cb ?? "system", "ls");', [Flag::Io]];
+        yield 'I/O function given to array_map' => ['return array_map("unlink", $files);', [Flag::Io]];
+        yield 'I/O function as a first-class callable' => ['$f = exec(...); return $f("ls");', [Flag::Io]];
         yield 'several, in declaration order' => ['static $n; return compact("n") + func_get_args();', [Flag::Compact, Flag::FuncArgs, Flag::StaticVar]];
     }
 
@@ -106,6 +116,10 @@ final class DynamicScopeDetectorTest
         yield 'DateTime with a fixed date' => ['return new \DateTimeImmutable("2020-01-02 03:04:05");'];
         yield 'Randomizer with an engine' => ['return new \Random\Randomizer(new \Random\Engine\Mt19937(1));'];
         yield 'reflection of another class' => ['return new \ReflectionClass(Other::class);'];
+        yield 'call through a variable without an I/O name' => ['$f = "strtoupper"; return $f($s);'];
+        yield 'I/O name as plain data' => ['return ["exec" => 1, "file" => 2][$key];'];
+        yield 'callback without an I/O name' => ['return array_map("trim", $xs);'];
+        yield 'immediately called closure with an I/O name as data' => ['return (function () { return 1; })() + strlen("exec");'];
         yield 'plain code' => ['$s = 0; foreach ($xs as $x) { $s += $x; } return $s;'];
     }
 
@@ -157,6 +171,36 @@ final class DynamicScopeDetectorTest
         \assert($arrow instanceof Node\Expr\ArrowFunction);
 
         Assert::same((new DynamicScopeDetector())->detect($arrow), [Flag::Compact]);
+    }
+
+    /**
+     * Since PHP 8.4 the name of a closure carries its line (`{closure:App\\f():3}`), and the name of an
+     * anonymous class always does: there `__FUNCTION__`/`__METHOD__` depend on line numbers.
+     */
+    public function functionNameOfAClosureOrAnAnonymousClassDependsOnTheLine(): void
+    {
+        $stmts = self::parse('<?php namespace App; function f() { $c = function () { return __FUNCTION__; }; '
+            . '$a = fn() => __METHOD__; return new class { public function m() { return __METHOD__ . __FUNCTION__; } }; }');
+        $closure = (new NodeFinder())->findFirstInstanceOf($stmts, Node\Expr\Closure::class);
+        $arrow = (new NodeFinder())->findFirstInstanceOf($stmts, Node\Expr\ArrowFunction::class);
+        $class = (new NodeFinder())->findFirstInstanceOf($stmts, Node\Stmt\Class_::class);
+        \assert($closure instanceof Node\Expr\Closure && $arrow instanceof Node\Expr\ArrowFunction && $class instanceof Node\Stmt\Class_);
+        $method = $class->getMethod('m');
+        \assert($method !== null);
+
+        Assert::same((new DynamicScopeDetector())->detect($closure), [Flag::MagicConstant]);
+        Assert::same((new DynamicScopeDetector())->detect($arrow), [Flag::MagicConstant]);
+        Assert::same((new DynamicScopeDetector())->detect($method, $class), [Flag::MagicConstant, Flag::FunctionName]);
+    }
+
+    public function functionNameOfANamedClassMethodDoesNotDependOnTheLine(): void
+    {
+        [$class, $method] = self::method('namespace App; class Svc { public function f() { return __METHOD__; } }', 'f');
+
+        Assert::same((new DynamicScopeDetector())->detect($method, $class), [Flag::FunctionName]);
+        Assert::same(Flag::restrictionsOf([Flag::FunctionName]), [Restriction::Inline]);
+        Assert::same(Flag::restrictionsOf([Flag::MagicConstant]), [Restriction::Inline, Restriction::LineSensitive]);
+        Assert::same(Flag::restrictionsOf([Flag::Backtrace]), [Restriction::Inline, Restriction::LineSensitive]);
     }
 
     public function globalFunctionNames(): void

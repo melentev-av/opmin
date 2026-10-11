@@ -55,6 +55,8 @@ final class ConfigLoaderTest
   `Assert::string($err)->ignoringWhitespace(lineBreaks: true)->contains(...)` (console output wraps lines).
 - A test without assertions is `risky`. If it only checks "does not throw", mark it `#[ExpectNoAssertions]`.
 - Setup/teardown: `#[BeforeTest]`, `#[AfterTest]`, `#[BeforeClass]`, `#[AfterClass]` on methods (no `setUp`).
+- The test methods of a class may run on **one instance**: a property changed by one test is seen by the next
+  (unlike PHPUnit). Reset such state at the start of the test or in `#[BeforeTest]` (`tests/Unit/Module/Progress/`).
 
 ## Expected exception
 
@@ -136,6 +138,10 @@ final class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedRe
   `report.md` with the snapshots in `tests/Fixtures/Report/`. After an intended change of the format, regenerate
   them with `OPMIN_UPDATE_SNAPSHOTS=1 vendor/bin/testo --filter=RunReportTest` and read the diff: a field renamed or
   removed in `report.json` is a breaking change (major release only).
+- The causes and the advice: `tests/Unit/Module/Report/RejectionCauseTest.php` pins the reason wordings the
+  causes are read from, and checks that their source files (`DiffTester`, `SignatureGate`, the notes of
+  `Verifier`) still write them: a reworded reason fails there, not silently in the advice. `AdviceTest` is the
+  table cause → advice and the shape of the console summary.
 
 ## The CI guard (`baseline`, `check`)
 
@@ -149,6 +155,11 @@ final class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedRe
   another PHP → exit 2, `--all` against the changed-files mode, closure keys after lines moved, a renamed file
   and function, `--suggest` on copies (the project is not touched). Opcode numbers are never asserted: they
   differ between the PHP versions of the matrix, the direction does not.
+- `tests/Unit/Module/Check/Ci/CiWorkflowTest.php` parses the jobs `opmin init --ci=` writes;
+  `tests/Integration/Command/InitCiTest.php` runs `init --ci` as a process (the PHP minor of php.binary from
+  `opmin.yaml`, refusing to overwrite, `.gitlab-ci.yml` untouched). The action itself (`action.yml`) is proven
+  by the CI job `🎬 GitHub Action runs opmin check` (`testing.yml`): the latest release's image on a tiny
+  project — unchanged passes, grown fails, no version is refused.
 
 ## Delivery (`self-update`, `install.sh`, `doctor`, git packages, the PHAR)
 
@@ -165,8 +176,8 @@ final class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedRe
   playground (`bin/playground run git-package`) and by the smoke tests of the release images.
 - `tests/Unit/Module/Harness/HarnessFilesTest.php` extracts the harness from a `phar://` URL: `Internal\Path`
   collapses `phar://` into `phar:/`, which broke every PHAR run of the differential tester until M7.
-- `tests/Phar/composer-project.sh <phar>` (CI job «PHAR builds and runs»): the PHAR as a composer package in a
-  project with nikic/php-parser 4 and Rector 1 — count, verify and optimize from `vendor/bin/opmin`. Run it
+- `tests/Phar/composer-project.sh <phar>` (CI job «PHAR builds and runs»): the PHAR in a project with
+  nikic/php-parser 4 and Rector 1 in its `vendor/` — count, verify and optimize from `php opmin.phar`. Run it
   locally after `make phar` whenever the scoper config, `box.json.dist` or the internal entry points change.
 
 ## Property tests (`rasuvaeff/property-testing-testo`)

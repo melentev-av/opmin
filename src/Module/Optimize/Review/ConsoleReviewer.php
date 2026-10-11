@@ -21,8 +21,12 @@ final class ConsoleReviewer implements Reviewer
 {
     private bool $ended = false;
 
+    /**
+     * @param \Closure(): void|null $beforeAsking Makes room on the terminal (clears the progress line).
+     */
     public function __construct(
         private readonly SymfonyStyle $style,
+        private readonly ?\Closure $beforeAsking = null,
     ) {}
 
     public function review(Change $change): Decision
@@ -31,6 +35,7 @@ final class ConsoleReviewer implements Reviewer
             return Decision::Yes;
         }
 
+        $this->beforeAsking === null or ($this->beforeAsking)();
         $this->style->newLine();
         $this->style->writeln(\sprintf('<info>%s</info> — %s', OutputFormatter::escape(\implode(', ', $change->functions)), $change->file));
         foreach (\explode("\n", \rtrim($change->diff)) as $line) {

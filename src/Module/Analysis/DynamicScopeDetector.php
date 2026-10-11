@@ -79,6 +79,13 @@ final class DynamicScopeDetector
         'gzread', 'gzfile', 'bzopen', 'zip_', 'xmlwriter_open', 'fseek', 'ftell', 'ftruncate', 'rewind', 'feof',
     ];
 
+    /** Global functions that call a callable they are given. */
+    private const CALLING = [
+        'call_user_func', 'call_user_func_array', 'forward_static_call', 'forward_static_call_array', 'array_map',
+        'array_filter', 'array_walk', 'array_walk_recursive', 'array_reduce', 'usort', 'uasort', 'uksort',
+        'iterator_apply', 'preg_replace_callback', 'preg_replace_callback_array', 'register_tick_function',
+    ];
+
     /** @var array<lowercase-string, Flag> Classes whose instantiation sets a flag. */
     private const CLASSES = [
         'pdo' => Flag::Io, 'mysqli' => Flag::Io, 'splfileobject' => Flag::Io, 'splfileinfo' => Flag::Io,
@@ -97,6 +104,18 @@ final class DynamicScopeDetector
     private array $flags = [];
 
     private ?Stmt\ClassLike $class = null;
+
+    /** The body calls a function it does not name: through a variable or a function that takes a callable. */
+    private bool $callsDynamically = false;
+
+    /** The body has a string that names an I/O function. */
+    private bool $namesIo = false;
+
+    /**
+     * The name of the function carries its line: a closure (`{closure:App\\f():3}` since PHP 8.4)
+     * or a method of an anonymous class (`class@anonymous\0/path.php:3$0::m`).
+     */
+    private bool $nameHasLine = false;
 
     /**
      * Whether the class routes member access through user code (magic methods, `ArrayAccess`).
@@ -147,6 +166,9 @@ final class DynamicScopeDetector
     {
         $this->flags = [];
         $this->class = $class;
+        $this->callsDynamically = $this->namesIo = false;
+        # The detector does not know `php.binary`: a closure counts as named by its line on every version.
+        $this->nameHasLine = $function instanceof Expr\Closure || $function instanceof Expr\ArrowFunction;
         $class === null || !self::isMagicClass($class) or $this->flags[Flag::Magic->value] = Flag::Magic;
         $this->walk($function instanceof Node\PropertyHook ? $function->body : $function->getStmts());
         $function instanceof Expr\ArrowFunction and $this->walk($function->expr);
@@ -154,10 +176,35 @@ final class DynamicScopeDetector
             $this->walk($param->default);
         }
 
+        # `$f = 'shell_exec'; $f(...)`: the name never appears as a call, but generated inputs would run it.
+        $this->callsIoDynamically() and $this->add(Flag::Io);
+
         $flags = \array_values($this->flags);
         \usort($flags, static fn(Flag $a, Flag $b): int => \array_search($a, Flag::cases(), true) <=> \array_search($b, Flag::cases(), true));
 
         return $flags;
+    }
+
+    /**
+     * @param lowercase-string $name
+     */
+    private static function isIoFunction(string $name): bool
+    {
+        if (\preg_match('/^[a-z_][a-z0-9_]*$/', $name) !== 1) {
+            return false;
+        }
+
+        if (isset(self::FUNCTIONS[$name])) {
+            return self::FUNCTIONS[$name] === Flag::Io;
+        }
+
+        foreach (self::IO_PREFIXES as $prefix) {
+            if (\str_starts_with($name, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function walk(mixed $node): void
@@ -193,6 +240,7 @@ final class DynamicScopeDetector
     {
         match (true) {
             $node instanceof Expr\FuncCall => $this->call($node),
+            $node instanceof Node\Scalar\String_ => self::isIoFunction(\strtolower(\ltrim($node->value, '\\'))) and $this->namesIo = true,
             $node instanceof Expr\New_ => $this->new($node),
             $node instanceof Expr\MethodCall, $node instanceof Expr\NullsafeMethodCall => $node->name instanceof Node\Identifier
                 && \in_array($node->name->toLowerString(), ['gettrace', 'gettraceasstring'], true)
@@ -200,9 +248,11 @@ final class DynamicScopeDetector
             $node instanceof Expr\Variable => \is_string($node->name)
                 ? $node->name === 'GLOBALS' && $this->add(Flag::Global)
                 : $this->add(Flag::VariableVariable),
-            $node instanceof Node\Scalar\MagicConst\Line,
-            $node instanceof Node\Scalar\MagicConst\Function_,
-            $node instanceof Node\Scalar\MagicConst\Method => $this->add(Flag::MagicConstant),
+            $node instanceof Node\Scalar\MagicConst\Line => $this->add(Flag::MagicConstant),
+            $node instanceof Node\Scalar\MagicConst\Function_ => $this->add($this->nameHasLine ? Flag::MagicConstant : Flag::FunctionName),
+            $node instanceof Node\Scalar\MagicConst\Method => $this->add(
+                $this->nameHasLine || ($this->class instanceof Stmt\Class_ && $this->class->name === null) ? Flag::MagicConstant : Flag::FunctionName,
+            ),
             $node instanceof Expr\Eval_ => $this->add(Flag::Eval),
             $node instanceof Expr\Include_ => $this->add(Flag::Include),
             $node instanceof Stmt\Static_ => $this->add(Flag::StaticVar),
@@ -216,24 +266,34 @@ final class DynamicScopeDetector
         };
     }
 
+    /**
+     * The body calls a function it does not name, and names an I/O function in a string.
+     */
+    private function callsIoDynamically(): bool
+    {
+        return $this->callsDynamically && $this->namesIo;
+    }
+
     private function call(Expr\FuncCall $node): void
     {
+        if (!$node->name instanceof Name) {
+            # A closure called in place is the code right here; anything else is named at run time.
+            $node->name instanceof Expr\Closure || $node->name instanceof Expr\ArrowFunction or $this->callsDynamically = true;
+            return;
+        }
+
         $name = self::globalFunction($node->name);
         if ($name === null) {
             return;
         }
 
+        \in_array($name, self::CALLING, true) and $this->callsDynamically = true;
         if (isset(self::FUNCTIONS[$name])) {
             $this->add(self::FUNCTIONS[$name]);
             return;
         }
 
-        foreach (self::IO_PREFIXES as $prefix) {
-            if (\str_starts_with($name, $prefix)) {
-                $this->add(Flag::Io);
-                return;
-            }
-        }
+        self::isIoFunction($name) and $this->add(Flag::Io);
     }
 
     private function new(Expr\New_ $node): void

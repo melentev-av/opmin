@@ -7,10 +7,12 @@ namespace Opmin\Module\Verification;
 use Internal\Path;
 use Opmin\Module\Analysis\Flag;
 use Opmin\Module\Common\FileSystem\FS;
+use Opmin\Module\Common\Timings;
 use Opmin\Module\Config\Schema\CoverageDriver;
 use Opmin\Module\Config\Schema\Verification as Config;
 use Opmin\Module\Harness\HarnessException;
 use Opmin\Module\Harness\Session;
+use Opmin\Module\Harness\Worker;
 use Opmin\Module\Harness\WorkerOptions;
 use Opmin\Module\Php\PhpBinary;
 use Opmin\Module\Verification\Compare\ComparisonPolicy;
@@ -30,6 +32,7 @@ use Opmin\Module\Verification\Property\Discard;
 use Opmin\Module\Verification\Property\PropertyOutcome;
 use Opmin\Module\Verification\Property\PropertyRunner;
 use Opmin\Module\Verification\Property\PropertySpec;
+use Opmin\Module\Verification\Property\Stop;
 use Opmin\Module\Verification\Target\Target;
 use Opmin\Module\Verification\Target\TargetLocator;
 use Opmin\Module\Verification\Target\UnsupportedTarget;
@@ -43,7 +46,9 @@ use Opmin\Module\Verification\Target\UnsupportedTarget;
  * `ErrorException` when any warning occurred. An input the original cannot take (it hangs, the input
  * cannot be built) is discarded. Inputs: the plan of boundary values and literals, random inputs,
  * then coverage-guided mutations within `fuzz_time_ms` while branches of the original stay uncovered.
- * A difference is shrunk to a minimal counterexample.
+ * A difference is shrunk to a minimal counterexample. The whole test is limited by `time_budget_ms`
+ * (coverage decides on what was checked by then); a few inputs in a row the original times out or runs
+ * out of memory on end it as unverified.
  *
  * @internal
  */
@@ -54,6 +59,12 @@ final class DiffTester
 
     /** Inputs per round of the coverage-guided search. */
     private const FUZZ_ROUND = 25;
+
+    /**
+     * Inputs in a row the original times out or runs out of memory on that end the test: each costs
+     * `call_timeout_ms` or new workers and says nothing, and the next ones are drawn the same way.
+     */
+    private const TIMEOUTS_IN_ROW = 5;
 
     /** @var list<Input> Inputs both versions took in the last test: the inputs of the benchmark. */
     private array $checkedInputs = [];
@@ -67,6 +78,7 @@ final class DiffTester
         private readonly TargetLocator $locator = new TargetLocator(),
         private readonly Instrumenter $instrumenter = new Instrumenter(),
         private readonly bool $measure = false,
+        private readonly Timings $timings = new Timings(),
     ) {}
 
     public function verify(DiffTask $task): Verdict
@@ -90,6 +102,42 @@ final class DiffTester
     }
 
     /**
+     * Inputs both versions took in the last test ({@see self::perf()} times them); at most 1000.
+     *
+     * @return list<Input>
+     */
+    public function checkedInputs(): array
+    {
+        return $this->checkedInputs;
+    }
+
+    /**
+     * The verdict with the time of both versions on the given inputs, measured on its own: the guard-perf
+     * of a test that ran in another process ({@see DiffPool}), one after another so that nothing else
+     * runs at the same time.
+     *
+     * @param list<Input> $inputs
+     */
+    public function perf(DiffTask $task, Verdict $verdict, array $inputs): Verdict
+    {
+        try {
+            $original = $this->locator->locate($task->original, $task->key, $task->relative);
+            $changed = $this->locator->locate($task->changed, $task->key, $task->relative);
+        } catch (UnsupportedTarget) {
+            return $verdict;
+        }
+
+        $dir = $this->workDir->join('perf-' . \bin2hex(\random_bytes(6)));
+        FS::mkdir((string) $dir);
+        $this->checkedInputs = $inputs;
+        try {
+            return $this->timings->measure('diff_test.perf', fn(): Verdict => $this->withPerf($verdict, $task, $original, $changed, $dir));
+        } finally {
+            FS::remove($dir);
+        }
+    }
+
+    /**
      * @param array{array<string, mixed>, array<string, mixed>} $requests
      * @return array{array<string, mixed>, array<string, mixed>}
      */
@@ -99,6 +147,49 @@ final class DiffTester
         $changed->begin($requests[1]);
 
         return [$original->end(), $changed->end()];
+    }
+
+    /**
+     * The function of {@see Worker::DISABLED} a call ran into: PHP reports a disabled function as undefined.
+     *
+     * @param array<string, mixed> $result
+     * @return non-empty-string|null
+     */
+    private static function disabledCall(array $result): ?string
+    {
+        /** @var list<array<string, mixed>> $calls */
+        $calls = \is_array($result['calls'] ?? null) ? $result['calls'] : [$result];
+        $pattern = '/^Call to undefined function (?:[\w\\\\]+\\\\)?(' . \implode('|', Worker::DISABLED) . ')\(\)$/';
+        foreach ($calls as $call) {
+            /** @var mixed $exception */
+            $exception = $call['exception'] ?? null;
+            for ($depth = 0; \is_array($exception) && $depth < 16; ++$depth) {
+                if (\is_string($exception['message'] ?? null) && \preg_match($pattern, $exception['message'], $m) === 1) {
+                    /** @var non-empty-string One of the names in the pattern. */
+                    return $m[1];
+                }
+
+                $exception = $exception['previous'] ?? null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The call ended in a fatal error of `memory_limit` (a generated length, `str_repeat()` of 2.8e18 bytes).
+     *
+     * @param array<string, mixed> $result
+     */
+    private static function outOfMemory(array $result): bool
+    {
+        /** @var list<array<string, mixed>> $calls */
+        $calls = \is_array($result['calls'] ?? null) ? $result['calls'] : [];
+        $last = $calls === [] ? [] : $calls[\count($calls) - 1];
+        $message = $last['message'] ?? null;
+
+        return ($result['status'] ?? null) === 'fatal' && ($last['status'] ?? null) === 'fatal' && \is_string($message)
+            && \preg_match('/^(?:Allowed memory size of \d+ bytes exhausted|Out of memory)/', $message) === 1;
     }
 
     /**
@@ -217,7 +308,7 @@ final class DiffTester
             if ($this->measure && $verdict->accepted()) {
                 $originalSession->close();
                 $changedSession->close();
-                $verdict = $this->withPerf($verdict, $task, $original, $changed, $dir);
+                $verdict = $this->timings->measure('diff_test.perf', fn(): Verdict => $this->withPerf($verdict, $task, $original, $changed, $dir));
             }
 
             return $verdict;
@@ -237,8 +328,11 @@ final class DiffTester
      */
     private function test(DiffTask $task, Target $original, Target $changed, Session $originalSession, Session $changedSession, int $probes, bool $lines, bool $static, array $deadProbes, array $deadLines): Verdict
     {
+        $start = \hrtime(true);
         $describedOriginal = $this->describe($originalSession, $original);
         $describedChanged = $this->describe($changedSession, $changed);
+        # The workers start with the first request: the start is in this time.
+        $this->timings->add('diff_test.start', (float) (\hrtime(true) - $start) / 1e9);
         $parser = $this->parser($task->original, $original);
         $signature = Signature::fromDescribe($describedOriginal, $parser, $original->receiver);
         $signatureChanged = self::signatureKey($describedOriginal) !== self::signatureKey($describedChanged);
@@ -268,14 +362,36 @@ final class DiffTester
         $inputs = [];
         $range = [(int) ($describedOriginal['line'] ?? 0), (int) ($describedOriginal['end_line'] ?? 0)];
         $file = (string) $task->file;
-        $check = static function (Input $input) use ($original, $changed, $originalSession, $changedSession, $comparator, $feedback, $static, $lines, $range, $file, $deadLines, &$checked, &$inputs): void {
+        $timeouts = new TimeoutStreak(self::TIMEOUTS_IN_ROW);
+        /** @var non-empty-string|null $disabled A function of {@see Worker::DISABLED} the code called. */
+        $disabled = null;
+        $check = static function (Input $input) use ($original, $changed, $originalSession, $changedSession, $comparator, $feedback, $static, $lines, $range, $file, $deadLines, $timeouts, &$disabled, &$checked, &$inputs): void {
+            # Once stopped, no input is run any more: each one ends at once.
+            $timeouts->stopped() || $disabled !== null and throw new Stop();
             $repeat = $static ? 3 : 1;
             $requests = [
                 ['target' => $original->call, 'input' => $input->toArray(), 'errors' => 'record', 'repeat' => $repeat],
                 ['target' => $changed->call, 'input' => $input->toArray(), 'errors' => 'record', 'repeat' => $repeat],
             ];
             [$o1, $c1] = self::both($originalSession, $changedSession, $requests);
-            if (\in_array($o1['status'] ?? null, ['unbuildable', 'timeout', 'crashed'], true)) {
+            # A process function on a generated input: what it would do is not to be tried here.
+            $disabled = self::disabledCall($o1) ?? self::disabledCall($c1);
+            $disabled === null or throw new Stop();
+            $status = $o1['status'] ?? null;
+            if ($status === 'timeout') {
+                # The original cannot take this input either, and it cost call_timeout_ms.
+                throw $timeouts->timedOut() ? new Stop() : new Discard();
+            }
+
+            if (self::outOfMemory($o1) && !self::hasErrors($o1) && !self::hasErrors($c1) && $comparator->compare($o1, $c1) === null) {
+                # Both versions ran out of memory_limit alike: the input says nothing more, and every call
+                # of it costs a new worker for each version (start and load). A difference is compared below.
+                throw $timeouts->outOfMemory() ? new Stop() : new Discard();
+            }
+
+            # An input that cannot be built never reached the function: it does not break the row.
+            $status === 'unbuildable' or $timeouts->ran();
+            if (\in_array($status, ['unbuildable', 'crashed'], true)) {
                 # The original cannot take this input: nothing to compare.
                 throw new Discard();
             }
@@ -283,6 +399,7 @@ final class DiffTester
             [$o2, $c2] = self::both($originalSession, $changedSession, $requests);
             $noise = $comparator->compare($o1, $o2);
             if ($noise !== null) {
+                $timeouts->failed();
                 throw new Nondeterminism($noise, 'original');
             }
 
@@ -297,22 +414,38 @@ final class DiffTester
                 [$o1, $changedResult] = [$ot, $ct];
             }
 
-            $difference === null or throw new Mismatch($difference, $o1, $changedResult);
+            if ($difference !== null) {
+                $timeouts->failed();
+                throw new Mismatch($difference, $o1, $changedResult);
+            }
+
             ++$checked;
             \count($inputs) < 1000 and $inputs[] = $input;
         };
 
         $id = $task->relative . '::' . $task->key;
         $seed = $this->config->seed;
-        $outcome = $this->runner->run(
-            new PropertySpec($id, \max(1, \count($planner->plan()) + $this->config->randomInputs), $seed, corpus: $this->corpus),
+        # The budget of the whole test: the start of the workers, the inputs, the search. The shrinking of
+        # a difference is never cut short by it (the engine limits only the generated inputs).
+        $budget = $start + $this->config->timeBudgetMs * 1_000_000;
+        # Planned and random inputs; the shrinking of a difference found among them is in this time too.
+        $outcome = $this->timings->measure('diff_test.inputs', fn(): PropertyOutcome => $this->runner->run(
+            new PropertySpec(
+                $id,
+                \max(1, \count($planner->plan()) + $this->config->randomInputs),
+                $seed,
+                budgetMs: \max(1, \intdiv($budget - \hrtime(true), 1_000_000)),
+                corpus: $this->corpus,
+            ),
             $planner,
             $shrinker,
             $check,
-        );
+        ));
+        $outOfTime = $outcome->outOfTime;
+        $fuzzStart = \hrtime(true);
 
-        $deadline = \hrtime(true) + $this->config->fuzzTimeMs * 1_000_000;
-        for ($round = 1; !$outcome->isFalsified() && !$feedback->complete() && \hrtime(true) < $deadline; ++$round) {
+        $deadline = \min($budget, \hrtime(true) + $this->config->fuzzTimeMs * 1_000_000);
+        for ($round = 1; !$timeouts->stopped() && $disabled === null && !$outcome->isFalsified() && !$feedback->complete() && \hrtime(true) < $deadline; ++$round) {
             $planner->fuzz();
             $left = \max(1, \intdiv($deadline - \hrtime(true), 1_000_000));
             $outcome = $this->runner->run(
@@ -323,9 +456,19 @@ final class DiffTester
             );
         }
 
+        if ($round > 1) {
+            $this->timings->add('diff_test.fuzz', (float) (\hrtime(true) - $fuzzStart) / 1e9);
+            $this->timings->count('fuzz_rounds', $round - 1);
+        }
+
+        $stopped = $timeouts->stopped();
+        # The search ended by the budget, not by its own limit.
+        $outOfTime = $outOfTime || !$stopped && !$outcome->isFalsified() && !$feedback->complete() && \hrtime(true) >= $budget;
+        $outOfTime and $this->timings->count('time_budget_spent');
+        $stopped and $this->timings->count($timeouts->outOfMemoryInRow() === 0 ? 'original_timeouts_stop' : 'original_out_of_memory_stop');
         $this->checkedInputs = $inputs;
 
-        return $this->verdict($task, $original, $outcome, $feedback, $checked, $lines);
+        return $this->verdict($task, $original, $outcome, $feedback, $checked, $lines, $timeouts, $disabled);
     }
 
     /**
@@ -360,7 +503,12 @@ final class DiffTester
         );
     }
 
-    private function verdict(DiffTask $task, Target $original, PropertyOutcome $outcome, Feedback $feedback, int $checked, bool $lines): Verdict
+    /**
+     * @param TimeoutStreak $timeouts Stopped: the original timed out or ran out of memory on
+     *        {@see self::TIMEOUTS_IN_ROW} inputs in a row.
+     * @param non-empty-string|null $disabled A process function the code called on an input.
+     */
+    private function verdict(DiffTask $task, Target $original, PropertyOutcome $outcome, Feedback $feedback, int $checked, bool $lines, TimeoutStreak $timeouts, ?string $disabled = null): Verdict
     {
         $flags = $original->flags;
         $coverage = $feedback->percent();
@@ -395,6 +543,35 @@ final class DiffTester
                 $failure instanceof Nondeterminism => 'nondeterministic: ' . $failure->getMessage(),
                 $failure instanceof HarnessException => 'the harness failed: ' . $failure->getMessage(),
                 default => 'the differential test failed: ' . $failure::class . ': ' . $failure->getMessage(),
+            });
+        }
+
+        # Before every other reason: no later input was run, whatever the coverage of the earlier ones.
+        if ($disabled !== null) {
+            return $base(VerdictStatus::Unverified, "calls {$disabled}() on generated inputs (the harness does not start processes): only the project's tests can prove it");
+        }
+
+        if ($timeouts->stopped()) {
+            $memory = $timeouts->outOfMemoryInRow();
+
+            return $base(VerdictStatus::Unverified, match (true) {
+                $memory === 0 => \sprintf(
+                    'the original times out on generated inputs: %d in a row ran past verification.call_timeout_ms (%d ms)',
+                    self::TIMEOUTS_IN_ROW,
+                    $this->config->callTimeoutMs,
+                ),
+                $memory >= self::TIMEOUTS_IN_ROW => \sprintf(
+                    'the original runs out of memory on generated inputs: %d in a row exhausted verification.memory_limit (%s)',
+                    self::TIMEOUTS_IN_ROW,
+                    $this->config->memoryLimit,
+                ),
+                default => \sprintf(
+                    'the original runs out of memory or times out on generated inputs: %d in a row exhausted'
+                    . ' verification.memory_limit (%s) or ran past verification.call_timeout_ms (%d ms)',
+                    self::TIMEOUTS_IN_ROW,
+                    $this->config->memoryLimit,
+                    $this->config->callTimeoutMs,
+                ),
             });
         }
 

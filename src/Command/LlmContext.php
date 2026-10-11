@@ -4,11 +4,6 @@ declare(strict_types=1);
 
 namespace Opmin\Command;
 
-use Opmin\Module\Analysis\ReferenceIndex;
-use Opmin\Module\Config\Schema;
-use Opmin\Module\Llm\Context;
-use Opmin\Module\Opcode\FunctionCount;
-use Opmin\Module\Optimize\Units;
 use Opmin\Module\Php\PhpBinaryException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -56,44 +51,11 @@ final class LlmContext extends LlmStage
             $target = $session->target($key) ?? throw new \InvalidArgumentException(
                 "`{$key}` is not a target of the session {$project->relative($session->runDir)}: see `opmin llm:targets`.",
             );
-            $file = $project->root->join($target->file);
-            $cacheDir = $this->cacheDir();
-            $counter = $this->counter($php);
-            $result = $counter->count($project, [$file]);
-            $result->errors === [] or throw new \RuntimeException(\implode("\n", $result->errors));
-            $listings = $counter->listings($project, $file);
+            $context = $this->context($project, $php, $session, $target);
         } catch (PhpBinaryException|\InvalidArgumentException|\RuntimeException $e) {
             $style->error($e->getMessage());
             return Command::INVALID;
         }
-
-        $counts = [];
-        foreach (ReferenceIndex::build($project, $cacheDir, $this->cacheStore())->apply($result->functions) as $function) {
-            $counts[$function->key] = $function;
-        }
-
-        $units = Units::of((string) \file_get_contents((string) $file), $target->file);
-        if (!isset($units->units[$target->key])) {
-            $style->error("`{$target->key}` is no longer in {$target->file}.");
-            return Command::INVALID;
-        }
-
-        /** @var Schema\Llm $llm */
-        $llm = $this->container->get(Schema\Llm::class);
-        /** @var Schema\Readability $readability */
-        $readability = $this->container->get(Schema\Readability::class);
-        /** @var Schema\Signatures $signatures */
-        $signatures = $this->container->get(Schema\Signatures::class);
-        $context = new Context(
-            $target,
-            $units,
-            \array_filter($counts, static fn(FunctionCount $f): bool => $f->file === $target->file),
-            $listings,
-            $session->attempts($target->key),
-            $llm->attemptsPerFunction,
-            $readability,
-            $signatures,
-        );
 
         $output->write($format === 'json' ? self::json($context->toArray()) : $context->render(), false, OutputInterface::OUTPUT_RAW);
 

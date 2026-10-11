@@ -4,13 +4,22 @@ opmin rewrote functions so that PHP compiles them to fewer opcodes, and kept a c
 saved opcodes and the function behaved exactly as before. Opcodes are counted per function with
 OPcache of `php.binary` (see Environment).
 
-**40 → 33 opcodes** (−7, −17.5%) in 2 function(s); 3 change(s) rolled back.
+**40 → 33 opcodes** (−7, −17.5%) in 2 function(s); 5 change(s) rolled back.
 
 - Full run of the project's tests: passes.
 - Patch: `runs/20261007-120000/opmin.patch`.
 
 > [!WARNING]
 > php changed since the run 20261006-100000: 8.4.11 → 8.4.12 (opcode counts are not comparable).
+
+## What to do next
+
+- Enable pcov or Xdebug in `php.binary`: without a coverage map the project's tests prove no function. (1 rolled back)
+- A change behaved differently on some input: the report shows the input. From a rule of opmin, that is a bug: please report it. (1 rolled back)
+- Native types of overridable methods change only with `--allow-public-signatures` or `signatures.public_api: true` (applications, not packages). (1 rolled back)
+
+> [!CAUTION]
+> Last resort: `--allow-unverified` keeps unproven changes. Warning: their behavior may differ, unnoticed. (1 rolled back)
 
 ## Changed functions
 
@@ -67,6 +76,22 @@ Counterexample for `App\Cart::price` (test: `runs/20261007-120000/counterexample
 }
 ```
 
+### Behavior not proven (1)
+
+Nothing proved that the function behaves as before: the generated inputs reached too little of its code (verification.min_branch_coverage), it has side effects or is nondeterministic, and no project test runs it. «What to do next» says how to prove it.
+
+| Function | Rule | Reason |
+|---|---|---|
+| `App\Cart::save`<br>src/Cart.php | FullyQualifyGlobalCallsRector | not proven: side effects (io): only the project's tests can prove the change |
+
+### Signature rules (1)
+
+The change would alter the signature or the docblock of the function, which the `signatures.*` settings do not allow.
+
+| Function | Rule | Reason |
+|---|---|---|
+| `App\Cart::count`<br>src/Cart.php | FullyQualifyGlobalCallsRector | changes native types of an overridable method (signatures.public_api) |
+
 ### Not worth the code change (1)
 
 The change saved opcodes and behaved the same, but it makes the code harder to read than the gain is worth (`readability.*`): too few opcodes saved per changed line, more branches or deeper nesting, or a forbidden construct.
@@ -98,3 +123,7 @@ PHP version and OPcache optimizer settings.
 | PHPStan of the project | 2.1.30 |
 | Test runner | phpunit |
 | Formatter | vendor/bin/pint {files} (pint.json) |
+
+## Notes
+
+- No coverage map of the project's tests (Xdebug or pcov in php.binary): all tests are run.

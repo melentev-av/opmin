@@ -60,9 +60,12 @@ final class RunReportTest
             'saved' => 7,
             'percent' => 17.5,
             'functions_changed' => 2,
-            'changes_rolled_back' => 3,
+            'changes_rolled_back' => 5,
         ]);
-        Assert::same(\array_column($data['rejected'], 'kind'), ['no_gain', 'diff_test', 'readability']);
+        Assert::same(\array_column($data['rejected'], 'kind'), ['no_gain', 'diff_test', 'not_proven', 'signature', 'readability']);
+        # A runner without a coverage map: the map is what the change of `save` lacks.
+        Assert::same(\array_column($data['rejected'], 'cause'), ['no_gain', 'diff_test', 'not_proven.no_coverage_map', 'signature.public_api', 'readability']);
+        Assert::same(\array_column($data['advice'], 'cause'), ['not_proven.no_coverage_map', 'diff_test', 'signature.public_api', 'not_proven']);
     }
 
     private static function report(): RunReport
@@ -73,7 +76,10 @@ final class RunReportTest
         $report->opsAfter = 33;
         $report->finalTests = true;
         $report->patch = 'runs/20261007-120000/opmin.patch';
-        $report->notes = ['Formatter: vendor/bin/pint {files} (pint.json)'];
+        $report->notes = [
+            'Formatter: vendor/bin/pint {files} (pint.json)',
+            'No coverage map of the project\'s tests (Xdebug or pcov in php.binary): all tests are run.',
+        ];
         $report->functions = [
             'App\Cart::total' => ['file' => 'src/Cart.php', 'ops_after' => 13, 'flags' => ['io']],
             'App\Cart::sum' => ['file' => 'src/Cart.php', 'ops_after' => 12, 'flags' => []],
@@ -89,6 +95,8 @@ final class RunReportTest
             'test' => 'runs/20261007-120000/counterexamples/CartPriceTest.php',
             'input' => ['args' => [['kind' => 'string', 'value' => '1.5']]],
         ]);
+        $fqn->reject('src/Cart.php', 'App\Cart::save', 'not proven: side effects (io): only the project\'s tests can prove the change');
+        $fqn->reject('src/Cart.php', 'App\Cart::count', 'changes native types of an overridable method (signatures.public_api)');
         $report->steps[] = $fqn;
 
         $hoist = new StepReport(HoistLoopInvariantCountRector::class, 1);

@@ -8,8 +8,8 @@ use Internal\Path;
 
 /**
  * A global opmin (the binary or a PHAR in PATH) started inside a project that has its own opmin hands the
- * run over to it, so the version the project pinned is the one that runs: `vendor/bin/opmin` (the composer
- * package with the PHAR) or `opmin` in the project root (the binary dload downloads).
+ * run over to it, so the version the project pinned is the one that runs: `vendor/bin/opmin` (installed by
+ * composer) or `opmin` in the project root (the binary dload downloads).
  *
  * `OPMIN_NO_DELEGATE=1` keeps the global one; the local one is started with `OPMIN_DELEGATED=1`, so it never
  * hands over again.

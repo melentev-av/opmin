@@ -65,6 +65,7 @@ final class MarkdownReport
             $out[] = '';
         }
 
+        self::advice($out, $report);
         self::functions($out, $report);
         self::executed($out, $report);
         self::rejected($out, $report);
@@ -88,6 +89,36 @@ final class MarkdownReport
         }
 
         return \rtrim(\implode("\n", $out)) . "\n";
+    }
+
+    /**
+     * What to do so that more changes are kept ({@see Advice}); the last-resort line as a warning.
+     *
+     * @param list<string> $out
+     * @param array<string, mixed> $report
+     */
+    private static function advice(array &$out, array $report): void
+    {
+        $lines = [];
+        $last = null;
+        foreach (Advice::fromReport($report) as $advice) {
+            $line = \sprintf('%s (%d rolled back)', $advice->text, $advice->count);
+            $advice->cause === Advice::LAST_RESORT ? $last = $line : $lines[] = '- ' . $line;
+        }
+
+        if ($lines === [] && $last === null) {
+            return;
+        }
+
+        $out[] = '## What to do next';
+        $out[] = '';
+        \array_push($out, ...$lines);
+        $lines === [] or $out[] = '';
+        if ($last !== null) {
+            $out[] = '> [!CAUTION]';
+            $out[] = '> ' . $last;
+            $out[] = '';
+        }
     }
 
     /**

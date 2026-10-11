@@ -50,6 +50,7 @@ final class ConfigSchemaTest
             'verification.coverage_driver',
             'verification.random_inputs',
             'verification.fuzz_time_ms',
+            'verification.time_budget_ms',
             'verification.seed',
             'verification.float_tolerance',
             'verification.call_timeout_ms',
@@ -76,6 +77,7 @@ final class ConfigSchemaTest
             'cache.dir',
             'cache.driver',
             'cache.recreate_corrupt',
+            'runs.keep',
         );
     }
 

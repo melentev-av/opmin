@@ -91,6 +91,34 @@ final class Session
     }
 
     /**
+     * The first unfinished target after `$current` in the session order: no accepted attempt and fewer
+     * than `$attemptsAllowed` attempts. Targets before it are not looked at again, so a target the
+     * model skipped stays skipped.
+     */
+    public function nextAfter(Target $current, int $attemptsAllowed): ?Target
+    {
+        $attempts = [];
+        foreach ($this->attempts() as $attempt) {
+            $attempts[\strtolower($attempt->function)][] = $attempt;
+        }
+
+        $after = false;
+        foreach ($this->targets as $target) {
+            if (!$after) {
+                $after = $target->key === $current->key;
+                continue;
+            }
+
+            $done = $attempts[\strtolower($target->key)] ?? [];
+            if (\count($done) < $attemptsAllowed && \array_filter($done, static fn(Attempt $a): bool => $a->accepted) === []) {
+                return $target;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Attempts so far, of one function or of all.
      *
      * @return list<Attempt>

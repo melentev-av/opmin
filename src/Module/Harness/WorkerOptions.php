@@ -20,6 +20,10 @@ final readonly class WorkerOptions
      *        resolve there, not in the project.
      * @param bool $opcache Compile with OPcache and the optimizer as in production, JIT off (time
      *        measurements); otherwise OPcache is off.
+     * @param bool $holdUntilStopped The worker does not end after the answer of its shutdown handler (a fatal
+     *        error, `exit()`) but waits until it is stopped. On Windows the stdout socket of a PHP 8.2+ process
+     *        loses what the orchestrator has not read yet when the process ends (#58): the answer read late
+     *        would be a crash.
      */
     public function __construct(
         public string $memoryLimit = '256M',
@@ -28,5 +32,6 @@ final readonly class WorkerOptions
         public ?string $coverage = null,
         public ?string $cwd = null,
         public bool $opcache = false,
+        public bool $holdUntilStopped = \PHP_OS_FAMILY === 'Windows',
     ) {}
 }

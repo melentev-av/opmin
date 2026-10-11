@@ -6,6 +6,7 @@ namespace Opmin\Module\Verification;
 
 use Internal\Path;
 use Opmin\Module\Common\FileSystem\FS;
+use Opmin\Module\Common\Timings;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Lint\PhpStanResult;
 use Opmin\Module\Lint\PhpStanRunner;
@@ -15,6 +16,9 @@ use Opmin\Module\Opcode\Locate\FunctionLocator;
 use Opmin\Module\Opcode\Locate\LocateException;
 use Opmin\Module\Opcode\Locate\UnitKind;
 use Opmin\Module\Php\PhpBinary;
+use Opmin\Module\Progress\Event;
+use Opmin\Module\Progress\Listener;
+use Opmin\Module\Progress\Silent;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Tests\CommandAdapter;
 use Opmin\Module\Tests\CoverageMap;
@@ -42,9 +46,6 @@ use Opmin\Module\Verification\Target\UnsupportedTarget;
  */
 final class Verifier
 {
-    /** @var \Closure(string): void */
-    private \Closure $log;
-
     private bool $baselineDone = false;
     private bool $originalTested = false;
 
@@ -63,8 +64,24 @@ final class Verifier
     private bool $runnerResolved = false;
 
     /**
+     * PHPStan on the code as it is on disk now, by {@see self::phpStanKey()}. A file's errors depend
+     * on other files too, so the whole map is dropped whenever a file is written ({@see self::written()}).
+     *
+     * @var array<string, PhpStanResult>
+     */
+    private array $phpStanOnDisk = [];
+
+    /**
+     * PHPStan on the candidates of the last check: when exactly they are written, it is PHPStan on
+     * the code on disk.
+     *
+     * @var array{string, array<string, string>, PhpStanResult}|null [fingerprint, file => candidate, result]
+     */
+    private ?array $phpStanOnCandidates = null;
+
+    /**
      * @param non-empty-string|null $phpTarget
-     * @param \Closure(string): void|null $log Progress messages.
+     * @param Listener $progress The progress of the checks.
      */
     public function __construct(
         private readonly Project $project,
@@ -74,11 +91,10 @@ final class Verifier
         private readonly Schema\Tests $tests,
         private readonly Path $cacheDir,
         private readonly ?string $phpTarget,
-        ?\Closure $log = null,
+        private readonly Listener $progress = new Silent(),
         private readonly ?Schema\GuardPerf $guardPerf = null,
-    ) {
-        $this->log = $log ?? static function (string $message): void {};
-    }
+        private readonly Timings $timings = new Timings(),
+    ) {}
 
     /**
      * The failed tests, or — when the runner reported none (it did not start, the config is broken) —
@@ -115,6 +131,8 @@ final class Verifier
      */
     public function verifyAll(array $changes, ?array $keys = null, bool $withTests = false, ?Path $counterexamples = null): CandidateReport
     {
+        # Only the candidates of the last check can be the ones written next.
+        $this->phpStanOnCandidates = null;
         $work = $this->cacheDir->join('tmp');
         FS::mkdir((string) $work);
         $notes = [];
@@ -123,7 +141,7 @@ final class Verifier
         foreach ($changes as [$file, $candidate]) {
             $original = (string) \file_get_contents((string) $file);
             $relative = $this->project->relative($file);
-            $syntax = (new SyntaxChecker($this->php, $work))->check($candidate);
+            $syntax = $this->timings->measure('lint', fn(): ?string => (new SyntaxChecker($this->php, $work))->check($candidate));
             if ($syntax !== null) {
                 return new CandidateReport([], \count($changes) > 1 ? "{$relative}: {$syntax}" : $syntax);
             }
@@ -146,8 +164,8 @@ final class Verifier
         }
 
         $autoload = $this->project->root->join('vendor/autoload.php');
-        $tester = new DiffTester($this->php, $this->verification, $work, $this->cacheDir->join('corpus'), measure: $this->guardPerf?->enabled ?? false);
-        $results = [];
+        $tasks = [];
+        $owners = [];
         foreach ($files as [$file, $relative, $original, $candidate, $changed]) {
             $others = [];
             foreach ($files as [$otherFile, , $otherOriginal, $otherCandidate]) {
@@ -155,8 +173,7 @@ final class Verifier
             }
 
             foreach ($changed as $key) {
-                ($this->log)("Differential test of {$key}");
-                $verdict = $tester->verify(new DiffTask(
+                $tasks[] = new DiffTask(
                     $key,
                     $file,
                     $relative,
@@ -165,12 +182,55 @@ final class Verifier
                     $autoload->isFile() ? $autoload : null,
                     $others,
                     $staticErrors[(string) $file] ?? [],
-                ));
-                $results[] = $this->decide($key, $verdict, $testsOf[(string) $file][$key] ?? [], $testResult?->success ?? false, $runner, $original, $relative, $counterexamples);
+                );
+                $owners[] = [$file, $relative, $original];
             }
         }
 
+        $pool = new DiffPool($this->php, $this->verification, $work, $this->cacheDir->join('corpus'), $this->timings, $this->progress);
+        $results = [];
+        foreach ($pool->verify($tasks, $this->guardPerf?->enabled ?? false) as $i => $verdict) {
+            [$file, $relative, $original] = $owners[$i];
+            $results[] = $this->decide($tasks[$i]->key, $verdict, $testsOf[(string) $file][$tasks[$i]->key] ?? [], $testResult?->success ?? false, $runner, $original, $relative, $counterexamples);
+        }
+
         return new CandidateReport($results, null, $phpstan, $runner?->name(), $testResult, $notes);
+    }
+
+    /**
+     * Tells the verifier that files of the project were written (an accepted step, a step taken
+     * back): PHPStan's results on the code before are stale. When the written files are the
+     * candidates of the last check, its PHPStan result on them is the result on the code now: the
+     * next check of the same files does not run PHPStan on the original again.
+     *
+     * Every write to the project between checks must be reported here, or a cached result may be stale.
+     *
+     * @param list<Path> $files Absolute.
+     */
+    public function written(array $files): void
+    {
+        $this->phpStanOnDisk = [];
+        $last = $this->phpStanOnCandidates;
+        $this->phpStanOnCandidates = null;
+        if ($last === null) {
+            return;
+        }
+
+        [$fingerprint, $candidates, $result] = $last;
+        foreach ($files as $file) {
+            if (!isset($candidates[(string) $file])) {
+                # Another file changed too: the result was computed without that change.
+                return;
+            }
+        }
+
+        foreach ($candidates as $file => $candidate) {
+            if ((string) @\file_get_contents($file) !== $candidate) {
+                return;
+            }
+        }
+
+        $this->phpStanOnDisk[self::phpStanKey($fingerprint, $candidates)] = $result;
     }
 
     /**
@@ -210,14 +270,28 @@ final class Verifier
         }
 
         $this->originalTested = true;
-        ($this->log)("Project tests on the original code ({$runner->name()})");
-        $result = $runner->runAll();
+        $this->progress->on(Event::originalTests($runner->name()));
+        $result = $this->timings->measure('once.tests_original', $runner->runAll(...));
         if (!$result->success) {
             $this->red = $result;
             $this->baselineNotes[] = 'The project\'s tests fail on the original code: fix them first. ' . self::whyRed($result);
         }
 
         return $this->red;
+    }
+
+    /**
+     * @param array<string, string> $contents Analysed file => its content on disk.
+     */
+    private static function phpStanKey(string $fingerprint, array $contents): string
+    {
+        \ksort($contents);
+
+        return \sha1($fingerprint . "\0" . \implode("\0", \array_map(
+            static fn(string $file, string $content): string => $file . "\0" . \sha1($content),
+            \array_keys($contents),
+            $contents,
+        )));
     }
 
     private static function source(string $code, CodeUnit $unit): string
@@ -239,12 +313,20 @@ final class Verifier
      */
     private function levelsOneAndTwo(array $files, ?TestRunnerAdapter $runner, Path $work, array &$notes): array
     {
-        $phpstan = new PhpStanRunner($this->project, $this->php, $this->commands->phpstan, $this->phpTarget, $work);
+        $phpstan = new PhpStanRunner($this->project, $this->php, $this->commands->phpstan, $this->phpTarget, $work, tmpDir: $this->cacheDir->join('phpstan'));
         $phpstan->available() or $notes[] = 'PHPStan is not installed (commands.phpstan): the static check is skipped.';
         $runner === null and $notes[] = 'No test runner found (tests.runner): the project\'s tests are not run.';
 
         $paths = \array_map(static fn(array $f): Path => $f[0], $files);
-        $before = $phpstan->available() ? $phpstan->analyse($paths) : null;
+        $originals = [];
+        $candidates = [];
+        foreach ($files as [$file, , $original, $candidate]) {
+            $originals[(string) $file] = $original;
+            $candidates[(string) $file] = $candidate;
+        }
+
+        $fingerprint = $phpstan->available() ? $phpstan->fingerprint() : '';
+        $before = $phpstan->available() ? $this->phpStanBefore($phpstan, $paths, self::phpStanKey($fingerprint, $originals)) : null;
         $own = [];
         foreach ($paths as $file) {
             $real = \realpath((string) $file);
@@ -293,19 +375,21 @@ final class Verifier
 
             $new = [];
             if ($before !== null) {
-                ($this->log)('PHPStan on the changed code');
-                $new = PhpStanResult::newErrors($before, $phpstan->analyse($paths));
+                $this->progress->on(Event::phpStan());
+                $onCandidates = $this->timings->measure('phpstan.after', static fn(): PhpStanResult => $phpstan->analyse($paths));
+                $onCandidates->ran and $this->phpStanOnCandidates = [$fingerprint, $candidates, $onCandidates];
+                $new = PhpStanResult::newErrors($before, $onCandidates);
             }
 
             $after = null;
             if ($runner !== null && $this->coverage !== null) {
                 # Only the tests that execute a changed function can see the change.
                 $selected = \array_values(\array_unique($selected));
-                ($this->log)('Project tests on the changed code: ' . \count($selected) . ' that execute the changed functions');
-                $after = $runner->runFiltered($selected);
+                $this->progress->on(Event::tests(\count($selected)));
+                $after = $this->timings->measure('tests', static fn(): TestResult => $runner->runFiltered($selected));
             } elseif ($runner !== null) {
-                ($this->log)('Project tests on the changed code');
-                $after = $runner->runAll();
+                $this->progress->on(Event::tests(null));
+                $after = $this->timings->measure('tests', $runner->runAll(...));
             }
 
             return [$new, $after, null, $own, $testsOf];
@@ -315,6 +399,30 @@ final class Verifier
                 FS::removeFile($backup);
             }
         }
+    }
+
+    /**
+     * PHPStan on the files as they are on disk. The same files with the same contents, while
+     * nothing in the project is written ({@see self::written()}), give the result of the last run:
+     * a later round of a step, the check after a review, a later step on the same files.
+     *
+     * @param list<Path> $paths
+     * @param string $key {@see self::phpStanKey()} of the files as they are on disk.
+     */
+    private function phpStanBefore(PhpStanRunner $phpstan, array $paths, string $key): PhpStanResult
+    {
+        $known = $this->phpStanOnDisk[$key] ?? null;
+        if ($known !== null) {
+            $this->timings->count('phpstan_before_cached');
+
+            return $known;
+        }
+
+        $result = $this->timings->measure('phpstan.before', static fn(): PhpStanResult => $phpstan->analyse($paths));
+        # A run without a report (a crash, a timeout) may pass the next time.
+        $result->ran and $this->phpStanOnDisk[$key] = $result;
+
+        return $result;
     }
 
     /**
@@ -331,8 +439,13 @@ final class Verifier
             return;
         }
 
-        $this->coverage = $runner->collectCoverageMap();
-        $this->coverage === null and $this->baselineNotes[] = 'No coverage map of the project\'s tests (Xdebug or pcov in php.binary): all tests are run.';
+        $this->progress->on(Event::coverageMap());
+        $this->coverage = $this->timings->measure('once.coverage_map', $runner->collectCoverageMap(...));
+        if ($this->coverage === null) {
+            $this->baselineNotes[] = 'No coverage map of the project\'s tests (Xdebug or pcov in php.binary): all tests are run.';
+            # Every step then pays for the whole suite: worth knowing at the start, not only in the report.
+            $this->progress->on(Event::warning('No coverage map of the project\'s tests: every step runs the whole test suite'));
+        }
     }
 
     private function runner(Path $work): ?TestRunnerAdapter

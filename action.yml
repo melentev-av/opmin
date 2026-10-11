@@ -1,0 +1,99 @@
+---
+
+# The CI guard of opmin as a GitHub Action: `opmin check` in the image with the PHP of production.
+#
+#   - uses: actions/checkout@v5
+#     with:
+#       fetch-depth: 0              # the base branch is needed for the changed-files mode
+#   - uses: melentev-av/opmin@v0.4.0
+#     with:
+#       php: '8.3'                  # the PHP minor of production
+#
+# Composite, not a Docker action: the image of a Docker action is fixed, while the image here depends on
+# the inputs. The image (not setup-php on the runner) because the baseline is compared by the PHP minor
+# and the loaded Zend extensions: a baseline taken with the same image locally matches the check.
+
+name: opmin check
+description: Fails a pull request whose PHP functions grew in opcodes (opmin check against opmin.baseline.json)
+author: melentev-av
+
+branding:
+  icon: minimize-2
+  color: blue
+
+inputs:
+  php:
+    description: PHP minor of production (8.1…8.5); the image ghcr.io/melentev-av/opmin:<version>-php<php> runs the check
+    required: true
+  version:
+    description: opmin version of the image (e.g. 0.4.0); default — the release tag the action is used at (melentev-av/opmin@v0.4.0)
+    required: false
+    default: ''
+  base:
+    description: Base ref of the changed-files mode; default — origin/<base branch> of the pull request, check.base_ref otherwise
+    required: false
+    default: ''
+  format:
+    description: Output format of opmin check (table, json, github, gitlab, checkstyle)
+    required: false
+    default: github
+  args:
+    description: More arguments of opmin check, split on spaces (e.g. --all, --suggest)
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: opmin check
+      shell: bash
+      env:
+        OPMIN_PHP: ${{ inputs.php }}
+        OPMIN_VERSION: ${{ inputs.version }}
+        OPMIN_BASE: ${{ inputs.base }}
+        OPMIN_FORMAT: ${{ inputs.format }}
+        OPMIN_ARGS: ${{ inputs.args }}
+        OPMIN_ACTION_REF: ${{ github.action_ref }}
+        OPMIN_ACTION_PATH: ${{ github.action_path }}
+        OPMIN_BASE_REF: ${{ github.base_ref }}
+      run: |
+        set -euo pipefail
+
+        if [ "$RUNNER_OS" != Linux ]; then
+          echo "::error title=opmin::The opmin action runs the check in a Docker image and needs a Linux runner (runs-on: ubuntu-latest), not $RUNNER_OS."
+          exit 2
+        fi
+
+        if ! [[ "$OPMIN_PHP" =~ ^[0-9]+\.[0-9]+$ ]]; then
+          echo "::error title=opmin::Input php must be the PHP minor of production, e.g. 8.3 (php -r 'echo PHP_MAJOR_VERSION.\".\".PHP_MINOR_VERSION;'), not '$OPMIN_PHP'."
+          exit 2
+        fi
+
+        version="$OPMIN_VERSION"
+        if [ -z "$version" ]; then
+          # github.action_ref is empty in some composite runs; the action path ends with the ref then.
+          ref="${OPMIN_ACTION_REF:-$(basename "$OPMIN_ACTION_PATH")}"
+          if [[ "$ref" =~ ^v?([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            version="${BASH_REMATCH[1]}"
+          else
+            echo "::error title=opmin::The action is not used at a release tag (ref '$ref'): set the input version to the opmin release of the image, e.g. version: 0.4.0."
+            exit 2
+          fi
+        fi
+        version="${version#v}"
+
+        base="$OPMIN_BASE"
+        if [ -z "$base" ] && [ -n "$OPMIN_BASE_REF" ]; then
+          base="origin/$OPMIN_BASE_REF"
+        fi
+
+        cmd=(opmin check "--format=$OPMIN_FORMAT")
+        [ -z "$base" ] || cmd+=("--base=$base")
+        # shellcheck disable=SC2206 # extra arguments are split on spaces on purpose
+        [ -z "$OPMIN_ARGS" ] || cmd+=($OPMIN_ARGS)
+
+        image="ghcr.io/melentev-av/opmin:$version-php$OPMIN_PHP"
+        echo "opmin: $image ${cmd[*]}"
+        docker run --rm -v "$GITHUB_WORKSPACE:/app" -w /app "$image" "${cmd[@]}"
+
+...

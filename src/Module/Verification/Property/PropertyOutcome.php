@@ -20,6 +20,8 @@ final readonly class PropertyOutcome
      * @param \Throwable|null $failure What the check threw for {@see $shrunk}.
      * @param bool $flaky The shrunk input passed on a replay: the failure does not reproduce.
      * @param bool $gaveUp Too many inputs were discarded to check {@see PropertySpec::$runs}.
+     * @param bool $outOfTime {@see PropertySpec::$budgetMs} ran out before {@see PropertySpec::$runs}
+     *        inputs were checked.
      */
     private function __construct(
         public int $checks,
@@ -30,14 +32,15 @@ final readonly class PropertyOutcome
         public int $shrinkSteps = 0,
         public bool $flaky = false,
         public bool $gaveUp = false,
+        public bool $outOfTime = false,
     ) {}
 
     /**
      * @param non-negative-int $checks
      */
-    public static function held(int $checks, int $seed, bool $gaveUp = false): self
+    public static function held(int $checks, int $seed, bool $gaveUp = false, bool $outOfTime = false): self
     {
-        return new self($checks, $seed, gaveUp: $gaveUp);
+        return new self($checks, $seed, gaveUp: $gaveUp, outOfTime: $outOfTime);
     }
 
     /**

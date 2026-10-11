@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Opmin\Command;
 
 use Internal\Path;
+use Opmin\Module\Analysis\IgnoreMarks;
 use Opmin\Module\Analysis\Shadow\ShadowIndex;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Config\Schema\NativeTypesPolicy;
@@ -12,6 +13,7 @@ use Opmin\Module\Optimize\Rector\RuleCatalog;
 use Opmin\Module\Optimize\Rector\RuleSpec;
 use Opmin\Module\Optimize\Review\ConsoleReviewer;
 use Opmin\Module\Optimize\Optimizer;
+use Opmin\Module\Optimize\RunHeader;
 use Opmin\Module\Optimize\RunReport;
 use Opmin\Module\Optimize\RunState;
 use Opmin\Module\Optimize\StepReport;
@@ -19,16 +21,21 @@ use Opmin\Module\Optimize\Workspace;
 use Opmin\Module\Package\PackageException;
 use Opmin\Module\Package\PackageRun;
 use Opmin\Module\Php\InternalSymbols;
+use Opmin\Module\Php\PhpBinary;
 use Opmin\Module\Php\PhpBinaryException;
 use Opmin\Module\Php\PhpBinaryProbe;
+use Opmin\Module\Progress\Renderer;
+use Opmin\Module\Progress\Renderers;
 use Opmin\Module\Project\Layout;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Project\Targets;
+use Opmin\Module\Report\ConsoleSummary;
 use Opmin\Module\Verification\Verifier;
 use Opmin\Rector\Rule\AbstractExtractRepeatedReadRector;
 use Opmin\Rector\Rule\FullyQualifyGlobalCallsRector;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -50,8 +57,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * Every run writes `.opmin/runs/<ts>/`: the counts before and after, `report.json`, `opmin.patch`, counterexamples.
  *
  * Exit codes: 0 — done (also when nothing could be improved); 1 — the full test run fails after the
- * optimization even with every step taken back, or a step failed; 2 — invalid config or usage, a
- * dirty git tree, an unusable `php.binary`.
+ * optimization even with every step taken back, a step failed, or an error stopped the run; 2 — invalid config or usage, a
+ * dirty git tree or one without commits, an unusable `php.binary`.
  *
  * @internal
  */
@@ -61,11 +68,6 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 final class Optimize extends Stage
 {
-    /** Options of later stages: [option, stage]. */
-    private const LATER = [
-        'mutation-check' => 'after the MVP',
-    ];
-
     /** Options that only make sense for a git package. */
     private const PACKAGE_ONLY = ['ref', 'no-docker', 'allow-scripts', 'force-public-api', 'yes'];
 
@@ -78,21 +80,22 @@ final class Optimize extends Stage
         $this->addArgument('path', InputArgument::IS_ARRAY, 'Files, directories, globs or a git URL');
         $this->addOption('ref', null, InputOption::VALUE_REQUIRED, 'Git ref (tag, branch) when the path is a git URL');
         $this->addOption('dry-run', null, InputOption::VALUE_NONE, 'Change nothing, only write the report and the patch');
+        $this->addOption('plan', null, InputOption::VALUE_NONE, 'Say what the run would use and exit: nothing is changed or tested');
         $this->addOption('review', null, InputOption::VALUE_NONE, 'Confirm every change interactively');
         $this->addOption('resume', null, InputOption::VALUE_OPTIONAL, 'Continue an interrupted run: the latest one or the given run directory');
         $this->addOption('guard-perf', null, InputOption::VALUE_NONE, 'Roll back changes that make code slower');
         $this->addOption('with-standard-rector', null, InputOption::VALUE_NONE, 'Enable the standard Rector rules for this run');
         $this->addOption('without-standard-rector', null, InputOption::VALUE_NONE, 'Disable the standard Rector rules for this run');
-        $this->addOption('rector-rule', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Run only the given Rector rule (FQCN), repeatable');
+        $this->addOption('rector-rule', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Run only the given Rector rule (alias, short or full class name), repeatable');
         $this->addOption('format', null, InputOption::VALUE_REQUIRED, 'Formatter: none, or a command with {files} (overrides commands.format)');
         $this->addOption('allow-unverified', null, InputOption::VALUE_NONE, 'Change functions whose behavior is not proven');
         $this->addOption('allow-public-signatures', null, InputOption::VALUE_NONE, 'Allow native type changes of public overridable methods');
         $this->addOption('force-public-api', null, InputOption::VALUE_NONE, 'Touch the public API in package mode');
-        $this->addOption('mutation-check', null, InputOption::VALUE_NONE, 'Report the mutation score of the target functions first');
         $this->addOption('no-docker', null, InputOption::VALUE_NONE, 'Do not re-run inside Docker in git package mode');
         $this->addOption('allow-scripts', null, InputOption::VALUE_NONE, 'Run composer scripts and plugins of a git package');
         $this->addOption('yes', 'y', InputOption::VALUE_NONE, 'Do not ask before running tests of foreign code');
         $this->addWithGitOption();
+        $this->addJobsOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -100,12 +103,6 @@ final class Optimize extends Stage
         parent::execute($input, $output);
         $errorOutput = $output instanceof ConsoleOutputInterface ? $output->getErrorOutput() : $output;
         $style = new SymfonyStyle($input, $errorOutput);
-        foreach (self::LATER as $option => $stage) {
-            if ($input->getOption($option) !== false && $input->getOption($option) !== null) {
-                $style->error("--{$option} is not implemented yet ({$stage}).");
-                return Command::INVALID;
-            }
-        }
 
         /** @var list<string> $arguments */
         $arguments = $input->getArgument('path');
@@ -118,6 +115,12 @@ final class Optimize extends Stage
                 $style->error("--{$option} is for a git package: opmin optimize <git-url> --ref=<tag>.");
                 return Command::INVALID;
             }
+        }
+
+        $jobs = $this->applyJobsOption($input);
+        if ($jobs !== null) {
+            $style->error($jobs);
+            return Command::INVALID;
         }
 
         if ($input->getOption('with-standard-rector') && $input->getOption('without-standard-rector')) {
@@ -185,6 +188,13 @@ final class Optimize extends Stage
         $cacheDir = $this->cacheDir();
         $runDir = $state?->runDir ?? $this->newRunDir($project);
         $dryRun = (bool) ($options['dry_run'] ?? false);
+        if ($input->getOption('plan')) {
+            # Before the workspace and the restore of a resumed run: the plan changes nothing.
+            $header = $this->header($style, $state, $project, $runDir, $php, $files, $rules, 'plan: nothing is changed or tested');
+
+            return $header ? Command::SUCCESS : Command::INVALID;
+        }
+
         try {
             if ($state !== null) {
                 $rewritten = $state->restore($project->root);
@@ -198,34 +208,39 @@ final class Optimize extends Stage
             return Command::INVALID;
         }
 
-        $style->writeln(\sprintf(
-            '%s %d file(s) of %s with %d rule(s), PHP %s (target %s), %s.',
-            $state === null ? 'Optimizing' : 'Resuming ' . $project->relative($runDir) . ':',
-            \count($files),
-            (string) $project->root,
-            \count($rules),
-            $php->version,
-            $phpTarget ?? 'unknown',
-            $workspace->mode(),
-        ));
+        if (!$this->header($style, $state, $project, $runDir, $php, $files, $rules, $workspace->mode())) {
+            return Command::INVALID;
+        }
 
         if ($state === null) {
             $rules = $this->withRuntimeOptions($rules, $project, $cacheDir, $runDir, $php);
             $state = RunState::start($runDir, \array_map($project->relative(...), $files), $rules, $options);
+            $this->pruneRuns($project, $runDir, $style);
         }
 
-        $optimizer = $this->optimizer($project, $php, $workspace, $output, (bool) ($options['allow_public_signatures'] ?? false));
+        # The progress goes to stderr: a line redrawn in place in a terminal, timestamped lines in a log.
+        $progress = Renderers::for($errorOutput);
+        $optimizer = $this->optimizer($project, $php, $workspace, $output, (bool) ($options['allow_public_signatures'] ?? false), $progress);
         [$environment, $warnings] = $this->environment($project, $php, $optimizer, $runDir);
+        $warnings = [...$warnings, ...$this->ignoreWarnings($project, $files, $rules)];
         $warnings === [] or $style->warning($warnings);
         if ($input->getOption('review')) {
             # Without a terminal (-n, CI, an agent) every change that passes the checks is applied.
             $input->isInteractive()
-                ? $optimizer->withReviewer(new ConsoleReviewer(new SymfonyStyle($input, $errorOutput)))
+                ? $optimizer->withReviewer(new ConsoleReviewer(new SymfonyStyle($input, $errorOutput), $progress->clear(...)))
                 : $style->warning('--review needs an interactive session: every change that passes the checks is applied.');
         }
 
         # Red tests prove nothing about a change: every change would be rolled back, so stop before any.
-        $red = $optimizer->failingTestsOnOriginal();
+        try {
+            $red = $optimizer->failingTestsOnOriginal();
+        } catch (\RuntimeException $e) {
+            $progress->clear();
+            return $this->stoppedOn($e, $style, $workspace, $project, $runDir);
+        } finally {
+            $progress->clear();
+        }
+
         if ($red !== null) {
             $style->error([
                 'The project\'s tests fail on the original code: fix them first, or set tests.runner to none to verify with the differential tests only.',
@@ -234,13 +249,22 @@ final class Optimize extends Stage
             return Command::FAILURE;
         }
 
-        $signalled = $this->onSignals($optimizer, $errorOutput);
-        $report = $optimizer->run($files, $rules, $state);
+        $signalled = $this->onSignals($optimizer, $errorOutput, $progress);
+        try {
+            $report = $optimizer->run($files, $rules, $state);
+        } catch (\RuntimeException $e) {
+            $progress->clear();
+            return $this->stoppedOn($e, $style, $workspace, $project, $runDir);
+        } finally {
+            $progress->clear();
+        }
+
         $report->environment = $environment;
         $report->warnings = $warnings;
         $patch = $workspace->finish();
         $report->patch = $patch === null ? null : $project->relative($patch);
         $report->write();
+        $this->logTimings($optimizer, $output);
         $this->summary(new SymfonyStyle($input, $output), $report, $project, $runDir, $dryRun);
         if ($signalled()) {
             return 130;
@@ -367,6 +391,64 @@ final class Optimize extends Stage
     }
 
     /**
+     * What the run will use ({@see RunHeader}), and a warning when every step runs the whole test suite.
+     *
+     * @param list<Path> $files
+     * @param list<RuleSpec> $rules
+     * @param string $mode How the files are changed.
+     * @return bool False when the test runner is misconfigured (printed as an error).
+     */
+    private function header(SymfonyStyle $style, ?RunState $state, Project $project, Path $runDir, PhpBinary $php, array $files, array $rules, string $mode): bool
+    {
+        /** @var Schema\Tests $tests */
+        $tests = $this->container->get(Schema\Tests::class);
+        /** @var Schema\Commands $commands */
+        $commands = $this->container->get(Schema\Commands::class);
+        /** @var Schema\Verification $verification */
+        $verification = $this->container->get(Schema\Verification::class);
+        $phpTarget = $this->phpTarget($project);
+        $title = \sprintf(
+            '%s %d file(s) of %s with %d rule(s), PHP %s (target %s), %s.',
+            $state === null ? 'Optimizing' : 'Resuming ' . $project->relative($runDir) . ':',
+            \count($files),
+            (string) $project->root,
+            \count($rules),
+            $php->version,
+            $phpTarget ?? 'unknown',
+            $mode,
+        );
+
+        try {
+            $header = RunHeader::detect($title, $project, $php, $files, $rules, $this->counter($php), $tests, $commands, $verification, $phpTarget, $this->cacheDir()->join('tmp'));
+        } catch (\InvalidArgumentException $e) {
+            $style->error($e->getMessage());
+            return false;
+        }
+
+        $style->writeln($header->lines());
+        $warning = $header->warning();
+        $warning === null or $style->warning($warning);
+
+        return true;
+    }
+
+    /**
+     * An error that stopped the run (git refused, a file could not be written): an error of the
+     * command with exit 1, not a trace. The workspace is finished, so a dry run restores the files.
+     */
+    private function stoppedOn(\RuntimeException $e, SymfonyStyle $style, Workspace $workspace, Project $project, Path $runDir): int
+    {
+        $workspace->finish();
+        $style->error([
+            $e->getMessage(),
+            'The run stopped: what it did so far is in ' . $project->relative($runDir)
+                . ($workspace->dryRun ? ' (dry run: files restored).' : '.'),
+        ]);
+
+        return Command::FAILURE;
+    }
+
+    /**
      * The run to continue: `--resume=<run directory>` or the latest one that did not finish.
      *
      * @throws \RuntimeException
@@ -395,12 +477,13 @@ final class Optimize extends Stage
      *
      * @return \Closure(): bool Whether a signal came.
      */
-    private function onSignals(Optimizer $optimizer, OutputInterface $output): \Closure
+    private function onSignals(Optimizer $optimizer, OutputInterface $output, Renderer $progress): \Closure
     {
         $count = 0;
         if (\function_exists('pcntl_async_signals') && \function_exists('pcntl_signal')) {
             \pcntl_async_signals(true);
-            $handler = static function () use ($optimizer, $output, &$count): void {
+            $handler = static function () use ($optimizer, $output, $progress, &$count): void {
+                $progress->clear();
                 if (++$count > 1) {
                     $output->writeln('Aborted: `opmin optimize --resume` restores the files and continues.');
                     /** @psalm-suppress ForbiddenCode The user asked twice: no step can be finished cleanly. */
@@ -417,6 +500,27 @@ final class Optimize extends Stage
         return static function () use (&$count): bool {
             return $count > 0;
         };
+    }
+
+    /**
+     * Ignore marks naming no rule of this run: a typo would exclude nothing, silently.
+     *
+     * @param list<Path> $files
+     * @param list<RuleSpec> $rules
+     * @return list<string>
+     */
+    private function ignoreWarnings(Project $project, array $files, array $rules): array
+    {
+        /** @var Schema\Rector $rector */
+        $rector = $this->container->get(Schema\Rector::class);
+        [$aliases, $short] = RuleCatalog::ignoreNames($rector, $rules);
+        $warnings = [];
+        foreach ($files as $file) {
+            $code = @\file_get_contents((string) $file);
+            \is_string($code) and \array_push($warnings, ...IgnoreMarks::warnings($code, $project->relative($file), $aliases, $short));
+        }
+
+        return $warnings;
     }
 
     /**
@@ -479,6 +583,10 @@ final class Optimize extends Stage
         $report->notes === [] or $style->note($report->notes);
         $report->finalTests === true and $style->writeln('The full run of the project\'s tests passes on the result.');
         $report->finalTests === false and $style->error('The full test run fails after the optimization: see report.json.');
+        foreach (ConsoleSummary::lines($report->toArray()) as $line) {
+            $style->writeln(OutputFormatter::escape($line));
+        }
+
         $style->success(\sprintf(
             '%d → %d opcodes (%s). Report: %s%s',
             $report->opsBefore,

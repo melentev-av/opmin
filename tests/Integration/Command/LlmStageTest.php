@@ -78,10 +78,12 @@ final class LlmStageTest
         PHP;
 
     private string $dir = '';
+    private string $stdin = '';
 
     #[BeforeTest]
     public function createProject(): void
     {
+        $this->stdin = '';
         $this->dir = (string) \realpath(\sys_get_temp_dir()) . '/opmin-llm-' . \bin2hex(\random_bytes(4));
         \mkdir($this->dir . '/src', 0777, true);
         \file_put_contents($this->dir . '/composer.json', '{"require": {"php": ">=8.1"}, "autoload": {"psr-4": {"App\\\\": "src/"}}}');
@@ -284,6 +286,84 @@ final class LlmStageTest
         Assert::count(\glob($this->dir . '/.opmin/runs/*/candidates/*.php') ?: [], 2);
     }
 
+    public function nextAfterAnAcceptedCandidateIsTheContextOfTheNextTarget(): void
+    {
+        $this->opmin('llm:targets');
+        $this->stdin = <<<'PHP'
+                public function slug(string $title): string
+                {
+                    return \trim((string) \preg_replace('/[^a-z0-9]+/', '-', \strtolower(\trim($title))), '-');
+                }
+            PHP;
+
+        # The candidate on stdin, as the skill passes it in a POSIX shell.
+        [$code, $out, $err] = $this->opmin('apply-candidate', 'App\Text::slug', '-', '--next', '--format=json');
+        $this->stdin = '';
+
+        Assert::same($code, 0, $out . $err);
+        /** @var array{attempt: array{accepted: bool}, attempts_left: int, next: array{action: string, function: string, context: array<string, mixed>}} $result */
+        $result = \json_decode($out, true, flags: \JSON_THROW_ON_ERROR);
+        Assert::true($result['attempt']['accepted']);
+        Assert::same($result['attempts_left'], 1);
+        Assert::same($result['next']['action'], 'rewrite');
+        Assert::same($result['next']['function'], 'App\Text::kind');
+        # The same as `llm:context` prints for it, after the commit of the accepted candidate.
+        Assert::same($result['next']['context'], $this->json('llm:context', 'App\Text::kind', '--format=json'));
+        Assert::string((string) $result['next']['context']['source'])->contains('public function kind(string $v): string');
+        [, $text] = $this->opmin('apply-candidate', 'App\Text::names', $this->candidate('public function names(array $vars): array {}'), '--next');
+        Assert::string($text)->contains('Next: retry App\Text::names');
+    }
+
+    public function nextAfterARejectionWithAttemptsLeftIsARetryOfTheSameFunction(): void
+    {
+        $this->opmin('llm:targets');
+        $candidate = $this->candidate(<<<'PHP'
+                public function slug(string $title): string
+                {
+                    return \trim((string) \preg_replace('/[^a-z0-9]+/', '-', \trim($title)), '-');
+                }
+            PHP);
+
+        [$first, $firstOut, $firstErr] = $this->opmin('apply-candidate', 'App\Text::slug', $candidate, '--next', '--format=json');
+        [$second, $secondOut] = $this->opmin('apply-candidate', 'App\Text::slug', $candidate, '--next', '--format=json');
+
+        Assert::same($first, 1, $firstOut . $firstErr);
+        /** @var array{attempt: array{reason: string}, next: array<string, mixed>} $result */
+        $result = \json_decode($firstOut, true, flags: \JSON_THROW_ON_ERROR);
+        Assert::string($result['attempt']['reason'])->contains('differential test');
+        Assert::same($result['next'], ['action' => 'retry', 'function' => 'App\Text::slug', 'attempts_left' => 1]);
+        # The attempts are used up: the next unfinished target after it.
+        Assert::same($second, 1);
+        /** @var array{attempts_left: int, next: array{action: string, function: string, context: array{attempts_left: int}}} $exhausted */
+        $exhausted = \json_decode($secondOut, true, flags: \JSON_THROW_ON_ERROR);
+        Assert::same($exhausted['attempts_left'], 0);
+        Assert::same($exhausted['next']['action'], 'rewrite');
+        Assert::same($exhausted['next']['function'], 'App\Text::kind');
+        Assert::same($exhausted['next']['context']['attempts_left'], 2);
+    }
+
+    public function nextAfterTheLastTargetIsToFinish(): void
+    {
+        $this->opmin('llm:targets');
+        $candidate = $this->candidate(<<<'PHP'
+                public function kind(string $v): string
+                {
+                    return 'other';
+                }
+            PHP);
+
+        $this->opmin('apply-candidate', 'App\Text::kind', $candidate);
+        [$code, $out, $err] = $this->opmin('apply-candidate', 'App\Text::kind', $candidate, '--next', '--format=json');
+        [, $text] = $this->opmin('apply-candidate', 'App\Text::slug', $this->candidate('public function slug(string $title): string {}'), '--next');
+
+        Assert::same($code, 1, $out . $err);
+        /** @var array{attempts_left: int, next: array<string, mixed>} $result */
+        $result = \json_decode($out, true, flags: \JSON_THROW_ON_ERROR);
+        Assert::same($result['attempts_left'], 0);
+        Assert::same($result['next'], ['action' => 'finish']);
+        Assert::string($text)->contains('Next: retry App\Text::slug');
+    }
+
     public function withoutASessionNothingRuns(): void
     {
         [$code, , $err] = $this->opmin('apply-candidate', 'App\Text::slug', '-');
@@ -297,6 +377,31 @@ final class LlmStageTest
         [$unknown, , $unknownErr] = $this->opmin('llm:context', 'App\Text::nope');
         Assert::same($unknown, 2);
         Assert::string($unknownErr)->contains('is not a target of the session');
+    }
+
+    /**
+     * Staged files and no commit (#57): no session starts, and a session of another repository does
+     * not continue in this one.
+     */
+    public function aRepositoryWithoutCommitsIsRefused(): void
+    {
+        $this->opmin('llm:targets');
+        $session = \glob($this->dir . '/.opmin/runs/*') ?: [];
+        \exec('rm -rf ' . \escapeshellarg($this->dir . '/.git'));
+        $this->git('init', '-q');
+        $this->git('add', '.');
+
+        [$targets, , $targetsErr] = $this->opmin('llm:targets');
+        [$apply, , $applyErr] = $this->opmin('apply-candidate', 'App\Text::slug', $this->candidate(self::CODE));
+        [$finish, , $finishErr] = $this->opmin('llm:finish');
+
+        $message = 'The git repository has no commits yet: commit the files first (every accepted step becomes a commit), or run outside git.';
+        Assert::same([$targets, $apply, $finish], [2, 2, 2], $targetsErr . $applyErr . $finishErr);
+        Assert::string($targetsErr)->ignoringWhitespace(lineBreaks: true)->contains($message);
+        Assert::string($applyErr)->ignoringWhitespace(lineBreaks: true)->contains($message);
+        Assert::string($finishErr)->ignoringWhitespace(lineBreaks: true)->contains($message);
+        Assert::count($session, 1);
+        Assert::same(\glob($this->dir . '/.opmin/runs/*') ?: [], $session);
     }
 
     /**
@@ -353,6 +458,7 @@ final class LlmStageTest
                 'GIT_AUTHOR_NAME' => 't', 'GIT_AUTHOR_EMAIL' => 't@t', 'GIT_COMMITTER_NAME' => 't', 'GIT_COMMITTER_EMAIL' => 't@t',
             ]),
         );
+        \fwrite($pipes[0], $this->stdin);
         \fclose($pipes[0]);
         $out = (string) \stream_get_contents($pipes[1]);
         $err = (string) \stream_get_contents($pipes[2]);

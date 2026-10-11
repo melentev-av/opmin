@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/melentev-av/opmin/compare/v0.3.1...v0.4.0) (2026-10-11)
+
+
+### Features
+
+* **project:** everything opmin writes lies in .opmin/, kept out of git ([db7c29b](https://github.com/melentev-av/opmin/commit/db7c29ba46b04c97a511e8fc88f377853e0973cf))
+* **report:** the report of every run also lies in .opmin/ as report_&lt;ts&gt;.md ([82e0475](https://github.com/melentev-av/opmin/commit/82e0475b9d8216a7c91174468c0ef53b512626c6))
+
 ## [0.3.1](https://github.com/melentev-av/opmin/compare/v0.3.0...v0.3.1) (2026-10-11)
 
 

@@ -550,6 +550,8 @@ final class Optimizer
             $this->current[$relative] = $plan->candidate;
         }
 
+        $this->verifier->written(\array_map(fn(string $r): Path => $this->paths[$r], \array_keys($accepted)));
+
         $countsAfter = $this->timings->measure('count', fn() => $this->countContents([]));
         foreach ($accepted as $relative => $plan) {
             foreach ($plan->accepted as $top => $gain) {
@@ -1191,6 +1193,8 @@ final class Optimizer
             $this->current[$relative] = $content;
             $paths[] = $this->paths[$relative];
         }
+
+        $this->verifier->written($paths);
 
         foreach ($step->accepted as $change) {
             $step->reject($change['file'], $change['function'], 'taken back: the full test run fails');

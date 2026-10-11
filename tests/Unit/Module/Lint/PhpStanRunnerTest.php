@@ -58,6 +58,19 @@ final class PhpStanRunnerTest
         Assert::string((string) \file_get_contents((string) $new))->contains('phpVersion: 80400');
     }
 
+    public function fingerprintFollowsTheTargetAndTheProjectConfig(): void
+    {
+        $first = $this->runner('8.3')->fingerprint();
+        $same = $this->runner('8.3')->fingerprint();
+        $otherTarget = $this->runner('8.4')->fingerprint();
+        \file_put_contents($this->dir . '/phpstan.neon', "parameters:\n    level: 7\n");
+        $otherConfig = $this->runner('8.3')->fingerprint();
+
+        Assert::same($same, $first);
+        Assert::false($otherTarget === $first);
+        Assert::false($otherConfig === $first);
+    }
+
     public function tmpDirIsAnAbsolutePathAfterTheProjectConfig(): void
     {
         $default = (string) \file_get_contents((string) $this->runner('8.3')->config());

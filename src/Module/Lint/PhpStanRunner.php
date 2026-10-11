@@ -136,23 +136,28 @@ final readonly class PhpStanRunner
      */
     public function config(): Path
     {
-        $neon = '';
-        $project = $this->projectConfig();
-        $project === null or $neon .= "includes:\n    - " . self::neonString((string) $project) . "\n";
-        $neon .= "parameters:\n";
-        if ($this->phpTarget !== null && \preg_match('/^(\d+)\.(\d+)/', $this->phpTarget, $m) === 1) {
-            $neon .= '    phpVersion: ' . ((int) $m[1] * 10000 + (int) $m[2] * 100) . "\n";
-        }
-
-        // Absolute: PHPStan resolves a relative tmpDir against the directory of this config. The
-        // project's config is included above, and the including file wins, so this tmpDir replaces
-        // the project's one.
-        $neon .= '    tmpDir: ' . self::neonString((string) $this->tmpDir()) . "\n";
-
+        $neon = $this->neon();
         $config = $this->workDir->join('phpstan-opmin-' . \substr(\sha1($neon), 0, 12) . '.neon');
         $config->isFile() or FS::replace($config, $neon);
 
         return $config;
+    }
+
+    /**
+     * What the analysis depends on besides the files on disk: the command, the generated config
+     * (`phpVersion`, `tmpDir`) and the content of the project's config. Within one run, where
+     * `vendor/` and PHPStan itself do not change, equal fingerprints and equal files give the
+     * same result.
+     */
+    public function fingerprint(): string
+    {
+        $project = $this->projectConfig();
+
+        return \sha1(\implode("\0", [
+            (string) $this->command,
+            $this->neon(),
+            $project === null ? '' : (string) @\file_get_contents((string) $project),
+        ]));
     }
 
     private static function neonString(string $value): string
@@ -180,6 +185,22 @@ final readonly class PhpStanRunner
         }
 
         return false;
+    }
+
+    private function neon(): string
+    {
+        $neon = '';
+        $project = $this->projectConfig();
+        $project === null or $neon .= "includes:\n    - " . self::neonString((string) $project) . "\n";
+        $neon .= "parameters:\n";
+        if ($this->phpTarget !== null && \preg_match('/^(\d+)\.(\d+)/', $this->phpTarget, $m) === 1) {
+            $neon .= '    phpVersion: ' . ((int) $m[1] * 10000 + (int) $m[2] * 100) . "\n";
+        }
+
+        // Absolute: PHPStan resolves a relative tmpDir against the directory of this config. The
+        // project's config is included above, and the including file wins, so this tmpDir replaces
+        // the project's one.
+        return $neon . '    tmpDir: ' . self::neonString((string) $this->tmpDir()) . "\n";
     }
 
     private function tmpDir(): Path

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Opmin\Tests\Integration\Module\Verification;
 
 use Internal\Path;
+use Opmin\Module\Common\Timings;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Progress\Event;
 use Opmin\Module\Progress\Listener;
@@ -183,6 +184,49 @@ final class VerifierTest
         Assert::string($withoutPhpstan->functions[0]->reason)->contains('min_branch_coverage');
     }
 
+    public function phpstanOnTheOriginalRunsOnceForTheSameFiles(): void
+    {
+        $timings = new Timings();
+        $verifier = $this->verifier(commands: $this->fakePhpStan(), timings: $timings);
+        $candidate = \str_replace('$s = $a + $b; return $s;', 'return $a + $b;', self::ORIGINAL);
+        $broken = \str_replace('function gone() { return 1; }', 'function gone() { return 1; /* BAD */ }', self::ORIGINAL);
+
+        $first = $verifier->verify($this->file(), $candidate, ['App\keep'], withTests: true);
+        $second = $verifier->verify($this->file(), $broken, ['App\gone'], withTests: true);
+
+        Assert::same($first->phpstan, []);
+        # The cached result on the original still tells a new error from an old one.
+        Assert::same(\array_column($second->phpstan, 'message'), ['BAD in A.php']);
+        Assert::same($this->phpStanRuns(), [self::ORIGINAL, $candidate, $broken]);
+        Assert::same($timings->toArray()['counters']['phpstan_before_cached'] ?? 0, 1);
+        Assert::same($timings->toArray()['levels']['phpstan.before']['calls'] ?? 0, 1);
+    }
+
+    public function writtenCandidatesKeepTheirPhpstanResultAndAnyOtherWriteDropsIt(): void
+    {
+        $verifier = $this->verifier(commands: $this->fakePhpStan());
+        $accepted = \str_replace('$s = $a + $b; return $s;', 'return $a + $b;', self::ORIGINAL);
+        $next = \str_replace("array_key_exists('x', \$a)", "isset(\$a['x'])", $accepted);
+        $other = \str_replace('function gone() { return 1; }', 'function gone() { return 2 - 1; }', $accepted);
+        $b = Path::create($this->dir)->join('src/B.php');
+
+        $verifier->verify($this->file(), $accepted, ['App\keep'], withTests: true);
+        \file_put_contents((string) $this->file(), $accepted);
+        $verifier->written([$this->file()]);
+        $verifier->verify($this->file(), $next, ['App\key_of'], withTests: true);
+        # A write elsewhere may change the errors of A.php: PHPStan on its original runs again.
+        \file_put_contents((string) $b, "<?php\n");
+        $verifier->written([$b]);
+        $verifier->verify($this->file(), $next, ['App\key_of'], withTests: true);
+        $verifier->verify($this->file(), $next, ['App\key_of'], withTests: true);
+        # The written content is not the candidate checked last: its result is not taken.
+        \file_put_contents((string) $this->file(), $other);
+        $verifier->written([$this->file()]);
+        $verifier->verify($this->file(), $next, ['App\key_of'], withTests: true);
+
+        Assert::same($this->phpStanRuns(), [self::ORIGINAL, $accepted, $next, $accepted, $next, $next, $other, $next]);
+    }
+
     public function filesOfOneStepAreVerifiedTogether(): void
     {
         # `App\twice()` in B.php calls `App\keep()` of A.php: its changed version runs with the changed A.
@@ -263,7 +307,42 @@ final class VerifierTest
         return Path::create($this->dir)->join('src/A.php');
     }
 
-    private function verifier(?Schema\Tests $tests = null, bool $allowUnverified = false, ?Schema\Commands $commands = null, int $minCoverage = 90, ?Schema\GuardPerf $guardPerf = null): Verifier
+    /**
+     * A PHPStan that logs the content of every analysed file and reports `BAD` in a file as an error.
+     */
+    private function fakePhpStan(): Schema\Commands
+    {
+        \file_put_contents($this->dir . '/phpstan.php', <<<'PHP'
+            <?php
+            $files = [];
+            foreach (array_slice($argv, 1) as $arg) {
+                if ($arg === 'analyse' || str_starts_with($arg, '-')) {
+                    continue;
+                }
+                $code = (string) file_get_contents($arg);
+                file_put_contents(__DIR__ . '/phpstan.log', json_encode($code) . "\n", FILE_APPEND);
+                $messages = str_contains($code, 'BAD') ? [['message' => 'BAD in ' . basename($arg), 'identifier' => 'bad', 'line' => 1]] : [];
+                $files[$arg] = ['messages' => $messages];
+            }
+            echo json_encode(['files' => $files, 'errors' => []]);
+            PHP);
+        $commands = new Schema\Commands();
+        $commands->phpstan = 'phpstan.php analyse';
+
+        return $commands;
+    }
+
+    /**
+     * @return list<string> The content of the analysed file in every PHPStan run, in order.
+     */
+    private function phpStanRuns(): array
+    {
+        $lines = \file($this->dir . '/phpstan.log', \FILE_IGNORE_NEW_LINES) ?: [];
+
+        return \array_map(static fn(string $line): string => (string) \json_decode($line), $lines);
+    }
+
+    private function verifier(?Schema\Tests $tests = null, bool $allowUnverified = false, ?Schema\Commands $commands = null, int $minCoverage = 90, ?Schema\GuardPerf $guardPerf = null, Timings $timings = new Timings()): Verifier
     {
         $verification = new Schema\Verification();
         $verification->fuzzTimeMs = 200;
@@ -296,6 +375,7 @@ final class VerifierTest
                 }
             },
             $guardPerf,
+            $timings,
         );
     }
 }

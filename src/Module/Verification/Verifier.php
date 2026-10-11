@@ -64,6 +64,22 @@ final class Verifier
     private bool $runnerResolved = false;
 
     /**
+     * PHPStan on the code as it is on disk now, by {@see self::phpStanKey()}. A file's errors depend
+     * on other files too, so the whole map is dropped whenever a file is written ({@see self::written()}).
+     *
+     * @var array<string, PhpStanResult>
+     */
+    private array $phpStanOnDisk = [];
+
+    /**
+     * PHPStan on the candidates of the last check: when exactly they are written, it is PHPStan on
+     * the code on disk.
+     *
+     * @var array{string, array<string, string>, PhpStanResult}|null [fingerprint, file => candidate, result]
+     */
+    private ?array $phpStanOnCandidates = null;
+
+    /**
      * @param non-empty-string|null $phpTarget
      * @param Listener $progress The progress of the checks.
      */
@@ -115,6 +131,8 @@ final class Verifier
      */
     public function verifyAll(array $changes, ?array $keys = null, bool $withTests = false, ?Path $counterexamples = null): CandidateReport
     {
+        # Only the candidates of the last check can be the ones written next.
+        $this->phpStanOnCandidates = null;
         $work = $this->cacheDir->join('tmp');
         FS::mkdir((string) $work);
         $notes = [];
@@ -180,6 +198,42 @@ final class Verifier
     }
 
     /**
+     * Tells the verifier that files of the project were written (an accepted step, a step taken
+     * back): PHPStan's results on the code before are stale. When the written files are the
+     * candidates of the last check, its PHPStan result on them is the result on the code now: the
+     * next check of the same files does not run PHPStan on the original again.
+     *
+     * Every write to the project between checks must be reported here, or a cached result may be stale.
+     *
+     * @param list<Path> $files Absolute.
+     */
+    public function written(array $files): void
+    {
+        $this->phpStanOnDisk = [];
+        $last = $this->phpStanOnCandidates;
+        $this->phpStanOnCandidates = null;
+        if ($last === null) {
+            return;
+        }
+
+        [$fingerprint, $candidates, $result] = $last;
+        foreach ($files as $file) {
+            if (!isset($candidates[(string) $file])) {
+                # Another file changed too: the result was computed without that change.
+                return;
+            }
+        }
+
+        foreach ($candidates as $file => $candidate) {
+            if ((string) @\file_get_contents($file) !== $candidate) {
+                return;
+            }
+        }
+
+        $this->phpStanOnDisk[self::phpStanKey($fingerprint, $candidates)] = $result;
+    }
+
+    /**
      * The project's tests on the code as it is on disk now (the final check of a run); null without a runner.
      */
     public function runAllTests(): ?TestResult
@@ -226,6 +280,20 @@ final class Verifier
         return $this->red;
     }
 
+    /**
+     * @param array<string, string> $contents Analysed file => its content on disk.
+     */
+    private static function phpStanKey(string $fingerprint, array $contents): string
+    {
+        \ksort($contents);
+
+        return \sha1($fingerprint . "\0" . \implode("\0", \array_map(
+            static fn(string $file, string $content): string => $file . "\0" . \sha1($content),
+            \array_keys($contents),
+            $contents,
+        )));
+    }
+
     private static function source(string $code, CodeUnit $unit): string
     {
         $node = $unit->node;
@@ -250,7 +318,15 @@ final class Verifier
         $runner === null and $notes[] = 'No test runner found (tests.runner): the project\'s tests are not run.';
 
         $paths = \array_map(static fn(array $f): Path => $f[0], $files);
-        $before = $phpstan->available() ? $this->timings->measure('phpstan.before', static fn(): PhpStanResult => $phpstan->analyse($paths)) : null;
+        $originals = [];
+        $candidates = [];
+        foreach ($files as [$file, , $original, $candidate]) {
+            $originals[(string) $file] = $original;
+            $candidates[(string) $file] = $candidate;
+        }
+
+        $fingerprint = $phpstan->available() ? $phpstan->fingerprint() : '';
+        $before = $phpstan->available() ? $this->phpStanBefore($phpstan, $paths, self::phpStanKey($fingerprint, $originals)) : null;
         $own = [];
         foreach ($paths as $file) {
             $real = \realpath((string) $file);
@@ -300,7 +376,9 @@ final class Verifier
             $new = [];
             if ($before !== null) {
                 $this->progress->on(Event::phpStan());
-                $new = PhpStanResult::newErrors($before, $this->timings->measure('phpstan.after', static fn(): PhpStanResult => $phpstan->analyse($paths)));
+                $onCandidates = $this->timings->measure('phpstan.after', static fn(): PhpStanResult => $phpstan->analyse($paths));
+                $onCandidates->ran and $this->phpStanOnCandidates = [$fingerprint, $candidates, $onCandidates];
+                $new = PhpStanResult::newErrors($before, $onCandidates);
             }
 
             $after = null;
@@ -321,6 +399,30 @@ final class Verifier
                 FS::removeFile($backup);
             }
         }
+    }
+
+    /**
+     * PHPStan on the files as they are on disk. The same files with the same contents, while
+     * nothing in the project is written ({@see self::written()}), give the result of the last run:
+     * a later round of a step, the check after a review, a later step on the same files.
+     *
+     * @param list<Path> $paths
+     * @param string $key {@see self::phpStanKey()} of the files as they are on disk.
+     */
+    private function phpStanBefore(PhpStanRunner $phpstan, array $paths, string $key): PhpStanResult
+    {
+        $known = $this->phpStanOnDisk[$key] ?? null;
+        if ($known !== null) {
+            $this->timings->count('phpstan_before_cached');
+
+            return $known;
+        }
+
+        $result = $this->timings->measure('phpstan.before', static fn(): PhpStanResult => $phpstan->analyse($paths));
+        # A run without a report (a crash, a timeout) may pass the next time.
+        $result->ran and $this->phpStanOnDisk[$key] = $result;
+
+        return $result;
     }
 
     /**

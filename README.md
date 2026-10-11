@@ -152,10 +152,11 @@ opmin verify src/Cart.php /tmp/Cart.php --with-tests    # + php -l, PHPStan "no 
   itself is nondeterministic and stays unverified.
 - Each call is limited by `verification.call_timeout_ms` (1000 ms); an input the original hangs on is dropped,
   and after 5 such inputs in a row the function stays unverified ("the original times out on generated
-  inputs"). The whole test of one function is limited by `verification.time_budget_ms` (15 s; a typical
-  function takes 0.1–3.5 s): when it runs out, the inputs checked so far decide through the coverage
-  threshold below, as with the search limit `verification.fuzz_time_ms`. The shrinking of a difference is
-  never cut short.
+  inputs"). An input on which the original runs out of `verification.memory_limit` (and the candidate does the
+  same) is dropped and counted in that row too ("the original runs out of memory on generated inputs").
+  The whole test of one function is limited by `verification.time_budget_ms` (15 s; a typical function takes
+  0.1–3.5 s): when it runs out, the inputs checked so far decide through the coverage threshold below, as
+  with the search limit `verification.fuzz_time_ms`. The shrinking of a difference is never cut short.
 - A difference is shrunk to a minimal input and saved to `.opmin/runs/<timestamp>/counterexamples/` as JSON and as a
   test for the project's runner (PHPUnit, Pest, Testo; a plain script otherwise).
 - Accepted: proven by differential tests with `verification.min_branch_coverage` of the original's branches,
@@ -311,7 +312,7 @@ Every run (`optimize`, `llm:finish`) writes `.opmin/runs/<ts>/report.md` for peo
   fuzzing, guard-perf), commits — with the once-per-run work (`once.*`: the tests on the original code, the
   coverage map, the final test run) apart, and counters of steps, verification rounds, differential tests cut
   by `verification.time_budget_ms` (`time_budget_spent`) and stopped by timeouts of the original
-  (`original_timeouts_stop`); `-v` prints the same
+  (`original_timeouts_stop`) or by running out of memory (`original_out_of_memory_stop`); `-v` prints the same
   at the end of the run. Every check of a function also has its `seconds`.
 
 `report.json` has `"schema": 1`; its fields change only in a major release (new fields may be added).

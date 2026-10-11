@@ -103,7 +103,7 @@ final class ConfigLoader
             );
 
             $path = \substr($override, 0, $pos);
-            $key = ConfigSchema::find($path) ?? throw ConfigException::unknownKey($path, '--set');
+            $key = ConfigSchema::find($path) ?? throw ConfigException::unknownKey($path, '--set', ConfigSchema::suggest($path));
             $values[$key->key->path] = ValueCaster::fromString($key, \substr($override, $pos + 1), '--set');
         }
 
@@ -130,7 +130,7 @@ final class ConfigLoader
                 continue;
             }
 
-            throw ConfigException::unknownKey($path, $source);
+            throw ConfigException::unknownKey($path, $source, ConfigSchema::suggest($path));
         }
     }
 }

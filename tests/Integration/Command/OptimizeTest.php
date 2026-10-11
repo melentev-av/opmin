@@ -289,7 +289,7 @@ final class OptimizeTest
     {
         \copy(__DIR__ . '/../../Fixtures/Ignore/Typo.php', $this->dir . '/src/Typo.php');
 
-        [$code, $out, $err] = $this->opmin('optimize', '--dry-run', '--format=none', '--rector-rule=Opmin\Rector\Rule\FullyQualifyGlobalCallsRector', 'src/Typo.php');
+        [$code, $out, $err] = $this->opmin('optimize', '--dry-run', '--format=none', '--rector-rule=fqn', 'src/Typo.php');
 
         Assert::same($code, 0, $out . $err);
         Assert::string($out . $err)->ignoringWhitespace(lineBreaks: true)

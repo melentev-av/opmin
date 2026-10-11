@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Opmin\Module\Config\Exception;
 
+use Opmin\Module\Common\Internal\DidYouMean;
+
 /**
  * Invalid configuration: unknown key, wrong value type, unreadable or malformed file.
  *
@@ -14,9 +16,12 @@ namespace Opmin\Module\Config\Exception;
  */
 final class ConfigException extends \RuntimeException
 {
-    public static function unknownKey(string $path, string $source): self
+    /**
+     * @param list<string> $suggestions The keys the path was probably meant to be.
+     */
+    public static function unknownKey(string $path, string $source, array $suggestions = []): self
     {
-        return new self(\sprintf('Unknown config key `%s` (%s).', $path, $source));
+        return new self(\sprintf('Unknown config key `%s` (%s).', $path, $source) . DidYouMean::phrase($suggestions));
     }
 
     public static function invalidValue(string $path, string $expected, mixed $value, string $source): self

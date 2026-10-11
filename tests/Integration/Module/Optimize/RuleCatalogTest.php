@@ -12,6 +12,7 @@ use Opmin\Rector\Rule\FullyQualifyGlobalCallsRector;
 use Opmin\Rector\Rule\HoistLoopInvariantCountRector;
 use Testo\Assert;
 use Testo\Codecov\Covers;
+use Testo\Data\DataProvider;
 use Testo\Expect;
 use Testo\Test;
 
@@ -20,6 +21,33 @@ use Testo\Test;
 #[Covers(RuleSpec::class)]
 final class RuleCatalogTest
 {
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function unknownOnly(): iterable
+    {
+        yield 'alias with a typo' => [
+            'fqm',
+            'Unknown Rector rule `fqm` in --rector-rule. Did you mean `fqn`? Name a rule by its alias (fqn, property_fetch, array_dim_fetch, count),'
+            . ' the short class name of a rule of the run or the full class name.',
+        ];
+        yield 'short name with a typo' => [
+            'HoistLoopInvariantCountRectr',
+            'Unknown Rector rule `HoistLoopInvariantCountRectr` in --rector-rule. Did you mean `HoistLoopInvariantCountRector`?',
+        ];
+        yield 'full name with a typo' => [
+            'Opmin\Rector\Rule\FullyQualifyGlobalCallRector',
+            'Unknown Rector rule `Opmin\Rector\Rule\FullyQualifyGlobalCallRector` in --rector-rule: check the class name against the installed Rector.'
+            . ' Did you mean `Opmin\Rector\Rule\FullyQualifyGlobalCallsRector`?',
+        ];
+        yield 'full name in another namespace' => [
+            '\App\HoistLoopInvariantCountRector',
+            'Unknown Rector rule `App\HoistLoopInvariantCountRector` in --rector-rule: check the class name against the installed Rector.'
+            . ' Did you mean `Opmin\Rector\Rule\HoistLoopInvariantCountRector`?',
+        ];
+        yield 'nothing close' => ['App\NoSuchRector', 'Unknown Rector rule `App\NoSuchRector` in --rector-rule: check the class name against the installed Rector.'];
+    }
+
     public function ownRulesOnlyByDefault(): void
     {
         $rules = RuleCatalog::build(new Schema\Rector(), new Schema\RectorStandard(), null, [], '8.3');
@@ -128,6 +156,41 @@ final class RuleCatalogTest
             'ExtractRepeatedArrayDimFetchRector',
             'HoistLoopInvariantCountRector',
         ]);
+    }
+
+    public function onlyTakesAliasesAndShortNames(): void
+    {
+        $config = new Schema\Rector();
+        $config->customRules[HoistLoopInvariantCountRector::class] = false;
+
+        $rules = RuleCatalog::build($config, new Schema\RectorStandard(), null, ['fqn', 'COUNT', 'ExtractRepeatedPropertyFetchRector'], '8.3');
+
+        Assert::same(\array_map(static fn(RuleSpec $r): string => $r->class, $rules), [
+            FullyQualifyGlobalCallsRector::class,
+            HoistLoopInvariantCountRector::class,
+            ExtractRepeatedPropertyFetchRector::class,
+        ]);
+        Assert::same($rules[2]->options, ['min_reads' => 'auto']);
+    }
+
+    #[DataProvider('unknownOnly')]
+    public function unknownOnlyNamesTheSourceAndTheClosestRule(string $name, string $message): never
+    {
+        Expect::exception(\InvalidArgumentException::class)->withMessageContaining($message);
+
+        RuleCatalog::build(new Schema\Rector(), new Schema\RectorStandard(), null, [$name], '8.3');
+    }
+
+    public function unknownOwnRuleNamesTheClosestOne(): never
+    {
+        $config = new Schema\Rector();
+        $config->customRules['Opmin\Rector\Rule\HoistLoopInvariantCountRectr'] = [];
+        Expect::exception(\InvalidArgumentException::class)->withMessage(
+            'Unknown Rector rule `Opmin\Rector\Rule\HoistLoopInvariantCountRectr` in rector.custom_rules: check the class name against the installed Rector.'
+            . ' Did you mean `Opmin\Rector\Rule\HoistLoopInvariantCountRector`?',
+        );
+
+        RuleCatalog::build($config, new Schema\RectorStandard(), null, [], '8.3');
     }
 
     public function upToPhpTargetNeedsTheTarget(): never

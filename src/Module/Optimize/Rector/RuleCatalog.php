@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Opmin\Module\Optimize\Rector;
 
 use Opmin\Module\Analysis\IgnoreMarks;
+use Opmin\Module\Common\Internal\DidYouMean;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Optimize\LlmCandidate;
 use Rector\Contract\Rector\ConfigurableRectorInterface;
@@ -23,9 +24,11 @@ use Symfony\Component\Process\Process;
  */
 final class RuleCatalog
 {
+    private const ONLY = '--rector-rule';
+
     /**
      * @param bool|null $withStandard `--with-standard-rector` / `--without-standard-rector`; null — the config.
-     * @param list<string> $only `--rector-rule`: only these rules (FQCN).
+     * @param list<string> $only `--rector-rule`: only these rules (FQCN, alias or short class name).
      * @param non-empty-string|null $phpTarget `php.target` as `8.3`, for `UP_TO_PHP_TARGET`.
      * @return list<RuleSpec>
      * @throws \InvalidArgumentException On an unknown rule or set.
@@ -52,9 +55,9 @@ final class RuleCatalog
         }
 
         $selected = [];
-        foreach ($only as $class) {
-            $class = \ltrim($class, '\\');
-            $selected[] = $rules[$class] ?? (\str_starts_with($class, 'Opmin\\') ? self::custom($class, []) : self::single($class));
+        foreach ($only as $name) {
+            $class = self::resolve($name, $rector, \array_values($rules));
+            $selected[] = $rules[$class] ?? (\str_starts_with($class, 'Opmin\\') ? self::custom($class, [], self::ONLY) : self::single($class, self::ONLY));
         }
 
         return $selected;
@@ -69,14 +72,9 @@ final class RuleCatalog
      */
     public static function ignoreNames(Schema\Rector $rector, array $rules): array
     {
-        $specs = $rules;
-        foreach ($rector->customRules as $class => $_) {
-            \class_exists($class) and $specs[] = new RuleSpec($class);
-        }
-
         $aliases = [];
         $short = [];
-        foreach ($specs as $spec) {
+        foreach ([...$rules, ...self::own($rector)] as $spec) {
             $alias = $spec->alias();
             $alias === null || $alias === '' or $aliases[$alias] = true;
             $short[$spec->shortName()] = true;
@@ -157,9 +155,9 @@ final class RuleCatalog
     /**
      * @param array<string, mixed> $options
      */
-    private static function custom(string $class, array $options): RuleSpec
+    private static function custom(string $class, array $options, string $key = 'rector.custom_rules'): RuleSpec
     {
-        self::ensureRule($class, 'rector.custom_rules');
+        self::ensureRule($class, $key, DidYouMean::closest($class, \array_keys((new Schema\Rector())->customRules), 1));
         /** @var class-string $class */
         $configurable = \is_a($class, ConfigurableRectorInterface::class, true);
 
@@ -171,9 +169,9 @@ final class RuleCatalog
         );
     }
 
-    private static function single(string $class): RuleSpec
+    private static function single(string $class, string $key = 'rector.standard.rules'): RuleSpec
     {
-        self::ensureRule($class, 'rector.standard.rules');
+        self::ensureRule($class, $key);
         /** @var class-string $class */
         # A configurable rule without options would fail in Rector: such rules come from sets only.
         \is_a($class, ConfigurableRectorInterface::class, true) and throw new \InvalidArgumentException(
@@ -210,10 +208,65 @@ final class RuleCatalog
         return \array_values($specs);
     }
 
-    private static function ensureRule(string $class, string $key): void
+    /**
+     * A `--rector-rule` name to the class: a full class name as it is, an alias (`fqn`) or a short
+     * class name (`HoistLoopInvariantCountRector`) of opmin's rules or of the rules of the run.
+     *
+     * @param list<RuleSpec> $rules
+     */
+    private static function resolve(string $name, Schema\Rector $rector, array $rules): string
+    {
+        $name = \ltrim($name, '\\');
+        /** @var array<string, string> $byName */
+        $byName = [];
+        foreach ([...$rules, ...self::own($rector)] as $spec) {
+            $alias = $spec->alias();
+            $alias === null || $alias === '' or $byName[\strtolower($alias)] ??= $spec->class;
+            $byName[\strtolower($spec->shortName())] ??= $spec->class;
+        }
+
+        if (\str_contains($name, '\\')) {
+            # A full class name: of a rule known by its short name, or the closest one.
+            $sameShort = $byName[\strtolower(\substr($name, (int) \strrpos($name, '\\') + 1))] ?? null;
+            self::ensureRule($name, self::ONLY, $sameShort === null ? DidYouMean::closest($name, \array_values(\array_unique($byName)), 1) : [$sameShort]);
+
+            return $name;
+        }
+
+        [$aliases, $short] = self::ignoreNames($rector, $rules);
+        $aliases = \array_values(\array_diff($aliases, [LlmCandidate::alias()]));
+
+        return $byName[\strtolower($name)] ?? throw new \InvalidArgumentException(\sprintf(
+            'Unknown Rector rule `%s` in %s.%s Name a rule by its alias (%s), the short class name of a rule of the run or the full class name.',
+            $name,
+            self::ONLY,
+            DidYouMean::phrase(DidYouMean::closest($name, [...$aliases, ...$short])),
+            \implode(', ', $aliases),
+        ));
+    }
+
+    /**
+     * opmin's own rules, the disabled ones too.
+     *
+     * @return list<RuleSpec>
+     */
+    private static function own(Schema\Rector $rector): array
+    {
+        $specs = [];
+        foreach ([...$rector->customRules, ...(new Schema\Rector())->customRules] as $class => $_) {
+            \class_exists($class) and $specs[] = new RuleSpec($class);
+        }
+
+        return $specs;
+    }
+
+    /**
+     * @param list<string> $suggestions The classes the name was probably meant to be.
+     */
+    private static function ensureRule(string $class, string $key, array $suggestions = []): void
     {
         \class_exists($class) && \is_a($class, RectorInterface::class, true) or throw new \InvalidArgumentException(
-            "Unknown Rector rule `{$class}` in {$key}: check the class name against the installed Rector.",
+            "Unknown Rector rule `{$class}` in {$key}: check the class name against the installed Rector." . DidYouMean::phrase($suggestions),
         );
     }
 }

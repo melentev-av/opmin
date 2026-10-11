@@ -166,8 +166,18 @@ final class CliTest
         [$code, , $err] = $this->opmin('count');
 
         Assert::same($code, 2);
-        Assert::string($err)->contains('Unknown config key `verificaton` (opmin.yaml)');
+        Assert::string($err)->ignoringWhitespace(lineBreaks: true)->contains('Unknown config key `verificaton` (opmin.yaml). Did you mean `verification`?');
         Assert::string($err)->notContains('ConfigException.php');
+    }
+
+    public function unknownOverrideNamesTheClosestKeyWithExitCode2(): void
+    {
+        \file_put_contents($this->dir . '/opmin.yaml', "verification:\n  seed: 1\n");
+
+        [$code, , $err] = $this->opmin('count', '--set=seed=7');
+
+        Assert::same($code, 2);
+        Assert::string($err)->ignoringWhitespace(lineBreaks: true)->contains('Unknown config key `seed` (--set). Did you mean `verification.seed`?');
     }
 
     public function invalidEnvironmentValueFailsBeforeWork(): void

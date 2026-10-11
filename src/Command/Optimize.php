@@ -86,7 +86,7 @@ final class Optimize extends Stage
         $this->addOption('guard-perf', null, InputOption::VALUE_NONE, 'Roll back changes that make code slower');
         $this->addOption('with-standard-rector', null, InputOption::VALUE_NONE, 'Enable the standard Rector rules for this run');
         $this->addOption('without-standard-rector', null, InputOption::VALUE_NONE, 'Disable the standard Rector rules for this run');
-        $this->addOption('rector-rule', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Run only the given Rector rule (FQCN), repeatable');
+        $this->addOption('rector-rule', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Run only the given Rector rule (alias, short or full class name), repeatable');
         $this->addOption('format', null, InputOption::VALUE_REQUIRED, 'Formatter: none, or a command with {files} (overrides commands.format)');
         $this->addOption('allow-unverified', null, InputOption::VALUE_NONE, 'Change functions whose behavior is not proven');
         $this->addOption('allow-public-signatures', null, InputOption::VALUE_NONE, 'Allow native type changes of public overridable methods');

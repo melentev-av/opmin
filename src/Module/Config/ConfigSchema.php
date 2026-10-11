@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Opmin\Module\Config;
 
 use Opmin\Module\Common\Internal\Attribute\ConfigKey;
+use Opmin\Module\Common\Internal\DidYouMean;
 
 /**
  * Registry of all `opmin.yaml` keys, built from the config DTOs.
@@ -57,6 +58,46 @@ final class ConfigSchema
     public static function find(string $path): ?KeyInfo
     {
         return self::keys()[$path] ?? null;
+    }
+
+    /**
+     * Keys and sections an unknown path was probably meant to be: a typo (`verification.sed` →
+     * `verification.seed`), else a key put in the wrong place (`seed` → `verification.seed`), else
+     * both (`rector.sed` → `verification.seed`).
+     *
+     * @return list<string>
+     */
+    public static function suggest(string $path): array
+    {
+        $candidates = [];
+        foreach (self::keys() as $key => $_) {
+            $parts = \explode('.', $key);
+            for ($i = 1; $i <= \count($parts); ++$i) {
+                $candidates[\implode('.', \array_slice($parts, 0, $i))] = true;
+            }
+        }
+
+        unset($candidates[$path]);
+        $candidates = \array_map(\strval(...), \array_keys($candidates));
+        $close = DidYouMean::closest($path, $candidates);
+        if ($close !== []) {
+            return $close;
+        }
+
+        $last = static fn(string $p): string => \substr($p, (int) \strrpos('.' . $p, '.'));
+        /** @var array<string, list<string>> $bySegment */
+        $bySegment = [];
+        foreach ($candidates as $candidate) {
+            $bySegment[\strtolower($last($candidate))][] = $candidate;
+        }
+
+        $segment = \strtolower($last($path));
+        $found = $bySegment[$segment] ?? [];
+        foreach ($found === [] ? DidYouMean::closest($segment, \array_map(\strval(...), \array_keys($bySegment))) : [] as $near) {
+            \array_push($found, ...$bySegment[$near]);
+        }
+
+        return \array_slice($found, 0, 3);
     }
 
     /**

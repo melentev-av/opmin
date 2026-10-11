@@ -183,9 +183,13 @@ opmin optimize --with-standard-rector  # also the standard Rector rules (off by 
 opmin optimize --review                # confirm every change: y / n / a (all of this rule) / q
 opmin optimize --resume                # continue the latest interrupted run (or --resume=.opmin/runs/<ts>)
 opmin optimize --guard-perf            # also roll back changes that make a function slower
-opmin optimize --rector-rule='Opmin\Rector\Rule\FullyQualifyGlobalCallsRector'
+opmin optimize --rector-rule=fqn --rector-rule=count   # only these rules: alias, short or full class name
 opmin optimize --plan                  # say what the run would use and exit: nothing is changed or tested
 ```
+
+- `--rector-rule` takes the alias of a rule (see [Excluding code](#excluding-code)), the short class name of a
+  rule of the run (`HoistLoopInvariantCountRector`) or the full class name of any installed rule; an unknown name
+  is an error with the closest one (``Unknown Rector rule `fqm` in --rector-rule. Did you mean `fqn`? …``).
 
 - Every run starts with a header on stderr: the files and how many functions they have (the counts come from the
   cache), the rules, the test runner, whether `php.binary` has a coverage driver, PHPStan, the formatter and the
@@ -564,7 +568,15 @@ without it (exit code 2): they read their settings from it and keep the cache ne
 writes goes to `.opmin/` next to the config — `.opmin/runs/<ts>/` (reports, patches, counterexamples) and
 `.opmin/cache/` — and `init` or the first such command adds `.opmin/` to `.gitignore` of a git project. A git package
 (`opmin optimize <git-url>`) without its own config gets an empty one beside the clone. Unknown keys and
-wrong types are errors naming the key. Any key can be overridden for one run:
+wrong types are errors naming the key (exit code 2), with the closest key when there is one — a typo or a key in
+the wrong section:
+
+```text
+Unknown config key `seed` (opmin.yaml). Did you mean `verification.seed`?
+Unknown config key `verification.sed` (--set). Did you mean `verification.seed`?
+```
+
+Any key can be overridden for one run:
 
 ```bash
 OPMIN_VERIFICATION_SEED=7 opmin optimize .

@@ -40,7 +40,7 @@ final class StepReport
      * What the report keeps of the verification of one function: how it is proven, the branch
      * coverage of the differential tests, the inputs, the project's tests that execute it.
      *
-     * @return array{key: non-empty-string, status: string, coverage: float|null, inputs: int|null, tests: list<string>, time_change_percent?: float}
+     * @return array{key: non-empty-string, status: string, coverage: float|null, inputs: int|null, seconds: float|null, tests: list<string>, time_change_percent?: float}
      */
     public static function check(FunctionResult $result): array
     {
@@ -49,6 +49,7 @@ final class StepReport
             'status' => $result->status,
             'coverage' => $result->verdict === null ? null : \round($result->verdict->coverage, 1),
             'inputs' => $result->verdict?->inputs,
+            'seconds' => $result->verdict === null ? null : \round($result->verdict->seconds, 3),
             'tests' => $result->tests,
         ];
         $perf = $result->verdict?->perf;

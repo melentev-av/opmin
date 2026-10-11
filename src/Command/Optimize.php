@@ -229,6 +229,7 @@ final class Optimize extends Stage
         $patch = $workspace->finish();
         $report->patch = $patch === null ? null : $project->relative($patch);
         $report->write();
+        $this->logTimings($optimizer, $output);
         $this->summary(new SymfonyStyle($input, $output), $report, $project, $runDir, $dryRun);
         if ($signalled()) {
             return 130;

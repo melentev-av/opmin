@@ -95,6 +95,7 @@ final class LlmFinish extends LlmStage
             'attempts' => \array_map(static fn(Attempt $a): array => $a->toArray(), $attempts),
         ]);
         $session->markFinished();
+        $this->logTimings($optimizer, $output);
 
         $kept = \array_filter($report->steps, static fn(StepReport $s): bool => $s->accepted !== []);
         $gain = \array_sum(\array_map(static fn(StepReport $s): int => $s->gain(), $kept));

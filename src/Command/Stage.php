@@ -7,6 +7,7 @@ namespace Opmin\Command;
 use Internal\Path;
 use Opmin\Module\Analysis\ReferenceIndex;
 use Opmin\Module\Common\Cpu;
+use Opmin\Module\Common\Timings;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Config\Schema\RequireClean;
 use Opmin\Module\Opcode\CountCache;
@@ -214,6 +215,7 @@ abstract class Stage extends Base
         /** @var Schema\GuardPerf $guardPerf */
         $guardPerf = $this->container->get(Schema\GuardPerf::class);
 
+        $timings = new Timings();
         try {
             $declined = Declined::load($project->root);
         } catch (\InvalidArgumentException $e) {
@@ -225,10 +227,10 @@ abstract class Stage extends Base
             $php,
             $workspace,
             $this->counter($php),
-            ReferenceIndex::build($project, $cacheDir, $this->cacheStore()),
+            $timings->measure('once.references', fn(): ReferenceIndex => ReferenceIndex::build($project, $cacheDir, $this->cacheStore())),
             new RectorRunner($project, $cacheDir, $phpTarget),
             Formatter::create($project, $php, $commands->format),
-            new Verifier($project, $php, $verification, $commands, $tests, $cacheDir, $phpTarget, $verbose, $guardPerf),
+            new Verifier($project, $php, $verification, $commands, $tests, $cacheDir, $phpTarget, $verbose, $guardPerf, $timings),
             $rectorConfig,
             $readability,
             $signatures,
@@ -239,6 +241,18 @@ abstract class Stage extends Base
                 $errorOutput->writeln("  {$message}", OutputInterface::VERBOSITY_NORMAL);
             },
             $declined,
+            $timings,
         );
+    }
+
+    /**
+     * Where the time of the run went, in the verbose log.
+     */
+    protected function logTimings(Optimizer $optimizer, OutputInterface $output): void
+    {
+        $errorOutput = $output instanceof ConsoleOutputInterface ? $output->getErrorOutput() : $output;
+        foreach ($optimizer->timings()->lines() as $line) {
+            $errorOutput->writeln($line, OutputInterface::VERBOSITY_VERBOSE);
+        }
     }
 }

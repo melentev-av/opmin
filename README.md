@@ -237,7 +237,12 @@ Every run (`optimize`, `llm:finish`) writes `.opmin/runs/<ts>/report.md` for peo
 - counterexamples as tests of the project's runner in `.opmin/runs/<ts>/counterexamples/`;
 - the environment: PHP runtime, `php.target`, the optimizer settings, opmin, Rector, the project's PHPStan. A run
   warns when one of them changed since the previous run, `opmin diff` when the reports come from other opmin
-  versions or targets.
+  versions or targets;
+- where the time went (`report.json`, `timings`): seconds and calls per level — Rector, the formatter, `php -l`,
+  counting, PHPStan before and after, the project's tests, the differential tests (worker start, planned inputs,
+  fuzzing, guard-perf), commits — with the once-per-run work (`once.*`: the tests on the original code, the
+  coverage map, the final test run) apart, and counters of steps and verification rounds; `-v` prints the same
+  at the end of the run. Every check of a function also has its `seconds`.
 
 `report.json` has `"schema": 1`; its fields change only in a major release (new fields may be added).
 

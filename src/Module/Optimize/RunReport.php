@@ -46,6 +46,9 @@ final class RunReport
     /** The run stopped before its end (Ctrl+C, `q` in the review): `--resume` continues it. */
     public bool $interrupted = false;
 
+    /** @var array<string, mixed>|null Where the time of this process went ({@see \Opmin\Module\Common\Timings::toArray()}). */
+    public ?array $timings = null;
+
     /**
      * @param 'optimize'|'llm' $kind
      */
@@ -117,6 +120,7 @@ final class RunReport
             'counterexamples' => $this->counterexamples(),
             'notes' => $this->notes,
             'steps' => \array_map(static fn(StepReport $s): array => $s->toArray(), $this->steps),
+            'timings' => $this->timings,
         ];
     }
 

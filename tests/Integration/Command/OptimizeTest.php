@@ -208,6 +208,22 @@ final class OptimizeTest
         Assert::string($err)->ignoringWhitespace(lineBreaks: true)->contains('rector changed since the run ' . \basename(\dirname($json[0])) . ': 0.0.1 →');
     }
 
+    public function reportShowsWhereTheTimeWent(): void
+    {
+        [$code, , $err] = $this->opmin('optimize', '--format=none', '-v');
+        Assert::same($code, 0);
+        $json = \glob($this->dir . '/.opmin/runs/*/report.json') ?: [];
+        /** @var array{timings: array{wall_seconds: float, levels: array<string, mixed>, counters: array<string, int>}, steps: list<array{accepted: list<array{checks: list<array<string, mixed>>}>}>} $report */
+        $report = \json_decode((string) \file_get_contents($json[0]), true, flags: \JSON_THROW_ON_ERROR);
+
+        Assert::true($report['timings']['wall_seconds'] > 0);
+        Assert::array($report['timings']['levels'])->hasKeys('once.count', 'once.references', 'rector', 'count', 'diff_test', 'diff_test.start', 'diff_test.inputs');
+        Assert::true($report['timings']['counters']['steps'] > 0);
+        Assert::true($report['timings']['counters']['verify_rounds'] > 0);
+        Assert::numeric($report['steps'][0]['accepted'][0]['checks'][0]['seconds']);
+        Assert::string($err)->contains('Time: ')->contains('diff_test.inputs');
+    }
+
     public function dryRunChangesNothing(): void
     {
         [$code, $out] = $this->opmin('optimize', '--dry-run', '--format=none', 'src/Text.php');

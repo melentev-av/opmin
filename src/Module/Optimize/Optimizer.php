@@ -6,6 +6,7 @@ namespace Opmin\Module\Optimize;
 
 use Internal\Path;
 use Opmin\Module\Common\FileSystem\FS;
+use Opmin\Module\Common\Timings;
 use Opmin\Module\Analysis\Flag;
 use Opmin\Module\Analysis\IgnoreMarks;
 use Opmin\Module\Analysis\ReferenceIndex;
@@ -109,6 +110,7 @@ final class Optimizer
         bool $allowPublicSignatures = false,
         ?\Closure $log = null,
         ?Declined $declined = null,
+        private readonly Timings $timings = new Timings(),
     ) {
         $this->declined = $declined ?? Declined::none();
         $this->readability = new Readability($readability);
@@ -145,6 +147,7 @@ final class Optimizer
             for ($i = $next; $i < \count($rules) && !$this->stopped(); ++$i) {
                 $rule = $rules[$i];
                 ($this->log)("Pass {$pass}: {$rule->shortName()}");
+                $this->timings->count('steps');
                 $step = $this->step($rule, $pass);
                 if ($this->signalled() && $step->accepted === []) {
                     # A signal killed the tools of the step: its verdicts are not real; the step runs again on resume.
@@ -259,14 +262,14 @@ final class Optimizer
             $this->workspace->backup($file);
         }
 
-        $counts = $this->countCurrent();
+        $counts = $this->timings->measure('once.count', $this->countCurrent(...));
         $report = new RunReport(self::total($this->counts), (string) $this->workspace->runDir, $kind);
         $baseline === null or $this->writeJson($baseline, $counts);
         foreach ($counts->errors as $file => $error) {
             $report->notes[] = "{$file} cannot be counted and is not changed: {$error}";
         }
 
-        $detect and $this->detectUnformatted($report);
+        $detect and $this->timings->measure('once.formatter_check', fn() => $this->detectUnformatted($report));
 
         return $report;
     }
@@ -288,9 +291,9 @@ final class Optimizer
         }
 
         $finalTests
-            ? $this->finalTests($report)
+            ? $this->timings->measure('once.final_tests', fn() => $this->finalTests($report))
             : $report->notes[] = 'The run was interrupted before the full run of the project\'s tests: `opmin optimize --resume` continues it.';
-        $final = $this->countCurrent();
+        $final = $this->timings->measure('once.final_count', $this->countCurrent(...));
         $this->writeJson('99-final.json', $final);
         $report->opsAfter = self::total($this->counts);
         foreach ($report->steps as $step) {
@@ -298,6 +301,16 @@ final class Optimizer
                 $report->functions[$change['function']] ??= $this->familyNow($change['file'], $change['function']);
             }
         }
+
+        $report->timings = $this->timings->toArray();
+    }
+
+    /**
+     * Where the time of the run went so far.
+     */
+    public function timings(): Timings
+    {
+        return $this->timings;
     }
 
     /**
@@ -454,7 +467,7 @@ final class Optimizer
         $step = new StepReport($rule->class, $pass);
         $step->executedGain = $rule->executedGain;
         try {
-            $errors = $this->rector->run($rule, \array_values($this->paths));
+            $errors = $this->timings->measure('rector', fn() => $this->rector->run($rule, \array_values($this->paths)));
         } catch (\RuntimeException $e) {
             $this->restoreAll();
             $step->error = $e->getMessage();
@@ -513,9 +526,9 @@ final class Optimizer
      */
     private function apply(array $new, RuleSpec $rule, StepReport $step): void
     {
-        $new = $this->format($new);
-        $new = $this->syntax($new, $step);
-        $countsNew = $this->countContents($new);
+        $new = $this->timings->measure('format', fn() => $this->format($new));
+        $new = $this->timings->measure('lint', fn() => $this->syntax($new, $step));
+        $countsNew = $this->timings->measure('count', fn() => $this->countContents($new));
 
         $plans = [];
         foreach ($new as $relative => $content) {
@@ -534,7 +547,7 @@ final class Optimizer
             $this->current[$relative] = $plan->candidate;
         }
 
-        $countsAfter = $this->countContents([]);
+        $countsAfter = $this->timings->measure('count', fn() => $this->countContents([]));
         foreach ($accepted as $relative => $plan) {
             foreach ($plan->accepted as $top => $gain) {
                 $step->accepted[] = [
@@ -550,10 +563,10 @@ final class Optimizer
         }
 
         try {
-            $step->commit = $this->workspace->commit(
+            $step->commit = $this->timings->measure('commit', fn() => $this->workspace->commit(
                 \array_map(fn(string $r): Path => $this->paths[$r], \array_keys($accepted)),
                 $this->message($rule, $step),
-            );
+            ));
         } catch (\RuntimeException $e) {
             $step->error = $e->getMessage();
         }
@@ -756,6 +769,8 @@ final class Optimizer
             }
 
             ($this->log)('Verifying ' . \count($pending) . ' file(s)');
+            $this->timings->count('verify_rounds');
+            $this->timings->count('verify_files', \count($pending));
             $report = $this->verifier->verifyAll($changes, null, true, $runDir->join('counterexamples'));
             foreach ($report->notes as $note) {
                 # Per-function notes (`X is new`) belong to the step, not to the run.

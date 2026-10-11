@@ -6,6 +6,7 @@ namespace Opmin\Module\Verification;
 
 use Internal\Path;
 use Opmin\Module\Common\FileSystem\FS;
+use Opmin\Module\Common\Timings;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Lint\PhpStanResult;
 use Opmin\Module\Lint\PhpStanRunner;
@@ -76,6 +77,7 @@ final class Verifier
         private readonly ?string $phpTarget,
         ?\Closure $log = null,
         private readonly ?Schema\GuardPerf $guardPerf = null,
+        private readonly Timings $timings = new Timings(),
     ) {
         $this->log = $log ?? static function (string $message): void {};
     }
@@ -123,7 +125,7 @@ final class Verifier
         foreach ($changes as [$file, $candidate]) {
             $original = (string) \file_get_contents((string) $file);
             $relative = $this->project->relative($file);
-            $syntax = (new SyntaxChecker($this->php, $work))->check($candidate);
+            $syntax = $this->timings->measure('lint', fn(): ?string => (new SyntaxChecker($this->php, $work))->check($candidate));
             if ($syntax !== null) {
                 return new CandidateReport([], \count($changes) > 1 ? "{$relative}: {$syntax}" : $syntax);
             }
@@ -146,7 +148,7 @@ final class Verifier
         }
 
         $autoload = $this->project->root->join('vendor/autoload.php');
-        $tester = new DiffTester($this->php, $this->verification, $work, $this->cacheDir->join('corpus'), measure: $this->guardPerf?->enabled ?? false);
+        $tester = new DiffTester($this->php, $this->verification, $work, $this->cacheDir->join('corpus'), measure: $this->guardPerf?->enabled ?? false, timings: $this->timings);
         $results = [];
         foreach ($files as [$file, $relative, $original, $candidate, $changed]) {
             $others = [];
@@ -156,7 +158,7 @@ final class Verifier
 
             foreach ($changed as $key) {
                 ($this->log)("Differential test of {$key}");
-                $verdict = $tester->verify(new DiffTask(
+                $verdict = $this->timings->measure('diff_test', static fn(): Verdict => $tester->verify(new DiffTask(
                     $key,
                     $file,
                     $relative,
@@ -165,7 +167,7 @@ final class Verifier
                     $autoload->isFile() ? $autoload : null,
                     $others,
                     $staticErrors[(string) $file] ?? [],
-                ));
+                )));
                 $results[] = $this->decide($key, $verdict, $testsOf[(string) $file][$key] ?? [], $testResult?->success ?? false, $runner, $original, $relative, $counterexamples);
             }
         }
@@ -211,7 +213,7 @@ final class Verifier
 
         $this->originalTested = true;
         ($this->log)("Project tests on the original code ({$runner->name()})");
-        $result = $runner->runAll();
+        $result = $this->timings->measure('once.tests_original', $runner->runAll(...));
         if (!$result->success) {
             $this->red = $result;
             $this->baselineNotes[] = 'The project\'s tests fail on the original code: fix them first. ' . self::whyRed($result);
@@ -244,7 +246,7 @@ final class Verifier
         $runner === null and $notes[] = 'No test runner found (tests.runner): the project\'s tests are not run.';
 
         $paths = \array_map(static fn(array $f): Path => $f[0], $files);
-        $before = $phpstan->available() ? $phpstan->analyse($paths) : null;
+        $before = $phpstan->available() ? $this->timings->measure('phpstan.before', static fn(): PhpStanResult => $phpstan->analyse($paths)) : null;
         $own = [];
         foreach ($paths as $file) {
             $real = \realpath((string) $file);
@@ -294,7 +296,7 @@ final class Verifier
             $new = [];
             if ($before !== null) {
                 ($this->log)('PHPStan on the changed code');
-                $new = PhpStanResult::newErrors($before, $phpstan->analyse($paths));
+                $new = PhpStanResult::newErrors($before, $this->timings->measure('phpstan.after', static fn(): PhpStanResult => $phpstan->analyse($paths)));
             }
 
             $after = null;
@@ -302,10 +304,10 @@ final class Verifier
                 # Only the tests that execute a changed function can see the change.
                 $selected = \array_values(\array_unique($selected));
                 ($this->log)('Project tests on the changed code: ' . \count($selected) . ' that execute the changed functions');
-                $after = $runner->runFiltered($selected);
+                $after = $this->timings->measure('tests', static fn(): TestResult => $runner->runFiltered($selected));
             } elseif ($runner !== null) {
                 ($this->log)('Project tests on the changed code');
-                $after = $runner->runAll();
+                $after = $this->timings->measure('tests', $runner->runAll(...));
             }
 
             return [$new, $after, null, $own, $testsOf];
@@ -331,7 +333,7 @@ final class Verifier
             return;
         }
 
-        $this->coverage = $runner->collectCoverageMap();
+        $this->coverage = $this->timings->measure('once.coverage_map', $runner->collectCoverageMap(...));
         $this->coverage === null and $this->baselineNotes[] = 'No coverage map of the project\'s tests (Xdebug or pcov in php.binary): all tests are run.';
     }
 

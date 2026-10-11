@@ -7,6 +7,7 @@ namespace Opmin\Module\Verification;
 use Internal\Path;
 use Opmin\Module\Analysis\Flag;
 use Opmin\Module\Common\FileSystem\FS;
+use Opmin\Module\Common\Timings;
 use Opmin\Module\Config\Schema\CoverageDriver;
 use Opmin\Module\Config\Schema\Verification as Config;
 use Opmin\Module\Harness\HarnessException;
@@ -67,6 +68,7 @@ final class DiffTester
         private readonly TargetLocator $locator = new TargetLocator(),
         private readonly Instrumenter $instrumenter = new Instrumenter(),
         private readonly bool $measure = false,
+        private readonly Timings $timings = new Timings(),
     ) {}
 
     public function verify(DiffTask $task): Verdict
@@ -217,7 +219,7 @@ final class DiffTester
             if ($this->measure && $verdict->accepted()) {
                 $originalSession->close();
                 $changedSession->close();
-                $verdict = $this->withPerf($verdict, $task, $original, $changed, $dir);
+                $verdict = $this->timings->measure('diff_test.perf', fn(): Verdict => $this->withPerf($verdict, $task, $original, $changed, $dir));
             }
 
             return $verdict;
@@ -237,8 +239,11 @@ final class DiffTester
      */
     private function test(DiffTask $task, Target $original, Target $changed, Session $originalSession, Session $changedSession, int $probes, bool $lines, bool $static, array $deadProbes, array $deadLines): Verdict
     {
+        $start = \hrtime(true);
         $describedOriginal = $this->describe($originalSession, $original);
         $describedChanged = $this->describe($changedSession, $changed);
+        # The workers start with the first request: the start is in this time.
+        $this->timings->add('diff_test.start', (float) (\hrtime(true) - $start) / 1e9);
         $parser = $this->parser($task->original, $original);
         $signature = Signature::fromDescribe($describedOriginal, $parser, $original->receiver);
         $signatureChanged = self::signatureKey($describedOriginal) !== self::signatureKey($describedChanged);
@@ -304,12 +309,14 @@ final class DiffTester
 
         $id = $task->relative . '::' . $task->key;
         $seed = $this->config->seed;
-        $outcome = $this->runner->run(
+        # Planned and random inputs; the shrinking of a difference found among them is in this time too.
+        $outcome = $this->timings->measure('diff_test.inputs', fn(): PropertyOutcome => $this->runner->run(
             new PropertySpec($id, \max(1, \count($planner->plan()) + $this->config->randomInputs), $seed, corpus: $this->corpus),
             $planner,
             $shrinker,
             $check,
-        );
+        ));
+        $fuzzStart = \hrtime(true);
 
         $deadline = \hrtime(true) + $this->config->fuzzTimeMs * 1_000_000;
         for ($round = 1; !$outcome->isFalsified() && !$feedback->complete() && \hrtime(true) < $deadline; ++$round) {
@@ -323,6 +330,10 @@ final class DiffTester
             );
         }
 
+        if ($round > 1) {
+            $this->timings->add('diff_test.fuzz', (float) (\hrtime(true) - $fuzzStart) / 1e9);
+            $this->timings->count('fuzz_rounds', $round - 1);
+        }
         $this->checkedInputs = $inputs;
 
         return $this->verdict($task, $original, $outcome, $feedback, $checked, $lines);

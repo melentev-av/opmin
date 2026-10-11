@@ -358,6 +358,11 @@ php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;'   # on production: e.g. 8
   settings (`optimizer_hash`: the OPcache INI of opmin and the loaded Zend extensions); another one is
   rejected with exit code 2. Create it with that image and commit `opmin.baseline.json`:
   `docker run --rm -v "$PWD:/app" ghcr.io/melentev-av/opmin:<version>-php8.3 opmin baseline`.
+- `opmin init --ci=github` writes `.github/workflows/opcodes.yml` (the action below), `--ci=gitlab` writes
+  `.gitlab/opmin.yml` and prints the `include:` line for `.gitlab-ci.yml` (which it never edits). The PHP is
+  the minor of `php.binary` (not `php.target`: that may be the lowest `require.php` of composer.json) and the
+  image is the running opmin's; it prints both and the `docker run … opmin baseline` command. An existing file
+  is never overwritten (exit code 2).
 
 GitHub Actions (`.github/workflows/opcodes.yml`):
 

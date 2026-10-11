@@ -155,6 +155,11 @@ final class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedRe
   another PHP → exit 2, `--all` against the changed-files mode, closure keys after lines moved, a renamed file
   and function, `--suggest` on copies (the project is not touched). Opcode numbers are never asserted: they
   differ between the PHP versions of the matrix, the direction does not.
+- `tests/Unit/Module/Check/Ci/CiWorkflowTest.php` parses the jobs `opmin init --ci=` writes;
+  `tests/Integration/Command/InitCiTest.php` runs `init --ci` as a process (the PHP minor of php.binary from
+  `opmin.yaml`, refusing to overwrite, `.gitlab-ci.yml` untouched). The action itself (`action.yml`) is proven
+  by the CI job `🎬 GitHub Action runs opmin check` (`testing.yml`): the latest release's image on a tiny
+  project — unchanged passes, grown fails, no version is refused.
 
 ## Delivery (`self-update`, `install.sh`, `doctor`, git packages, the PHAR)
 

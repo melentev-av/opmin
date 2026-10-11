@@ -6,6 +6,7 @@ namespace Opmin\Command;
 
 use Internal\Path;
 use Opmin\Info;
+use Opmin\Module\Check\Ci\CiSetup;
 use Opmin\Module\Config\ConfigWriter;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Php\PhpBinaryException;
@@ -36,6 +37,7 @@ use Symfony\Component\Yaml\Yaml;
  * opmin init -n --doctor
  * opmin init --config=./custom.yaml --overwrite
  * opmin init --no-skill
+ * opmin init --ci=github      # only .github/workflows/opcodes.yml (gitlab: .gitlab/opmin.yml)
  * ```
  *
  * @internal
@@ -65,6 +67,7 @@ final class Init extends Base
             InputOption::VALUE_NEGATABLE,
             'Check the written config with opmin doctor (default: ask on a terminal, skip otherwise)',
         );
+        $this->addOption('ci', null, InputOption::VALUE_REQUIRED, 'Only write the CI guard job for github | gitlab, with the PHP minor of php.binary');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -73,6 +76,12 @@ final class Init extends Base
 
         /** @var StyleInterface $style */
         $style = $this->container->get(StyleInterface::class);
+
+        /** @var string|null $ci */
+        $ci = $input->getOption('ci');
+        if ($ci !== null) {
+            return (new CiSetup($style))->run($ci, $this->getTargetConfigPath($input), $input);
+        }
 
         $configPath = $this->getTargetConfigPath($input);
         if ($this->shouldAbortDueToExistingFile($input, $style, $configPath)) {

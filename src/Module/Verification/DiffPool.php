@@ -111,8 +111,8 @@ final class DiffPool
             return $verdicts;
         }
 
+        ($this->log)(\sprintf('Differential tests of %d functions, %d at a time', \count($tasks), $jobs));
         $results = $this->timings->measure('diff_test.pool', fn(): array => $this->parallel($tasks, $jobs));
-        $this->timings->count('diff_test_jobs', $jobs);
         $verdicts = [];
         $tester = $measure ? $this->tester(false, $this->timings) : null;
         foreach ($tasks as $i => $task) {

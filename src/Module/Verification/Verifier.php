@@ -241,7 +241,7 @@ final class Verifier
      */
     private function levelsOneAndTwo(array $files, ?TestRunnerAdapter $runner, Path $work, array &$notes): array
     {
-        $phpstan = new PhpStanRunner($this->project, $this->php, $this->commands->phpstan, $this->phpTarget, $work);
+        $phpstan = new PhpStanRunner($this->project, $this->php, $this->commands->phpstan, $this->phpTarget, $work, tmpDir: $this->cacheDir->join('phpstan'));
         $phpstan->available() or $notes[] = 'PHPStan is not installed (commands.phpstan): the static check is skipped.';
         $runner === null and $notes[] = 'No test runner found (tests.runner): the project\'s tests are not run.';
 

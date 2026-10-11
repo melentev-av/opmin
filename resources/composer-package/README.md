@@ -1,5 +1,10 @@
 # opmin (PHAR)
 
+> **Not published yet.** This is the PHAR wrapper for a future release: no package is made from this
+> directory today. `composer require --dev melentev-av/opmin` currently installs the opmin sources with
+> their dependencies (see the main README); for a conflict-free install use `opmin.phar` from the release
+> page or the static binary.
+
 The composer package of [opmin](https://github.com/melentev-av/opmin): the scoped PHAR of a release and a
 `bin/opmin` that starts it, without dependencies, so `composer require --dev` never conflicts with the
 project.

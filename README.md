@@ -35,9 +35,11 @@ release and, with `openssl`, the signature of `sha256sum.txt`. `self-update` alw
 binary once before replacing the old one. Archives are also on
 [GitHub Releases](https://github.com/melentev-av/opmin/releases) — see «Verifying a download» below.
 
-**2. PHAR** — the same scoped build for your own PHP 8.3+: `opmin.phar` on the release page, or as a composer
-package without dependencies (`composer require --dev melentev-av/opmin`, the PHAR inside, never conflicting
-with your `vendor/`).
+**2. PHAR** — the same scoped build for your own PHP 8.3+: `opmin.phar` on the release page.
+
+**Composer** — `composer require --dev melentev-av/opmin` installs the sources with their dependencies (Rector
+2.7, nikic/php-parser 5, Symfony Console/Process/Yaml 7.3+ or 8, PHPStan phpdoc-parser) into your `vendor/`. If
+they conflict with the project (e.g. it is on Rector 1 or php-parser 4), use the PHAR or the static binary.
 
 **3. Docker** — `ghcr.io/melentev-av/opmin:<version>-php<8.1…8.5>`: the binary plus the PHP of production with
 OPcache (JIT off), pcov, git and composer. Pick the tag of your production PHP; the images are meant for CI and
@@ -50,8 +52,9 @@ docker run --rm -v "$PWD:/app" ghcr.io/melentev-av/opmin:<version>-php8.3 opmin 
 **Pinning the version per project.** Commit a `.opmin-version` (an exact version `x.y.z`, or a constraint like
 `^x.y`; for 0.x `^0.4` means `>=0.4.0 <0.5.0`) or set `requires:` the same way in `opmin.yaml`: another opmin
 stops with exit code 2 and the `opmin self-update --to=` command to run. A global `opmin` started inside a
-project that has its own — `vendor/bin/opmin` (the composer package) or an `opmin` binary in the project root
-(e.g. downloaded by [dload](https://github.com/php-internal/dload)) — runs that one instead (`OPMIN_NO_DELEGATE=1` keeps the global one).
+project that has its own — `vendor/bin/opmin` (installed by composer) or an `opmin` binary in the project root
+(e.g. downloaded by [dload](https://github.com/php-internal/dload)) — runs that one instead
+(`OPMIN_NO_DELEGATE=1` keeps the global one).
 
 **From sources** (development): `git clone git@github.com:melentev-av/opmin.git && cd opmin && composer install &&
 bin/opmin list`.

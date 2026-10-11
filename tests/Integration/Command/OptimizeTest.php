@@ -330,14 +330,6 @@ final class OptimizeTest
         Assert::true(\is_float($functions['App\Text::size']['time_change_percent'] ?? null) || \is_int($functions['App\Text::size']['time_change_percent'] ?? null));
     }
 
-    public function laterStagesAreNotImplementedYet(): void
-    {
-        [$code, , $err] = $this->opmin('optimize', '--mutation-check');
-
-        Assert::same($code, 2);
-        Assert::string($err)->contains('--mutation-check is not implemented yet (after the MVP)');
-    }
-
     public function packageOptionsNeedAGitUrl(): void
     {
         [$code, , $err] = $this->opmin('optimize', '--ref=v1.0.0');

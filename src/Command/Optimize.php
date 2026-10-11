@@ -61,11 +61,6 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 final class Optimize extends Stage
 {
-    /** Options of later stages: [option, stage]. */
-    private const LATER = [
-        'mutation-check' => 'after the MVP',
-    ];
-
     /** Options that only make sense for a git package. */
     private const PACKAGE_ONLY = ['ref', 'no-docker', 'allow-scripts', 'force-public-api', 'yes'];
 
@@ -88,7 +83,6 @@ final class Optimize extends Stage
         $this->addOption('allow-unverified', null, InputOption::VALUE_NONE, 'Change functions whose behavior is not proven');
         $this->addOption('allow-public-signatures', null, InputOption::VALUE_NONE, 'Allow native type changes of public overridable methods');
         $this->addOption('force-public-api', null, InputOption::VALUE_NONE, 'Touch the public API in package mode');
-        $this->addOption('mutation-check', null, InputOption::VALUE_NONE, 'Report the mutation score of the target functions first');
         $this->addOption('no-docker', null, InputOption::VALUE_NONE, 'Do not re-run inside Docker in git package mode');
         $this->addOption('allow-scripts', null, InputOption::VALUE_NONE, 'Run composer scripts and plugins of a git package');
         $this->addOption('yes', 'y', InputOption::VALUE_NONE, 'Do not ask before running tests of foreign code');
@@ -100,12 +94,6 @@ final class Optimize extends Stage
         parent::execute($input, $output);
         $errorOutput = $output instanceof ConsoleOutputInterface ? $output->getErrorOutput() : $output;
         $style = new SymfonyStyle($input, $errorOutput);
-        foreach (self::LATER as $option => $stage) {
-            if ($input->getOption($option) !== false && $input->getOption($option) !== null) {
-                $style->error("--{$option} is not implemented yet ({$stage}).");
-                return Command::INVALID;
-            }
-        }
 
         /** @var list<string> $arguments */
         $arguments = $input->getArgument('path');

@@ -375,6 +375,30 @@ jobs:
       - run: opmin check --base="origin/${{ github.base_ref }}" --format=github
 ```
 
+Or the action of this repository (`action.yml`, composite): it runs `opmin check` in the same image with
+`docker run`, so it needs a Linux runner. The version of the image is the tag of the action — Dependabot
+(`package-ecosystem: github-actions`) bumps it like any other `uses:`; bump the baseline with it.
+
+```yaml
+name: Opcodes
+on: pull_request
+jobs:
+  opmin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0            # the base branch is needed for the changed-files mode
+      - uses: melentev-av/opmin@v<version>
+        with:
+          php: '8.3'                # the PHP minor of your production
+```
+
+Inputs: `php` (required), `version` (the opmin release of the image; default — the tag of the action, required
+when it is used at a branch or a commit), `base` (default `origin/<base branch>` of the pull request,
+`check.base_ref` outside one), `format` (default `github`), `args` (more arguments of `opmin check`, e.g.
+`--suggest`).
+
 GitLab CI (`.gitlab-ci.yml`):
 
 ```yaml

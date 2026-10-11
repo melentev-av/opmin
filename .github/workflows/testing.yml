@@ -174,4 +174,69 @@ jobs:
       - name: 📦 PHAR in a project with other php-parser and Rector
         run: tests/Phar/composer-project.sh .build/phar/opmin.phar
 
+  action:
+    # The composite action of the repository root (action.yml), from this checkout, on a tiny project:
+    # the latest release's image counts, so the job proves the action, not the opmin of this commit.
+    name: 🎬 GitHub Action runs opmin check
+    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    env:
+      GIT: git -c user.name=ci -c user.email=ci@localhost
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+        with:
+          path: opmin
+
+      - name: 🧱 A project with a baseline and a branch
+        run: |
+          VERSION="$(jq -r '."."' opmin/resources/version.json)"
+          echo "OPMIN_VERSION=$VERSION" >> "$GITHUB_ENV"
+          IMAGE="ghcr.io/melentev-av/opmin:$VERSION-php8.3"
+          docker pull --quiet "$IMAGE"
+
+          git init -q -b main
+          echo '/opmin/' > .gitignore
+          mkdir src
+          printf '{"name": "fixture/action", "autoload": {"psr-4": {"App\\\\": "src/"}}}\n' > composer.json
+          printf '<?php\n\nnamespace App;\n\nfinal class Price\n{\n    public function total(array $items): int\n    {\n        return \\count($items);\n    }\n}\n' > src/Price.php
+          docker run --rm -v "$PWD:/app" -w /app "$IMAGE" opmin init --no-interaction --no-skill
+          docker run --rm -v "$PWD:/app" -w /app "$IMAGE" opmin baseline
+          $GIT add -A && $GIT commit -q -m base
+          git update-ref refs/remotes/origin/main HEAD
+          git switch -q -c feature
+
+      - name: 🎬 Nothing changed — the check passes
+        uses: ./opmin
+        with:
+          php: '8.3'
+          version: ${{ env.OPMIN_VERSION }}
+          base: origin/main
+
+      - name: 📈 A function grows
+        run: |
+          printf '<?php\n\nnamespace App;\n\nfinal class Price\n{\n    public function total(array $items): int\n    {\n        $n = 0;\n        foreach ($items as $item) {\n            $n += $item > 0 ? 1 : 0;\n        }\n        return $n;\n    }\n}\n' > src/Price.php
+          $GIT commit -q -am grow
+
+      - name: 🎬 Grown — the check fails
+        id: grown
+        continue-on-error: true
+        uses: ./opmin
+        with:
+          php: '8.3'
+          version: ${{ env.OPMIN_VERSION }}
+          base: origin/main
+
+      - name: 🎬 Not at a release tag and no version — the action refuses
+        id: no-version
+        continue-on-error: true
+        uses: ./opmin
+        with:
+          php: '8.3'
+
+      - name: ✅ The failures are the expected ones
+        run: |
+          test "${{ steps.grown.outcome }}" = failure
+          test "${{ steps.no-version.outcome }}" = failure
+
 ...

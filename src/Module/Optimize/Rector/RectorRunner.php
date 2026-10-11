@@ -101,7 +101,9 @@ final readonly class RectorRunner
         $cache = $dir->join('cache', self::cacheKey($rule, $this->phpTarget));
         \file_put_contents((string) $config, $this->config($rule, $files, $cache));
 
-        $args = ['process', '--config=' . (string) $config, '--output-format=json', '--no-progress-bar', '--no-diffs'];
+        # No `process`: it is the default command, and Rector takes a first argument that exists as a file or
+        # a directory in the working directory (a `process/` in the project root) for a path to process.
+        $args = ['--config=' . (string) $config, '--output-format=json', '--no-progress-bar', '--no-diffs'];
         $installation = Installation::current();
         $process = $installation->kind === Installation::SOURCES
             ? new Process([\PHP_BINARY, '-d', 'memory_limit=-1', self::binary(), ...$args], (string) $this->project->root, timeout: $this->timeout)

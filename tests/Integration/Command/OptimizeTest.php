@@ -163,6 +163,23 @@ final class OptimizeTest
         Assert::same(\file_get_contents($this->dir . '/src/Text.php'), self::CODE . "\n");
     }
 
+    /**
+     * Rector reads its first argument as a source path when such a file exists: a `process/` in the
+     * project root made it change the files there instead of the targets.
+     */
+    public function aProcessDirectoryInTheRootIsNotTakenForTheTargets(): void
+    {
+        $other = "<?php\n\ndeclare(strict_types=1);\n\nnamespace Other;\n\nfunction size(string $s): int\n{\n    return strlen($s);\n}\n";
+        \mkdir($this->dir . '/process');
+        \file_put_contents($this->dir . '/process/size.php', $other);
+
+        [$code] = $this->opmin('optimize', '--format=none', 'src');
+
+        Assert::same($code, 0);
+        Assert::string((string) \file_get_contents($this->dir . '/src/Text.php'))->contains('\\strlen($s)');
+        Assert::same(\file_get_contents($this->dir . '/process/size.php'), $other);
+    }
+
     public function outsideGitTheOriginalsAreCopied(): void
     {
         [$code] = $this->opmin('optimize', '--format=none');

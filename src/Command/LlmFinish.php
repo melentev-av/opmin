@@ -24,7 +24,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * one), then `report.json` and `opmin.patch` in the run directory.
  *
  * Exit codes: 0 — done; 1 — the full test run fails even with every attempt taken back; 2 — no
- * session, a dirty git tree, invalid usage.
+ * session, a dirty git tree or one without commits, invalid usage.
  *
  * @internal
  */

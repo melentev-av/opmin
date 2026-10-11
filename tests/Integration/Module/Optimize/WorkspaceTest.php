@@ -93,6 +93,26 @@ final class WorkspaceTest
         Assert::true($workspace->git());
     }
 
+    /**
+     * Staged files and no commit: git mode, but nothing to commit the steps on top of (#57). A dry
+     * run and `require_clean: off` are refused too: every checkpoint of the run reads HEAD.
+     */
+    #[DataSet([false, RequireClean::Off], 'require_clean off')]
+    #[DataSet([true, RequireClean::All], 'dry run')]
+    public function aRepositoryWithoutCommitsIsRefused(bool $dryRun, RequireClean $requireClean): never
+    {
+        $this->root = $this->dir;
+        \mkdir($this->root . '/src');
+        \file_put_contents($this->root . '/src/A.php', "<?php\n");
+        $this->git('add', '.');
+
+        Expect::exception(\RuntimeException::class)->withMessage(
+            'The git repository has no commits yet: commit the files first (every accepted step becomes a commit), or run outside git.',
+        );
+
+        Workspace::create($this->project(), $this->runDir(), $dryRun, [], $requireClean, ['src/A.php']);
+    }
+
     public function commitTakesOnlyTheFilesOfTheStep(): void
     {
         $this->commitProject('');

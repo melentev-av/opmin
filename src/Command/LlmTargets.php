@@ -10,6 +10,7 @@ use Opmin\Module\Llm\Session;
 use Opmin\Module\Llm\Target;
 use Opmin\Module\Llm\TargetSelector;
 use Opmin\Module\Optimize\Review\Declined;
+use Opmin\Module\Optimize\Workspace;
 use Opmin\Module\Php\PhpBinaryException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -27,7 +28,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * opmin llm:targets src --format=json
  * ```
  *
- * Exit codes: 0 — started (also with no targets); 1 — some files cannot be counted; 2 — invalid usage.
+ * Exit codes: 0 — started (also with no targets); 1 — some files cannot be counted; 2 — invalid usage,
+ * a git repository without commits.
  *
  * @internal
  */
@@ -55,7 +57,9 @@ final class LlmTargets extends LlmStage
             [$project, $paths, $php] = $this->project($arguments);
             $files = $this->files($project, $paths);
             $declined = Declined::load($project->root);
-        } catch (PhpBinaryException|\InvalidArgumentException $e) {
+            # Every accepted candidate becomes a commit: refuse before the session exists, not on the first one.
+            Workspace::requireCommits($project->root);
+        } catch (PhpBinaryException|\InvalidArgumentException|\RuntimeException $e) {
             $style->error($e->getMessage());
             return Command::INVALID;
         }

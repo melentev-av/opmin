@@ -619,6 +619,26 @@ final class OptimizeTest
         Assert::false(\is_dir($this->dir . '/.opmin/runs'));
     }
 
+    /**
+     * Staged files and no commit (#57): refused like a dirty tree, before the run directory exists.
+     */
+    public function aRepositoryWithoutCommitsIsRefusedBeforeTheRun(): void
+    {
+        $this->git('init', '-q');
+        $this->git('add', '.');
+
+        [$code, $out, $err] = $this->opmin('optimize', '--dry-run');
+        [$realCode, , $realErr] = $this->opmin('optimize');
+
+        Assert::same($code, 2, $out . $err);
+        Assert::string($err)->ignoringWhitespace(lineBreaks: true)
+            ->contains('The git repository has no commits yet: commit the files first (every accepted step becomes a commit), or run outside git.')
+            ->notContains('optimize [--config');
+        Assert::same($realCode, 2, $realErr);
+        Assert::same(\glob($this->dir . '/.opmin/runs/*') ?: [], []);
+        Assert::same(\file_get_contents($this->dir . '/src/Text.php'), self::CODE);
+    }
+
     public function jobsMustBeANumber(): void
     {
         [$code, , $err] = $this->opmin('optimize', '--jobs=many');

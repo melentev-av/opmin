@@ -58,7 +58,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *
  * Exit codes: 0 — done (also when nothing could be improved); 1 — the full test run fails after the
  * optimization even with every step taken back, or a step failed; 2 — invalid config or usage, a
- * dirty git tree, an unusable `php.binary`.
+ * dirty git tree or one without commits, an unusable `php.binary`.
  *
  * @internal
  */

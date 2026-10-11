@@ -380,6 +380,31 @@ final class LlmStageTest
     }
 
     /**
+     * Staged files and no commit (#57): no session starts, and a session of another repository does
+     * not continue in this one.
+     */
+    public function aRepositoryWithoutCommitsIsRefused(): void
+    {
+        $this->opmin('llm:targets');
+        $session = \glob($this->dir . '/.opmin/runs/*') ?: [];
+        \exec('rm -rf ' . \escapeshellarg($this->dir . '/.git'));
+        $this->git('init', '-q');
+        $this->git('add', '.');
+
+        [$targets, , $targetsErr] = $this->opmin('llm:targets');
+        [$apply, , $applyErr] = $this->opmin('apply-candidate', 'App\Text::slug', $this->candidate(self::CODE));
+        [$finish, , $finishErr] = $this->opmin('llm:finish');
+
+        $message = 'The git repository has no commits yet: commit the files first (every accepted step becomes a commit), or run outside git.';
+        Assert::same([$targets, $apply, $finish], [2, 2, 2], $targetsErr . $applyErr . $finishErr);
+        Assert::string($targetsErr)->ignoringWhitespace(lineBreaks: true)->contains($message);
+        Assert::string($applyErr)->ignoringWhitespace(lineBreaks: true)->contains($message);
+        Assert::string($finishErr)->ignoringWhitespace(lineBreaks: true)->contains($message);
+        Assert::count($session, 1);
+        Assert::same(\glob($this->dir . '/.opmin/runs/*') ?: [], $session);
+    }
+
+    /**
      * Writes a candidate into the run directory of the latest session (ignored by git, like the skill does).
      */
     private function candidate(string $source): string

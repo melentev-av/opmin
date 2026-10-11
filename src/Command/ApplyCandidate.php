@@ -42,7 +42,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * `llm:context --format=json` prints), or `finish` when none is left.
  *
  * Exit codes: 0 — accepted; 1 — rejected (the reason is printed); 2 — no session, not a target,
- * no attempts left, a dirty git tree, invalid usage.
+ * no attempts left, a dirty git tree or one without commits, invalid usage.
  *
  * @internal
  */

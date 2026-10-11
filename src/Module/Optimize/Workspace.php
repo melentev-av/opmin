@@ -41,7 +41,8 @@ final class Workspace
      *        (the run directory, the cache).
      * @param list<non-empty-string> $targets Relative paths of the files the run may change: with
      *        {@see RequireClean::Targets} only they must be clean.
-     * @throws \RuntimeException When the git working tree is not clean.
+     * @throws \RuntimeException When the git repository has no commits or the working tree is not clean;
+     *         the run directory is not created then.
      */
     public static function create(
         Project $project,
@@ -52,6 +53,7 @@ final class Workspace
         array $targets = [],
     ): self {
         $gitRoot = self::gitRoot($project->root);
+        $gitRoot === null or self::ensureCommitted($project->root);
         $workspace = new self($project, $runDir, $gitRoot, $dryRun);
         # A dry run commits nothing and restores every file: the tree may be dirty.
         $gitRoot === null || $dryRun || $requireClean === RequireClean::Off
@@ -79,6 +81,18 @@ final class Workspace
         }
 
         return $gitRoot;
+    }
+
+    /**
+     * Refuses a git work tree without commits (files staged after `git init`): its steps would have
+     * no commit to go on top of, and HEAD, saved after every step, does not exist (#57). Outside git
+     * it checks nothing: the run copies the originals.
+     *
+     * @throws \RuntimeException
+     */
+    public static function requireCommits(Path $root): void
+    {
+        self::gitRoot($root) === null or self::ensureCommitted($root);
     }
 
     /**
@@ -234,6 +248,18 @@ final class Workspace
         \file_put_contents((string) $file, $patch);
 
         return $file;
+    }
+
+    /**
+     * @throws \RuntimeException When HEAD does not name a commit yet.
+     */
+    private static function ensureCommitted(Path $root): void
+    {
+        $head = new Process(['git', 'rev-parse', '--verify', '-q', 'HEAD'], (string) $root);
+        $head->run();
+        $head->isSuccessful() or throw new \RuntimeException(
+            'The git repository has no commits yet: commit the files first (every accepted step becomes a commit), or run outside git.',
+        );
     }
 
     /**

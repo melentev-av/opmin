@@ -51,15 +51,7 @@ final class Workspace
         RequireClean $requireClean = RequireClean::All,
         array $targets = [],
     ): self {
-        $top = new Process(['git', 'rev-parse', '--show-toplevel'], (string) $project->root);
-        $top->run();
-        $gitRoot = $top->isSuccessful() && \trim($top->getOutput()) !== '' ? Path::create(\trim($top->getOutput())) : null;
-        if ($gitRoot !== null) {
-            # A project in an ignored directory of another repository is not under git.
-            $tracked = new Process(['git', 'ls-files', '--', '.'], (string) $project->root);
-            $tracked->run();
-            \trim($tracked->getOutput()) === '' and $gitRoot = null;
-        }
+        $gitRoot = self::gitRoot($project->root);
         $workspace = new self($project, $runDir, $gitRoot, $dryRun);
         # A dry run commits nothing and restores every file: the tree may be dirty.
         $gitRoot === null || $dryRun || $requireClean === RequireClean::Off
@@ -68,6 +60,25 @@ final class Workspace
         $workspace->loadOriginals();
 
         return $workspace;
+    }
+
+    /**
+     * The top of the git work tree whose tracked files the project is; null outside git, where a run
+     * backs the originals up to `original/` and that copy is the only way back.
+     */
+    public static function gitRoot(Path $root): ?Path
+    {
+        $top = new Process(['git', 'rev-parse', '--show-toplevel'], (string) $root);
+        $top->run();
+        $gitRoot = $top->isSuccessful() && \trim($top->getOutput()) !== '' ? Path::create(\trim($top->getOutput())) : null;
+        if ($gitRoot !== null) {
+            # A project in an ignored directory of another repository is not under git.
+            $tracked = new Process(['git', 'ls-files', '--', '.'], (string) $root);
+            $tracked->run();
+            \trim($tracked->getOutput()) === '' and $gitRoot = null;
+        }
+
+        return $gitRoot;
     }
 
     /**

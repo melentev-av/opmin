@@ -30,11 +30,14 @@ use Opmin\Module\Project\Layout;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Project\Targets;
 use Opmin\Module\Report\Environment;
+use Opmin\Module\Runs\Run;
+use Opmin\Module\Runs\RunCleaner;
 use Opmin\Module\Verification\Verifier;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Style\StyleInterface;
 
 /**
  * What the commands that change or guard code share (`optimize`, the LLM stage, `baseline`, `check`):
@@ -87,6 +90,33 @@ abstract class Stage extends Base
         }
 
         return $dir;
+    }
+
+    /**
+     * `runs.keep`: deletes the older runs once the new one exists, with the rules of `opmin runs:clean`.
+     * A failure is a warning: pruning never fails the run.
+     */
+    protected function pruneRuns(Project $project, Path $runDir, StyleInterface $style): void
+    {
+        /** @var Schema\Runs $config */
+        $config = $this->container->get(Schema\Runs::class);
+        if ($config->keep === null) {
+            return;
+        }
+
+        [$deleted, $warnings] = RunCleaner::prune(
+            $config->keep,
+            $project->root->join(Layout::RUNS),
+            $runDir,
+            Workspace::gitRoot($project->root) !== null,
+        );
+        $deleted === [] or $style->note(\sprintf(
+            'runs.keep: %d: deleted %d old run(s): %s',
+            $config->keep,
+            \count($deleted),
+            \implode(', ', \array_map(static fn(Run $r): string => $r->id, $deleted)),
+        ));
+        $warnings === [] or $style->warning($warnings);
     }
 
     /**

@@ -38,6 +38,7 @@ final class ConfigSchema
         Schema\Package::class,
         Schema\Git::class,
         Schema\Cache::class,
+        Schema\Runs::class,
     ];
 
     /** @var array<non-empty-string, KeyInfo>|null */

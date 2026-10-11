@@ -512,6 +512,24 @@
                     "default": false
                 }
             }
+        },
+        "runs": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "keep": {
+                    "description": "After optimize and llm:targets create a run, delete the older finished runs beyond this many, as opmin runs:clean --keep does (interrupted runs, open LLM sessions and the only backups of code outside git stay); null — never delete",
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
+                }
+            }
         }
     }
 }

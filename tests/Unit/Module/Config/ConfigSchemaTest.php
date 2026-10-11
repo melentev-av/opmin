@@ -77,6 +77,7 @@ final class ConfigSchemaTest
             'cache.dir',
             'cache.driver',
             'cache.recreate_corrupt',
+            'runs.keep',
         );
     }
 

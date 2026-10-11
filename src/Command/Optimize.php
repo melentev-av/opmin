@@ -214,6 +214,7 @@ final class Optimize extends Stage
         if ($state === null) {
             $rules = $this->withRuntimeOptions($rules, $project, $cacheDir, $runDir, $php);
             $state = RunState::start($runDir, \array_map($project->relative(...), $files), $rules, $options);
+            $this->pruneRuns($project, $runDir, $style);
         }
 
         # The progress goes to stderr: a line redrawn in place in a terminal, timestamped lines in a log.

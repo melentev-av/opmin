@@ -96,9 +96,12 @@ final class RunIndex
             default => [RunKind::Broken, RunStatus::Broken],
         };
 
+        # A finished run without a patch left the code as it was: its original/ holds nothing to go back to.
+        # An unfinished one may have stopped with a file half changed.
         $backup = !$underGit
             && $kind !== RunKind::Package
             && self::field($state, 'options', 'dry_run') !== true
+            && ($status !== RunStatus::Finished || $dir->join('opmin.patch')->isFile())
             && self::hasFiles($dir->join('original'));
         /** @var mixed $before */
         $before = self::field($report, 'totals', 'ops_before');

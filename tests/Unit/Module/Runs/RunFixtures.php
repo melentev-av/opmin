@@ -40,12 +40,22 @@ final class RunFixtures
         'report.json' => '{"schema": 1, "kind": "optimize", "totals": {"ops_before": 9, "ops_after": 8}}',
         'report.md' => "# backup\n",
         'original/src/A.php' => '<?php',
+        'opmin.patch' => "--- a/src/A.php\n+++ b/src/A.php\n",
     ];
 
     public const DRY_RUN = [
         'state.json' => '{"version": 1, "phase": "finished", "options": {"dry_run": true}}',
         'report.json' => '{"schema": 1, "kind": "optimize", "totals": {"ops_before": 9, "ops_after": 8}}',
         'report.md' => "# dry run\n",
+        'original/src/A.php' => '<?php',
+        'opmin.patch' => "--- a/src/A.php\n+++ b/src/A.php\n",
+    ];
+
+    /** Outside git, but the run changed nothing: no patch. */
+    public const NO_CHANGE = [
+        'state.json' => '{"version": 1, "phase": "finished", "options": {"dry_run": false}}',
+        'report.json' => '{"schema": 1, "kind": "optimize", "totals": {"ops_before": 9, "ops_after": 9}}',
+        'report.md' => "# no change\n",
         'original/src/A.php' => '<?php',
     ];
 

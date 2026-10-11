@@ -39,6 +39,7 @@ final class RunIndexTest
         yield 'backup outside git' => [RunFixtures::BACKUP, false, RunKind::Optimize, RunStatus::Finished, 9, 8, true, true];
         yield 'no backup under git' => [RunFixtures::BACKUP, true, RunKind::Optimize, RunStatus::Finished, 9, 8, true, false];
         yield 'no backup in a dry run' => [RunFixtures::DRY_RUN, false, RunKind::Optimize, RunStatus::Finished, 9, 8, true, false];
+        yield 'no backup without a change' => [RunFixtures::NO_CHANGE, false, RunKind::Optimize, RunStatus::Finished, 9, 9, true, false];
     }
 
     #[BeforeTest]

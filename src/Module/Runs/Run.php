@@ -19,7 +19,7 @@ final readonly class Run
      * @param non-negative-int $size Bytes of every file in the directory.
      * @param bool $report Whether `report.json` is there.
      * @param bool $backup Whether `original/` is the only copy of the code it changed (not under git, not a
-     *        dry run).
+     *        dry run, and a patch or an unfinished run: something was changed).
      * @param int $modified When the directory was last written (Unix time).
      */
     public function __construct(

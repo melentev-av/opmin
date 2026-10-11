@@ -307,6 +307,36 @@ Every run (`optimize`, `llm:finish`) writes `.opmin/runs/<ts>/report.md` for peo
 
 `report.json` has `"schema": 1`; its fields change only in a major release (new fields may be added).
 
+## Runs: `runs`, `runs:show`, `runs:clean`
+
+Every `optimize`, LLM session (`llm:targets` … `llm:finish`) and `verify` with a counterexample leaves a
+directory in `.opmin/runs/<ts>/` (`-2`, `-3`… for runs of the same second and for the runs of a git package
+copied from its clone). They are kept until you delete them:
+
+```bash
+opmin runs                          # id, kind, state, opcodes before → after, size; newest first
+opmin runs --format=json            # {"runs": [{id, kind, state, ops_before, ops_after, size, report, backup, path}]}
+opmin runs:show                     # report.md of the newest run that has a report, to stdout
+opmin runs:show 20261011-062031 --format=json   # report.json as it is; --format=path prints where report.md is
+opmin runs:clean --keep=5 --dry-run # what would be deleted
+opmin runs:clean --keep=5           # delete it, with the copies .opmin/report_<ts>.md
+```
+
+- kinds: `optimize` (`state.json`), `llm` (`llm.json`), `verify` (only `counterexamples/`), `package` (copied
+  from the clone of `optimize <git-url>`), `broken` (no state and no report: a run that failed before it saved
+  anything); states: `finished`, `interrupted` (an optimize run `--resume=<dir>` continues), `open` (an LLM
+  session not finished yet), `broken`;
+- `runs:show` never opens a viewer; exit code 2 when there is no such run or it has no report (an interrupted, a
+  verify or a broken run);
+- `runs:clean` keeps the `--keep` newest finished runs, **every** interrupted optimize run and every open LLM
+  session (any of them can still be continued), and a broken run written in the last hour (it may be one that
+  is still starting). Outside git the `original/` of a run that changed the code (it has a patch, or it did not
+  finish) and was not a dry run is the only copy of the code before the run: such runs are listed and kept
+  unless `--include-backups`. The command asks nothing and prints
+  what it deletes; exit code 2 for a missing or negative `--keep`;
+- `runs.keep: N` in `opmin.yaml` (default `null`, off) prunes with the same rules (never the backups) every time
+  `optimize` or `llm:targets` creates a run; a failure to delete is a warning and never fails the run.
+
 ## CI guard: `baseline` and `check`
 
 ```bash

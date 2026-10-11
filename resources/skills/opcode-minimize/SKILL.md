@@ -39,7 +39,7 @@ functions that are never changed (`eval`, `include`, line numbers) are not targe
 
 ## 2. For each target, most opcodes first
 
-1. Read the context:
+1. Read the context of the first target (the next ones come with the results, step 4):
 
    ```bash
    opmin llm:context 'App\Service\Pricing::total'
@@ -53,23 +53,41 @@ functions that are never changed (`eval`, `include`, line numbers) are not targe
    file: the measured rewrites with the condition each one needs, the ones that usually save
    nothing, and what the opcodes in the listing point to.
 
-3. Write the new version of **only this function** to `<run>/candidate.php`: the whole function
-   from its first line (attributes, modifiers, `function`, signature) to its closing brace, with
-   the indentation of the file. Include the docblock only when it must change; without one the
-   original docblock stays. Nothing outside the function can change: no `use function` imports, no
-   new constants, methods or properties — `apply-candidate` refuses such a candidate.
+3. Write the new version of **only this function**: the whole function from its first line
+   (attributes, modifiers, `function`, signature) to its closing brace, with the indentation of the
+   file. Include the docblock only when it must change; without one the original docblock stays.
+   Nothing outside the function can change: no `use function` imports, no new constants, methods
+   or properties — `apply-candidate` refuses such a candidate.
 
-4. Apply it:
+4. Apply it. In a POSIX shell (bash, zsh) pass it on stdin, in one call with the source:
 
    ```bash
-   opmin apply-candidate 'App\Service\Pricing::total' <run>/candidate.php --format=json
+   opmin apply-candidate 'App\Service\Pricing::total' - --next --format=json <<'OPMIN_CANDIDATE'
+       public function total(array $items): int
+       {
+           ...
+       }
+   OPMIN_CANDIDATE
    ```
 
-   - exit 0 — accepted and committed: `attempt.gain` opcodes saved. Go to the next target.
+   Elsewhere (PowerShell, cmd) write it to `<run>/candidate.php` and pass that path in place of
+   `-`. opmin saves every candidate in the run directory either way.
+
+   - exit 0 — accepted and committed: `attempt.gain` opcodes saved.
    - exit 1 — rejected: `attempt.reason` says why (opcodes did not drop, readability, signature,
      PHPStan, tests, or a `counterexample` — the input on which your version behaves differently).
-     Try a different idea while `attempts_left > 0`, or move on.
-   - exit 2 — nothing was tried (no attempts left, dirty tree, not a target): move on or report.
+   - exit 2 — nothing was tried (no attempts left, dirty tree, not a target): the result has no
+     `next`; move on with `llm:context` of the next target from `llm:targets`, or report.
+
+5. Do what `next.action` says:
+
+   - `retry` — a different idea for the same `next.function` (`next.attempts_left` attempts left),
+     from the source and context you already have plus the new rejection. Moving on is fine too
+     when you have no idea that is really different: then call `llm:context` for the next target.
+   - `rewrite` — the next target: `next.context` is its context, the same as `llm:context` prints
+     (in JSON). Go to step 2 with it. If there is `next.error` in place of the context, run
+     `opmin llm:context` for `next.function`.
+   - `finish` — no targets are left: go to section 3.
 
    A function where nothing helps is a normal outcome: say so, do not force it.
 

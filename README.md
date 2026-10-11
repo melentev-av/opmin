@@ -263,9 +263,14 @@ the installed opmin. The skill drives these commands:
 opmin llm:targets src --format=json            # starts a session in .opmin/runs/<ts>/: the llm.top_n functions with the most opcodes
 opmin llm:context 'App\Cart::total'            # source, opcode listing, histogram, dynamic constructs with their rules,
                                                # readability and signature rules, rejected attempts with their reasons
-opmin apply-candidate 'App\Cart::total' .opmin/runs/<ts>/candidate.php --format=json
+opmin apply-candidate 'App\Cart::total' .opmin/runs/<ts>/candidate.php --next --format=json
 opmin llm:finish                               # the full test run (taking back attempts while it fails), report, patch
 ```
+
+- `apply-candidate --next` adds `next` to the result, so a target costs one `llm:context` call at most: `retry`
+  the same function (a rejection with attempts left; the reason is in `attempt`), `rewrite` the next unfinished
+  target in the session order with its `context` (as `llm:context --format=json` prints it), or `finish`. The
+  candidate can come on stdin (`-`) instead of a file.
 
 - A candidate is the new source of **only that function**; anything else changed (another function, an import) is
   refused. It is kept only with strictly fewer opcodes, within `readability.*` and `signatures.*`, and proven by

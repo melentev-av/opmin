@@ -78,10 +78,12 @@ final class LlmStageTest
         PHP;
 
     private string $dir = '';
+    private string $stdin = '';
 
     #[BeforeTest]
     public function createProject(): void
     {
+        $this->stdin = '';
         $this->dir = (string) \realpath(\sys_get_temp_dir()) . '/opmin-llm-' . \bin2hex(\random_bytes(4));
         \mkdir($this->dir . '/src', 0777, true);
         \file_put_contents($this->dir . '/composer.json', '{"require": {"php": ">=8.1"}, "autoload": {"psr-4": {"App\\\\": "src/"}}}');
@@ -287,14 +289,16 @@ final class LlmStageTest
     public function nextAfterAnAcceptedCandidateIsTheContextOfTheNextTarget(): void
     {
         $this->opmin('llm:targets');
-        $candidate = $this->candidate(<<<'PHP'
+        $this->stdin = <<<'PHP'
                 public function slug(string $title): string
                 {
                     return \trim((string) \preg_replace('/[^a-z0-9]+/', '-', \strtolower(\trim($title))), '-');
                 }
-            PHP);
+            PHP;
 
-        [$code, $out, $err] = $this->opmin('apply-candidate', 'App\Text::slug', $candidate, '--next', '--format=json');
+        # The candidate on stdin, as the skill passes it in a POSIX shell.
+        [$code, $out, $err] = $this->opmin('apply-candidate', 'App\Text::slug', '-', '--next', '--format=json');
+        $this->stdin = '';
 
         Assert::same($code, 0, $out . $err);
         /** @var array{attempt: array{accepted: bool}, attempts_left: int, next: array{action: string, function: string, context: array<string, mixed>}} $result */
@@ -429,6 +433,7 @@ final class LlmStageTest
                 'GIT_AUTHOR_NAME' => 't', 'GIT_AUTHOR_EMAIL' => 't@t', 'GIT_COMMITTER_NAME' => 't', 'GIT_COMMITTER_EMAIL' => 't@t',
             ]),
         );
+        \fwrite($pipes[0], $this->stdin);
         \fclose($pipes[0]);
         $out = (string) \stream_get_contents($pipes[1]);
         $err = (string) \stream_get_contents($pipes[2]);

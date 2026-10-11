@@ -273,6 +273,87 @@ final class OptimizeTest
         Assert::string($err)->contains('Time: ')->contains('diff_test.inputs');
     }
 
+    /**
+     * The cheap checks (gain, ignore, eval) come first: a function they reject never reaches PHPStan,
+     * the project's tests or a differential test. The file whose change passes them is the control:
+     * the expensive checks do run on it.
+     */
+    public function functionsRejectedByCheapChecksNeverReachTheExpensiveOnes(): void
+    {
+        \file_put_contents($this->dir . '/src/Text.php', <<<'PHP'
+            <?php
+
+            declare(strict_types=1);
+
+            namespace App;
+
+            final class Text
+            {
+                public function upper(string $s): string
+                {
+                    return strtoupper($s);
+                }
+
+                public function encode(array $a)
+                {
+                    return json_encode($a);
+                }
+
+                public function evaluated(string $s): int
+                {
+                    return strlen($s) + (int) eval('return 1;');
+                }
+            }
+
+            PHP);
+        \file_put_contents($this->dir . '/src/Size.php', "<?php\n\nnamespace App;\n\nfunction size(string \$s): int\n{\n    return strlen(\$s) + count(str_split(\$s));\n}\n");
+        \file_put_contents($this->dir . '/phpstan.php', <<<'PHP'
+            <?php
+            if (in_array('analyse', $argv, true)) {
+                foreach (array_slice($argv, 1) as $arg) {
+                    is_file($arg) && !str_starts_with($arg, '-') and file_put_contents(__DIR__ . '/phpstan.log', basename($arg) . "\n", FILE_APPEND);
+                }
+            }
+            echo json_encode(['files' => [], 'errors' => []]);
+            PHP);
+        \file_put_contents($this->dir . '/tests.php', "<?php\nfile_put_contents(__DIR__ . '/tests.log', \"run\\n\", FILE_APPEND);\n");
+        \file_put_contents($this->dir . '/opmin.yaml', \implode("\n", [
+            'ignore:',
+            "  functions: ['App\\Text::upp*']",
+            'commands:',
+            "  phpstan: 'phpstan.php analyse'",
+            'tests:',
+            '  runner: command',
+            "  command: '" . \PHP_BINARY . " tests.php'",
+            '',
+        ]));
+        \file_put_contents($this->dir . '/.gitignore', ".opmin/\n*.log\n");
+        $this->commitAll();
+
+        [$code, $out, $err] = $this->opmin('optimize', '--format=none', '--rector-rule=fqn');
+
+        Assert::same($code, 0, $out . $err);
+        $report = $this->report();
+        # PHPStan saw Size.php only (on the original and on the candidate), never Text.php.
+        Assert::same(\array_unique(\file($this->dir . '/phpstan.log', \FILE_IGNORE_NEW_LINES) ?: []), ['Size.php']);
+        /** @var array{counters: array<string, int>} $timings */
+        $timings = $report['timings'];
+        Assert::same($timings['counters']['verify_files'] ?? 0, $timings['counters']['verify_rounds'] ?? -1);
+        # The tests ran on the original code, once per verification round of Size.php and at the end: never for Text.php.
+        Assert::count(\file($this->dir . '/tests.log') ?: [], 2 + $timings['counters']['verify_rounds']);
+        $reasons = [];
+        foreach ($report['steps'] as $step) {
+            foreach ($step['rejected'] as $rejected) {
+                $reasons[$rejected['function']] = $rejected['reason'];
+            }
+        }
+
+        Assert::string($reasons['App\Text::upper'] ?? '')->contains('excluded by the user');
+        Assert::same($reasons['App\Text::encode'] ?? '', 'saves no opcodes');
+        Assert::string($reasons['App\Text::evaluated'] ?? '')->contains('uses eval or include');
+        Assert::string((string) \file_get_contents($this->dir . '/src/Size.php'))->contains('return \strlen($s) + \count(\str_split($s));');
+    }
+
     public function dryRunChangesNothing(): void
     {
         [$code, $out] = $this->opmin('optimize', '--dry-run', '--format=none', 'src/Text.php');

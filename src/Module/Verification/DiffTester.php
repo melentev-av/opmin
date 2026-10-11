@@ -47,8 +47,8 @@ use Opmin\Module\Verification\Target\UnsupportedTarget;
  * cannot be built) is discarded. Inputs: the plan of boundary values and literals, random inputs,
  * then coverage-guided mutations within `fuzz_time_ms` while branches of the original stay uncovered.
  * A difference is shrunk to a minimal counterexample. The whole test is limited by `time_budget_ms`
- * (coverage decides on what was checked by then); a few inputs in a row the original times out on end
- * it as unverified.
+ * (coverage decides on what was checked by then); a few inputs in a row the original times out or runs
+ * out of memory on end it as unverified.
  *
  * @internal
  */
@@ -61,8 +61,8 @@ final class DiffTester
     private const FUZZ_ROUND = 25;
 
     /**
-     * Inputs in a row the original times out on that end the test: each costs `call_timeout_ms` and
-     * says nothing, and the next ones are drawn the same way.
+     * Inputs in a row the original times out or runs out of memory on that end the test: each costs
+     * `call_timeout_ms` or new workers and says nothing, and the next ones are drawn the same way.
      */
     private const TIMEOUTS_IN_ROW = 5;
 
@@ -174,6 +174,22 @@ final class DiffTester
         }
 
         return null;
+    }
+
+    /**
+     * The call ended in a fatal error of `memory_limit` (a generated length, `str_repeat()` of 2.8e18 bytes).
+     *
+     * @param array<string, mixed> $result
+     */
+    private static function outOfMemory(array $result): bool
+    {
+        /** @var list<array<string, mixed>> $calls */
+        $calls = \is_array($result['calls'] ?? null) ? $result['calls'] : [];
+        $last = $calls === [] ? [] : $calls[\count($calls) - 1];
+        $message = $last['message'] ?? null;
+
+        return ($result['status'] ?? null) === 'fatal' && ($last['status'] ?? null) === 'fatal' && \is_string($message)
+            && \preg_match('/^(?:Allowed memory size of \d+ bytes exhausted|Out of memory)/', $message) === 1;
     }
 
     /**
@@ -367,6 +383,12 @@ final class DiffTester
                 throw $timeouts->timedOut() ? new Stop() : new Discard();
             }
 
+            if (self::outOfMemory($o1) && !self::hasErrors($o1) && !self::hasErrors($c1) && $comparator->compare($o1, $c1) === null) {
+                # Both versions ran out of memory_limit alike: the input says nothing more, and every call
+                # of it costs a new worker for each version (start and load). A difference is compared below.
+                throw $timeouts->outOfMemory() ? new Stop() : new Discard();
+            }
+
             # An input that cannot be built never reached the function: it does not break the row.
             $status === 'unbuildable' or $timeouts->ran();
             if (\in_array($status, ['unbuildable', 'crashed'], true)) {
@@ -443,10 +465,10 @@ final class DiffTester
         # The search ended by the budget, not by its own limit.
         $outOfTime = $outOfTime || !$stopped && !$outcome->isFalsified() && !$feedback->complete() && \hrtime(true) >= $budget;
         $outOfTime and $this->timings->count('time_budget_spent');
-        $stopped and $this->timings->count('original_timeouts_stop');
+        $stopped and $this->timings->count($timeouts->outOfMemoryInRow() === 0 ? 'original_timeouts_stop' : 'original_out_of_memory_stop');
         $this->checkedInputs = $inputs;
 
-        return $this->verdict($task, $original, $outcome, $feedback, $checked, $lines, $stopped, $disabled);
+        return $this->verdict($task, $original, $outcome, $feedback, $checked, $lines, $timeouts, $disabled);
     }
 
     /**
@@ -482,10 +504,11 @@ final class DiffTester
     }
 
     /**
-     * @param bool $stopped The original timed out on {@see self::TIMEOUTS_IN_ROW} inputs in a row.
+     * @param TimeoutStreak $timeouts Stopped: the original timed out or ran out of memory on
+     *        {@see self::TIMEOUTS_IN_ROW} inputs in a row.
      * @param non-empty-string|null $disabled A process function the code called on an input.
      */
-    private function verdict(DiffTask $task, Target $original, PropertyOutcome $outcome, Feedback $feedback, int $checked, bool $lines, bool $stopped, ?string $disabled = null): Verdict
+    private function verdict(DiffTask $task, Target $original, PropertyOutcome $outcome, Feedback $feedback, int $checked, bool $lines, TimeoutStreak $timeouts, ?string $disabled = null): Verdict
     {
         $flags = $original->flags;
         $coverage = $feedback->percent();
@@ -528,12 +551,28 @@ final class DiffTester
             return $base(VerdictStatus::Unverified, "calls {$disabled}() on generated inputs (the harness does not start processes): only the project's tests can prove it");
         }
 
-        if ($stopped) {
-            return $base(VerdictStatus::Unverified, \sprintf(
-                'the original times out on generated inputs: %d in a row ran past verification.call_timeout_ms (%d ms)',
-                self::TIMEOUTS_IN_ROW,
-                $this->config->callTimeoutMs,
-            ));
+        if ($timeouts->stopped()) {
+            $memory = $timeouts->outOfMemoryInRow();
+
+            return $base(VerdictStatus::Unverified, match (true) {
+                $memory === 0 => \sprintf(
+                    'the original times out on generated inputs: %d in a row ran past verification.call_timeout_ms (%d ms)',
+                    self::TIMEOUTS_IN_ROW,
+                    $this->config->callTimeoutMs,
+                ),
+                $memory >= self::TIMEOUTS_IN_ROW => \sprintf(
+                    'the original runs out of memory on generated inputs: %d in a row exhausted verification.memory_limit (%s)',
+                    self::TIMEOUTS_IN_ROW,
+                    $this->config->memoryLimit,
+                ),
+                default => \sprintf(
+                    'the original runs out of memory or times out on generated inputs: %d in a row exhausted'
+                    . ' verification.memory_limit (%s) or ran past verification.call_timeout_ms (%d ms)',
+                    self::TIMEOUTS_IN_ROW,
+                    $this->config->memoryLimit,
+                    $this->config->callTimeoutMs,
+                ),
+            });
         }
 
         if ($checked === 0) {

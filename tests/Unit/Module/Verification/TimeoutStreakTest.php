@@ -48,6 +48,39 @@ final class TimeoutStreakTest
         Assert::false($streak->stopped());
     }
 
+    public function runningOutOfMemoryCountsInTheSameRow(): void
+    {
+        $streak = new TimeoutStreak(3);
+
+        $answers = [$streak->timedOut(), $streak->outOfMemory(), $streak->outOfMemory()];
+
+        Assert::same($answers, [false, false, true]);
+        Assert::same($streak->outOfMemoryInRow(), 2);
+    }
+
+    public function anInputThatRanResetsTheCountOfMemory(): void
+    {
+        $streak = new TimeoutStreak(2);
+
+        $streak->outOfMemory();
+        $streak->ran();
+        $streak->timedOut();
+
+        Assert::true($streak->timedOut());
+        Assert::same($streak->outOfMemoryInRow(), 0);
+    }
+
+    public function theRowThatStoppedTheTestIsKept(): void
+    {
+        $streak = new TimeoutStreak(1);
+        $streak->outOfMemory();
+
+        $streak->ran();
+        $streak->timedOut();
+
+        Assert::same($streak->outOfMemoryInRow(), 1);
+    }
+
     public function staysStopped(): void
     {
         $streak = new TimeoutStreak(1);

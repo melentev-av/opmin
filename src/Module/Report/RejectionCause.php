@@ -62,6 +62,8 @@ enum RejectionCause: string
         'no input could be checked' => ['not_proven.no_inputs', 'src/Module/Verification/DiffTester.php'],
         'too many inputs were discarded' => ['not_proven.no_inputs', 'src/Module/Verification/DiffTester.php'],
         'the original times out on generated inputs' => ['not_proven.timeout', 'src/Module/Verification/DiffTester.php'],
+        # Memory, not time (#62): the advice on call_timeout_ms of not_proven.timeout would mislead.
+        'the original runs out of memory' => ['not_proven.other', 'src/Module/Verification/DiffTester.php'],
         'of the branches of the original' => ['not_proven.low_coverage', 'src/Module/Verification/DiffTester.php'],
         'nondeterministic: ' => ['not_proven.nondeterministic', 'src/Module/Verification/DiffTester.php'],
         'changes the docblock' => ['signature.docblock', 'src/Module/Optimize/SignatureGate.php'],

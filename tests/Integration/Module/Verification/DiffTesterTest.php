@@ -273,6 +273,50 @@ final class DiffTesterTest
         Assert::same($verdict->counterexample?->input->args, [['type' => 'int', 'value' => 0]]);
     }
 
+    /**
+     * #62: an input the original runs out of memory_limit on (a generated length) costs two new workers
+     * for each version and says nothing; a row of them stops the test like timeouts do.
+     */
+    public function originalRunningOutOfMemoryInARowStopsTheTest(): void
+    {
+        $verdict = $this->verify(
+            '<?php function f(int $a) { return \str_repeat("x", 1 << 40) . $a; }',
+            '<?php function f(int $a) { return \str_repeat("x", 1 << 40) . (string) $a; }',
+            fuzzTimeMs: 0,
+            randomInputs: 20,
+        );
+
+        Assert::same($verdict->status, VerdictStatus::Unverified, $verdict->reason);
+        Assert::same($verdict->reason, 'the original runs out of memory on generated inputs: 5 in a row exhausted verification.memory_limit (256M)');
+        Assert::same($verdict->inputs, 0);
+    }
+
+    public function changedVersionThatDoesNotRunOutOfMemoryIsADifference(): void
+    {
+        $verdict = $this->verify(
+            '<?php function f(int $a) { if ($a > 1000) { return \str_repeat("x", 1 << 40); } return $a; }',
+            '<?php function f(int $a) { if ($a > 1000) { return "big"; } return $a; }',
+            fuzzTimeMs: 0,
+            randomInputs: 20,
+        );
+
+        Assert::same($verdict->status, VerdictStatus::Mismatch, $verdict->reason);
+    }
+
+    public function differenceFoundBeforeTheOutOfMemoryInputsIsKept(): void
+    {
+        # Zero is a planned boundary value: the difference is found while the other inputs run out of memory.
+        $verdict = $this->verify(
+            '<?php function f(int $a) { if ($a !== 0) { return \str_repeat("x", 1 << 40); } return 0; }',
+            '<?php function f(int $a) { if ($a !== 0) { return \str_repeat("x", 1 << 40); } return 1; }',
+            fuzzTimeMs: 0,
+            randomInputs: 20,
+        );
+
+        Assert::same($verdict->status, VerdictStatus::Mismatch, $verdict->reason);
+        Assert::same($verdict->counterexample?->input->args, [['type' => 'int', 'value' => 0]]);
+    }
+
     public function timeBudgetEndsASlowTestOnWhatWasChecked(): void
     {
         $start = \hrtime(true);

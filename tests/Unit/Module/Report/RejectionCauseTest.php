@@ -42,6 +42,8 @@ final class RejectionCauseTest
         yield 'no inputs' => [self::NO_INPUTS, true, true, RejectionCause::NotProvenNoInputs];
         yield 'discarded' => ['not proven: too many inputs were discarded', true, true, RejectionCause::NotProvenNoInputs];
         yield 'timeout' => ['not proven: the original times out on generated inputs: 3 in a row ran past verification.call_timeout_ms (1000 ms)', true, true, RejectionCause::NotProvenTimeout];
+        yield 'out of memory' => ['not proven: the original runs out of memory on generated inputs: 5 in a row exhausted verification.memory_limit (256M)', true, true, RejectionCause::NotProvenOther];
+        yield 'out of memory or time' => ['not proven: the original runs out of memory or times out on generated inputs: 5 in a row exhausted verification.memory_limit (256M) or ran past verification.call_timeout_ms (1000 ms)', true, true, RejectionCause::NotProvenOther];
         yield 'low coverage' => ['not proven: differential tests cover 40% of the branches of the original, 80% required (verification.min_branch_coverage)', true, true, RejectionCause::NotProvenLowCoverage];
         yield 'nondeterministic' => ['not proven: nondeterministic: the original returned 1, then 2', true, true, RejectionCause::NotProvenNondeterministic];
         yield 'harness failed' => ['not proven: the harness failed: The harness ended without an answer (exit code 255).', true, true, RejectionCause::NotProvenHarnessFailed];

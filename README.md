@@ -248,8 +248,10 @@ opmin optimize --plan                  # say what the run would use and exit: no
   php-mock, ClockMock — can shadow it), `ExtractRepeatedPropertyFetchRector` (readonly properties across calls,
   mutable ones while no user code runs, no `__get`/hooks), `ExtractRepeatedArrayDimFetchRector` (only keys proven to
   exist), `HoistLoopInvariantCountRector` (`\count()` of an unchanged local array out of a `for` condition). For the
-  two extraction rules, a call of a known pure built-in function (`\explode()`, `\strlen()`, `\abs()`…) with
-  arguments of scalar native types runs no user code (`Opmin\Rector\Support\PureFunctionCall`).
+  two extraction rules, a call of a pure built-in function (`\explode()`, `\strlen()`, `\htmlspecialchars()`…:
+  side-effect free by PHPStan's function metadata, of an always compiled-in extension, minus a denylist of
+  nondeterministic ones) with arguments of scalar native types runs no user code
+  (`Opmin\Rector\Support\PureFunctionCall`).
 - Code can be excluded from every rule or from some: see [Excluding code](#excluding-code).
 - Which standard Rector rules save opcodes: [docs/standard-rules.md](docs/standard-rules.md).
 

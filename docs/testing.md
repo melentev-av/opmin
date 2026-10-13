@@ -122,6 +122,8 @@ final class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedRe
 - `bin/bench` measures the opcode effect of the rules' rewrites on a `php.binary` (`--php=`); the defaults
   (`min_reads`) and the claims in the rule docblocks come from it.
 - Smoke rule: `tests/Rector/SmokeRector.php`.
+- A helper of the rules is tested through a probe rule in `tests/Rector` that marks its verdict in the code:
+  `PureFunctionCallProbeRector` turns `f(...);` into `$pure = f(...);` for a pure call (a classification table).
 
 ## The optimize pipeline
 

@@ -32,6 +32,8 @@ final class Rector
         'Opmin\Rector\Rule\StrStartsWithRector' => [],
         'Opmin\Rector\Rule\OrIdenticalToInArrayRector' => ['min_items' => 2],
         'Opmin\Rector\Rule\NullCheckTernaryToNullsafeRector' => [],
+        'Opmin\Rector\Rule\IfChainToMatchRector' => ['min_arms' => 'auto'],
+        'Opmin\Rector\Rule\SwitchToMatchRector' => ['min_arms' => 'auto'],
     ];
 
     /** @var positive-int */

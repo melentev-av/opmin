@@ -665,6 +665,8 @@ rector:
     Opmin\Rector\Rule\RemoveUnusedClosureUseRector: {}
     Opmin\Rector\Rule\OrIdenticalToInArrayRector: { min_items: 2 }
     Opmin\Rector\Rule\NullCheckTernaryToNullsafeRector: {}
+    Opmin\Rector\Rule\IfChainToMatchRector: { min_arms: auto }
+    Opmin\Rector\Rule\SwitchToMatchRector: { min_arms: auto }
   standard:              # стандартные правила Rector
     enabled: false       # одна строка: true — включить всю группу
     sets: [DEAD_CODE, EARLY_RETURN, CODE_QUALITY, UP_TO_PHP_TARGET]

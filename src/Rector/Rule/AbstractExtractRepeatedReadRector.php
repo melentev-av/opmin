@@ -31,6 +31,10 @@ use Rector\Reflection\ReflectionResolver;
  * {@see ReadSpec::stable()} — up to the first point where user code may run. Each statement list is
  * handled on its own, so the variable is always assigned on every path that reads it.
  *
+ * With {@see self::DECLINE_LOG} in the environment every group of reads that could pay off but is
+ * given up is logged with the event that stopped it (`bin/declines` sums the log up): the measure
+ * for what an analysis of call effects would unlock.
+ *
  * @internal
  */
 abstract class AbstractExtractRepeatedReadRector extends AbstractRector implements ConfigurableRectorInterface, ReadSpec
@@ -43,10 +47,24 @@ abstract class AbstractExtractRepeatedReadRector extends AbstractRector implemen
      */
     public const int DEFAULT_MIN_READS = 2;
 
+    /**
+     * Environment variable with a file to append a JSON line to for every group of reads that could
+     * pay off: given up (`reason` — the event that stopped it) or extracted (`reason: extracted`).
+     */
+    public const string DECLINE_LOG = 'OPMIN_EXTRACT_DECLINES';
+
     private const string EXTRACTED_FROM = 'opmin_extracted_from';
 
     /** @var positive-int */
     protected int $minReads = self::DEFAULT_MIN_READS;
+
+    /** The decline log file; '' — off, null — not read yet. */
+    private static ?string $declineLog = null;
+
+    /** @var array<int, true> First reads already logged in this function. */
+    private array $logged = [];
+
+    private string $function = '';
 
     /** @var array<string, true> Variables of the function bound by reference. */
     private array $referenced = [];
@@ -94,6 +112,8 @@ abstract class AbstractExtractRepeatedReadRector extends AbstractRector implemen
         }
 
         $this->referenced = FunctionBody::referencedVariables($node);
+        $this->logged = [];
+        $this->function = $node instanceof Expr\Closure ? '{closure}' : (string) $node->name;
         $taken = FunctionBody::variableNames($node);
         $changed = false;
         $node->stmts = $this->list($node->stmts, $taken, $changed);
@@ -107,6 +127,16 @@ abstract class AbstractExtractRepeatedReadRector extends AbstractRector implemen
         $scope = $node->getAttribute(AttributeKey::SCOPE);
 
         return $scope instanceof Scope ? $scope : null;
+    }
+
+    /**
+     * Why {@see ReadSpec::safe()} refuses the read, for the decline log.
+     *
+     * @return non-empty-string
+     */
+    protected function unsafeReason(Expr $read): string
+    {
+        return 'other';
     }
 
     /**
@@ -251,23 +281,61 @@ abstract class AbstractExtractRepeatedReadRector extends AbstractRector implemen
             }
 
             $tried[$event->key] = true;
-            if (isset($this->referenced[$event->base]) || !$this->unaffectedBefore($events, $i) || !$this->safe($event->node)) {
+            if (isset($this->referenced[$event->base])) {
+                $this->logGroup($events, $i, 'referenced');
+                continue;
+            }
+
+            $before = $this->affectedBefore($events, $i);
+            if ($before !== null) {
+                $this->logGroup($events, $i, 'before:' . ($before->cause ?? $before->kind));
+                continue;
+            }
+
+            if (!$this->safe($event->node)) {
+                $this->logGroup($events, $i, 'unsafe:' . $this->unsafeReason($event->node));
                 continue;
             }
 
             $stable = $this->stable($event->node);
             $reads = [$event->node];
+            $stop = null;
+            $crossed = false;
             for ($j = $i + 1, $n = \count($events); $j < $n; ++$j) {
                 $next = $events[$j];
                 if ($this->stops($next, $event, $stable)) {
+                    $stop = $next;
                     break;
                 }
 
+                $crossed = $crossed || $next->kind === ReadEvent::EFFECT;
                 $next->kind === ReadEvent::READ && $next->key === $event->key && $next->node !== null and $reads[] = $next->node;
             }
 
             if (\count($reads) >= $this->minReads) {
+                $this->logGroup($events, $i, 'extracted', ['reads' => \count($reads), 'across_calls' => $crossed]);
                 return [$event->statement, $event->node, $reads];
+            }
+
+            $this->logGroup($events, $i, $stop === null ? 'unknown' : ($stop->cause ?? $stop->kind));
+        }
+
+        return null;
+    }
+
+    /**
+     * The event earlier in the statement of the first read that may change it, null when none: the
+     * assignment moves the read before the whole statement.
+     *
+     * @param list<ReadEvent> $events
+     */
+    private function affectedBefore(array $events, int $first): ?ReadEvent
+    {
+        $read = $events[$first];
+        for ($i = $first - 1; $i >= 0 && $events[$i]->statement === $read->statement; --$i) {
+            # Even a stable value: the effect may initialize it, and the moved read would come first.
+            if ($events[$i]->mayWrite($this->readLocation($read)) || $this->stops($events[$i], $read, true)) {
+                return $events[$i];
             }
         }
 
@@ -275,28 +343,71 @@ abstract class AbstractExtractRepeatedReadRector extends AbstractRector implemen
     }
 
     /**
-     * Nothing earlier in the statement of the first read may change it: the assignment moves the
-     * read before the whole statement.
+     * Logs a group of reads to {@see self::DECLINE_LOG}, once per first read, when it is long enough
+     * to pay off.
      *
      * @param list<ReadEvent> $events
+     * @param non-empty-string $reason
+     * @param array<string, mixed> $extra
      */
-    private function unaffectedBefore(array $events, int $first): bool
+    private function logGroup(array $events, int $first, string $reason, array $extra = []): void
     {
+        self::$declineLog ??= \is_string($path = \getenv(self::DECLINE_LOG)) ? $path : '';
         $read = $events[$first];
-        for ($i = $first - 1; $i >= 0 && $events[$i]->statement === $read->statement; --$i) {
-            if ($events[$i]->kind === ReadEvent::IMPURE || $this->stops($events[$i], $read, true)) {
-                return false;
+        if (self::$declineLog === '' || $read->node === null || isset($this->logged[\spl_object_id($read->node)])) {
+            return;
+        }
+
+        $this->logged[\spl_object_id($read->node)] = true;
+        # The events between the first and the last read that stop a mutable value: which ones a
+        # finer effect analysis would have to see through.
+        $total = 0;
+        $between = $pending = [];
+        foreach (\array_slice($events, $first + 1) as $event) {
+            if ($event->kind === ReadEvent::READ && $event->key === $read->key) {
+                ++$total;
+                $between += $pending;
+                $pending = [];
+            } elseif ($this->stops($event, $read, false)) {
+                $pending[$event->cause ?? $event->kind] = true;
             }
         }
 
-        return true;
+        ++$total;
+
+        if ($total < $this->minReads) {
+            return;
+        }
+
+        $record = [
+            'rule' => static::alias(),
+            'file' => $this->file->getFilePath(),
+            'function' => $this->function,
+            'key' => $read->key,
+            'reason' => $reason,
+            'total' => $total,
+            'between' => \array_keys($between),
+        ] + $extra;
+        \file_put_contents(
+            self::$declineLog,
+            \json_encode($record, \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE | \JSON_INVALID_UTF8_SUBSTITUTE | \JSON_THROW_ON_ERROR) . "\n",
+            \FILE_APPEND | \LOCK_EX,
+        );
+    }
+
+    /**
+     * @return non-empty-string|null
+     */
+    private function readLocation(ReadEvent $read): ?string
+    {
+        return $read->node === null ? null : $this->location($read->node);
     }
 
     private function stops(ReadEvent $event, ReadEvent $read, bool $stable): bool
     {
         return match ($event->kind) {
             ReadEvent::OPAQUE => true,
-            ReadEvent::IMPURE => !$stable,
+            ReadEvent::EFFECT => !$stable && $event->mayWrite($this->readLocation($read)),
             ReadEvent::WRITE => $event->key === $read->key || ($event->key === null && $event->base === $read->base),
             ReadEvent::BASE_WRITE => $event->base === null || $event->base === $read->base,
             default => false,

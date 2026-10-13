@@ -85,6 +85,12 @@ final class ExtractRepeatedArrayDimFetchRector extends AbstractExtractRepeatedRe
         return false;
     }
 
+    public function location(Expr $read): ?string
+    {
+        # A local array has no name outside the function; an element may be a reference to anything.
+        return null;
+    }
+
     public function name(Expr $read): string
     {
         if (!$read instanceof Expr\ArrayDimFetch || !$read->var instanceof Expr\Variable || !\is_string($read->var->name)) {

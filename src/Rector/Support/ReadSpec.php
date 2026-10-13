@@ -32,6 +32,15 @@ interface ReadSpec
     public function stable(Expr $read): bool;
 
     /**
+     * The storage the read reads, as effect write sets name it ({@see ReadEvent::$writes}):
+     * `app\foo::$bar` for a property of any object of the class that declares it; null when the
+     * storage has no such name (then any effect that writes something may change it).
+     *
+     * @return non-empty-string|null
+     */
+    public function location(Expr $read): ?string;
+
+    /**
      * Name for the variable, without `$` (the caller makes it unique).
      *
      * @return non-empty-string

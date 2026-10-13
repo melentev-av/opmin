@@ -101,9 +101,50 @@ final class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedRe
             && $class->getNativeProperty($read->name->toString())->isReadOnly();
     }
 
+    public function location(Expr $read): ?string
+    {
+        if (!$read instanceof Expr\PropertyFetch || !$read->name instanceof Node\Identifier) {
+            return null;
+        }
+
+        $class = $this->objectClass($read->var);
+        $name = $read->name->toString();
+        if ($class === null || !$class->hasNativeProperty($name)) {
+            return null;
+        }
+
+        return \strtolower($class->getNativeProperty($name)->getDeclaringClass()->getName()) . '::$' . $name;
+    }
+
     public function name(Expr $read): string
     {
         return $read instanceof Expr\PropertyFetch && $read->name instanceof Node\Identifier ? $read->name->toString() : 'value';
+    }
+
+    protected function unsafeReason(Expr $read): string
+    {
+        if (!$read instanceof Expr\PropertyFetch || !$read->name instanceof Node\Identifier) {
+            return 'dynamic_name';
+        }
+
+        $class = $this->objectClass($read->var);
+        if ($class === null) {
+            return 'unknown_class';
+        }
+
+        if (!$this->plainProperty($read)) {
+            return 'magic_or_undeclared';
+        }
+
+        $property = $class->getNativeProperty($read->name->toString());
+
+        return match (true) {
+            !$class->isFinal() && !$property->isPrivate() => ($property->isPublic() ? 'public' : 'protected') . '_in_open_class',
+            $property->isPublic() => 'public',
+            $property->getDeclaringTrait() !== null => 'trait',
+            $property->getDeclaringClass()->getName() !== $class->getName() => 'inherited',
+            default => 'unset_in_class',
+        };
     }
 
     /**

@@ -14,7 +14,8 @@ use PhpParser\Node\Stmt;
  * before the operation, the left side of an assignment before the right one, a loop's stopping
  * events also before the loop (its body runs again after them).
  *
- * Over-approximates what may run user code (`IMPURE`) and what may change a value (`WRITE`,
+ * Over-approximates what may run user code (`EFFECT`, so far always one that may write anything)
+ * and what may change a value (`WRITE`,
  * `BASE_WRITE`): an argument passed to a function whose parameter is unknown counts as passed by
  * reference, an operator on a value that may be an object counts as a magic method call, an
  * unknown node is `OPAQUE`. Closures and nested declarations are not entered: their bodies are not
@@ -114,7 +115,7 @@ final class ReadEventCollector
             $stmt instanceof Stmt\Unset_ => \array_map(fn(Expr $var) => $this->expr($var, self::MODE_WRITE), $stmt->vars),
             $stmt instanceof Stmt\Block => $this->stmts($stmt->stmts),
             $stmt instanceof Stmt\Nop, $stmt instanceof Stmt\Break_, $stmt instanceof Stmt\Continue_ => null,
-            $stmt instanceof Stmt\InlineHTML => $this->emit(ReadEvent::IMPURE, cause: 'output'),
+            $stmt instanceof Stmt\InlineHTML => $this->emit(ReadEvent::EFFECT, cause: 'output'),
             default => $this->emit(ReadEvent::OPAQUE, cause: 'opaque:' . $stmt->getType()),
         };
     }
@@ -124,7 +125,7 @@ final class ReadEventCollector
         foreach ($stmt->exprs as $expr) {
             $this->expr($expr);
             # Output runs the output buffer callbacks, and an object turns into a string.
-            $this->emit(ReadEvent::IMPURE, cause: 'output');
+            $this->emit(ReadEvent::EFFECT, cause: 'output');
         }
     }
 
@@ -193,7 +194,7 @@ final class ReadEventCollector
             # `foreach (… as &$v)` takes the iterated expression by reference.
             $this->expr($stmt->expr, $stmt->byRef ? self::MODE_WRITE : self::MODE_READ);
             # A Traversable object runs user code on every step.
-            ($this->neverObject)($stmt->expr) or $this->emit(ReadEvent::IMPURE, cause: 'iterator');
+            ($this->neverObject)($stmt->expr) or $this->emit(ReadEvent::EFFECT, cause: 'iterator');
         } elseif ($stmt instanceof Stmt\For_) {
             \array_map(fn(Expr $e) => $this->expr($e), $stmt->init);
         }
@@ -228,7 +229,7 @@ final class ReadEventCollector
             # Reading another property may run `__get()`, another array may be an ArrayAccess.
             $plain = $expr instanceof Expr\PropertyFetch ? ($this->plainProperty)($expr)
                 : (!$expr instanceof Expr\ArrayDimFetch || ($this->neverObject)($expr->var));
-            $plain or $this->emit(ReadEvent::IMPURE, cause: $expr instanceof Expr\PropertyFetch ? 'magic_property' : 'array_access');
+            $plain or $this->emit(ReadEvent::EFFECT, cause: $expr instanceof Expr\PropertyFetch ? 'magic_property' : 'array_access');
             return;
         }
 
@@ -266,7 +267,7 @@ final class ReadEventCollector
             $expr instanceof Expr\ArrowFunction => null,
             $expr instanceof Expr\FuncCall, $expr instanceof Expr\MethodCall, $expr instanceof Expr\NullsafeMethodCall,
             $expr instanceof Expr\StaticCall, $expr instanceof Expr\New_ => $this->call($expr),
-            $expr instanceof Expr\NullsafePropertyFetch => $this->operands([$expr->var], self::MODE_READ, ReadEvent::IMPURE, 'magic_property'),
+            $expr instanceof Expr\NullsafePropertyFetch => $this->operands([$expr->var], self::MODE_READ, ReadEvent::EFFECT, 'magic_property'),
             $expr instanceof Expr\Clone_, $expr instanceof Expr\Print_, $expr instanceof Expr\Throw_,
             $expr instanceof Expr\Exit_, $expr instanceof Expr\Yield_, $expr instanceof Expr\YieldFrom,
             $expr instanceof Expr\StaticPropertyFetch, $expr instanceof Expr\ErrorSuppress => $this->impureChildren($expr),
@@ -291,7 +292,7 @@ final class ReadEventCollector
             if ($match !== null) {
                 $this->emit(ReadEvent::WRITE, $match[0], $match[1], $expr);
                 # A hook or `__set()` of the written property runs user code.
-                ($this->plainProperty)($expr) or $this->emit(ReadEvent::IMPURE, cause: 'magic_property');
+                ($this->plainProperty)($expr) or $this->emit(ReadEvent::EFFECT, cause: 'magic_property');
                 return;
             }
 
@@ -305,7 +306,7 @@ final class ReadEventCollector
             $this->expr($expr->var, self::MODE_OBJECT);
             $expr->name instanceof Expr and $this->expr($expr->name);
             # `__set()` of another object, a property hook.
-            $this->emit(ReadEvent::IMPURE, cause: 'property_write_other');
+            $this->emit(ReadEvent::EFFECT, cause: 'property_write_other');
             return;
         }
 
@@ -313,7 +314,7 @@ final class ReadEventCollector
         $expr->name instanceof Expr and $this->expr($expr->name);
         if ($mode === self::MODE_ISSET || !$expr->name instanceof Node\Identifier || !($this->plainProperty)($expr)) {
             # `__isset()`, `__get()`, a hook, an unknown property.
-            $this->emit(ReadEvent::IMPURE, cause: 'magic_property');
+            $this->emit(ReadEvent::EFFECT, cause: 'magic_property');
         }
     }
 
@@ -327,7 +328,7 @@ final class ReadEventCollector
         });
         $expr->dim === null or $this->expr($expr->dim);
         # `offsetGet()`/`offsetSet()` of an ArrayAccess object.
-        ($this->neverObject)($expr->var) or $this->emit(ReadEvent::IMPURE, cause: 'array_access');
+        ($this->neverObject)($expr->var) or $this->emit(ReadEvent::EFFECT, cause: 'array_access');
     }
 
     private function list(Expr\List_|Expr\Array_ $expr): void
@@ -349,7 +350,7 @@ final class ReadEventCollector
             $this->expr($expr->expr);
             $this->expr($expr->var, self::MODE_WRITE);
             # Assigning an object to a variable may destroy its previous object: `__destruct()`.
-            ($this->neverObject)($expr->var) or $this->emit(ReadEvent::IMPURE, cause: 'destructor');
+            ($this->neverObject)($expr->var) or $this->emit(ReadEvent::EFFECT, cause: 'destructor');
             return;
         }
 
@@ -362,13 +363,13 @@ final class ReadEventCollector
     {
         $this->expr($expr->var, self::MODE_WRITE);
         $this->expr($expr->expr);
-        ($this->neverObject)($expr->var) && ($this->neverObject)($expr->expr) or $this->emit(ReadEvent::IMPURE, cause: 'operator_object');
+        ($this->neverObject)($expr->var) && ($this->neverObject)($expr->expr) or $this->emit(ReadEvent::EFFECT, cause: 'operator_object');
     }
 
     private function increment(Expr\PreInc|Expr\PreDec|Expr\PostInc|Expr\PostDec $expr): void
     {
         $this->expr($expr->var, self::MODE_WRITE);
-        ($this->neverObject)($expr->var) or $this->emit(ReadEvent::IMPURE, cause: 'operator_object');
+        ($this->neverObject)($expr->var) or $this->emit(ReadEvent::EFFECT, cause: 'operator_object');
     }
 
     private function coalesce(Expr\BinaryOp\Coalesce $expr): void
@@ -397,13 +398,13 @@ final class ReadEventCollector
             || $expr instanceof Expr\BinaryOp\BitwiseAnd || $expr instanceof Expr\BinaryOp\BitwiseOr
             || $expr instanceof Expr\BinaryOp\BitwiseXor || $expr instanceof Expr\BinaryOp\ShiftLeft
             || $expr instanceof Expr\BinaryOp\ShiftRight || $expr instanceof Expr\BinaryOp\LogicalXor;
-        $safe || (($this->neverObject)($expr->left) && ($this->neverObject)($expr->right)) or $this->emit(ReadEvent::IMPURE, cause: 'operator_object');
+        $safe || (($this->neverObject)($expr->left) && ($this->neverObject)($expr->right)) or $this->emit(ReadEvent::EFFECT, cause: 'operator_object');
     }
 
     private function typed(Expr $operand): void
     {
         $this->expr($operand);
-        ($this->neverObject)($operand) or $this->emit(ReadEvent::IMPURE, cause: 'to_string');
+        ($this->neverObject)($operand) or $this->emit(ReadEvent::EFFECT, cause: 'to_string');
     }
 
     private function instanceOf(Expr\Instanceof_ $expr): void
@@ -449,7 +450,7 @@ final class ReadEventCollector
 
             $this->expr($item->value);
             # Unpacking a Traversable runs its iterator.
-            $item->unpack && !($this->neverObject)($item->value) and $this->emit(ReadEvent::IMPURE, cause: 'iterator');
+            $item->unpack && !($this->neverObject)($item->value) and $this->emit(ReadEvent::EFFECT, cause: 'iterator');
         }
     }
 
@@ -457,7 +458,7 @@ final class ReadEventCollector
     {
         if ($expr->class instanceof Expr) {
             $this->expr($expr->class);
-            $this->emit(ReadEvent::IMPURE, cause: 'class_constant');
+            $this->emit(ReadEvent::EFFECT, cause: 'class_constant');
             return;
         }
 
@@ -465,7 +466,7 @@ final class ReadEventCollector
         $own = \in_array($class, ['self', 'static', 'parent'], true)
             || ($expr->name instanceof Node\Identifier && $expr->name->toLowerString() === 'class');
         # Another class may be autoloaded here.
-        $own or $this->emit(ReadEvent::IMPURE, cause: 'autoload');
+        $own or $this->emit(ReadEvent::EFFECT, cause: 'autoload');
     }
 
     private function interpolated(Scalar\InterpolatedString $expr): void
@@ -503,7 +504,7 @@ final class ReadEventCollector
             $byRef = $arg->unpack || $arg->name !== null ? null : ($this->byReference)($call, $position);
             if ($byRef === false || !$this->referable($arg->value)) {
                 $this->expr($arg->value);
-                $arg->unpack && !($this->neverObject)($arg->value) and $this->emit(ReadEvent::IMPURE, cause: 'iterator');
+                $arg->unpack && !($this->neverObject)($arg->value) and $this->emit(ReadEvent::EFFECT, cause: 'iterator');
                 continue;
             }
 
@@ -516,7 +517,7 @@ final class ReadEventCollector
             }
         }
 
-        $call instanceof Expr\FuncCall && ($this->pureCall)($call) or $this->emit(ReadEvent::IMPURE, cause: self::callCause($call));
+        $call instanceof Expr\FuncCall && ($this->pureCall)($call) or $this->emit(ReadEvent::EFFECT, cause: self::callCause($call));
     }
 
     private function referable(Expr $expr): bool
@@ -547,7 +548,7 @@ final class ReadEventCollector
             $child instanceof Expr and $this->expr($child);
         }
 
-        $this->emit(ReadEvent::IMPURE, cause: match (true) {
+        $this->emit(ReadEvent::EFFECT, cause: match (true) {
             $expr instanceof Expr\Print_ => 'output',
             $expr instanceof Expr\Yield_, $expr instanceof Expr\YieldFrom => 'yield',
             $expr instanceof Expr\StaticPropertyFetch => 'static_property',

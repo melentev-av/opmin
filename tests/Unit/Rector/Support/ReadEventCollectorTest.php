@@ -29,20 +29,20 @@ final class ReadEventCollectorTest
      */
     public static function causes(): iterable
     {
-        yield 'own method' => ['$this->m();', ['impure method_call_this']];
-        yield 'method of another object' => ['$this->logger->info();', ['impure method_call']];
-        yield 'nullsafe method' => ['$x?->m();', ['impure method_call']];
-        yield 'own static method' => ['self::m(); parent::m();', ['impure static_call_own', 'impure static_call_own']];
-        yield 'static method of another class' => ['Foo::m();', ['impure static_call']];
-        yield 'new' => ['new Foo();', ['impure new']];
-        yield 'named function' => ['\strlen($s);', ['base_write by_ref_arg', 'impure function:strlen']];
-        yield 'dynamic function' => ['$f();', ['impure function_dynamic']];
+        yield 'own method' => ['$this->m();', ['effect method_call_this']];
+        yield 'method of another object' => ['$this->logger->info();', ['effect method_call']];
+        yield 'nullsafe method' => ['$x?->m();', ['effect method_call']];
+        yield 'own static method' => ['self::m(); parent::m();', ['effect static_call_own', 'effect static_call_own']];
+        yield 'static method of another class' => ['Foo::m();', ['effect static_call']];
+        yield 'new' => ['new Foo();', ['effect new']];
+        yield 'named function' => ['\strlen($s);', ['base_write by_ref_arg', 'effect function:strlen']];
+        yield 'dynamic function' => ['$f();', ['effect function_dynamic']];
         yield 'write' => ['$this->p = 1;', ['write write']];
-        yield 'argument maybe by reference' => ['foo($this->p);', ['write by_ref_arg', 'impure function:foo']];
-        yield 'base variable written' => ['$x = 1;', ['base_write base_write', 'impure destructor']];
+        yield 'argument maybe by reference' => ['foo($this->p);', ['write by_ref_arg', 'effect function:foo']];
+        yield 'base variable written' => ['$x = 1;', ['base_write base_write', 'effect destructor']];
         yield 'reference' => ['$r = &$this->p;', ['base_write base_write', 'write write', 'opaque reference']];
-        yield 'output' => ['echo 1;', ['impure output']];
-        yield 'static property' => ['Foo::$p;', ['impure static_property']];
+        yield 'output' => ['echo 1;', ['effect output']];
+        yield 'static property' => ['Foo::$p;', ['effect static_property']];
         yield 'unknown statement' => ['global $g;', ['opaque opaque:Stmt_Global']];
     }
 
@@ -69,6 +69,11 @@ final class ReadEventCollectorTest
                 public function stable(Expr $read): bool
                 {
                     return false;
+                }
+
+                public function location(Expr $read): ?string
+                {
+                    return null;
                 }
 
                 public function name(Expr $read): string

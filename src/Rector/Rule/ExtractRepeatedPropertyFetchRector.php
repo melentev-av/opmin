@@ -101,6 +101,21 @@ final class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedRe
             && $class->getNativeProperty($read->name->toString())->isReadOnly();
     }
 
+    public function location(Expr $read): ?string
+    {
+        if (!$read instanceof Expr\PropertyFetch || !$read->name instanceof Node\Identifier) {
+            return null;
+        }
+
+        $class = $this->objectClass($read->var);
+        $name = $read->name->toString();
+        if ($class === null || !$class->hasNativeProperty($name)) {
+            return null;
+        }
+
+        return \strtolower($class->getNativeProperty($name)->getDeclaringClass()->getName()) . '::$' . $name;
+    }
+
     public function name(Expr $read): string
     {
         return $read instanceof Expr\PropertyFetch && $read->name instanceof Node\Identifier ? $read->name->toString() : 'value';

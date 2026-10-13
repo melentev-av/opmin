@@ -159,6 +159,11 @@ final class HoistLoopInvariantCountRector extends AbstractRector
                     return false;
                 }
 
+                public function location(Expr $read): ?string
+                {
+                    return null;
+                }
+
                 public function name(Expr $read): string
                 {
                     return 'value';

@@ -308,7 +308,7 @@ abstract class AbstractExtractRepeatedReadRector extends AbstractRector implemen
                     break;
                 }
 
-                $crossed = $crossed || $next->kind === ReadEvent::IMPURE;
+                $crossed = $crossed || $next->kind === ReadEvent::EFFECT;
                 $next->kind === ReadEvent::READ && $next->key === $event->key && $next->node !== null and $reads[] = $next->node;
             }
 
@@ -333,7 +333,8 @@ abstract class AbstractExtractRepeatedReadRector extends AbstractRector implemen
     {
         $read = $events[$first];
         for ($i = $first - 1; $i >= 0 && $events[$i]->statement === $read->statement; --$i) {
-            if ($events[$i]->kind === ReadEvent::IMPURE || $this->stops($events[$i], $read, true)) {
+            # Even a stable value: the effect may initialize it, and the moved read would come first.
+            if ($events[$i]->mayWrite($this->readLocation($read)) || $this->stops($events[$i], $read, true)) {
                 return $events[$i];
             }
         }
@@ -394,11 +395,19 @@ abstract class AbstractExtractRepeatedReadRector extends AbstractRector implemen
         );
     }
 
+    /**
+     * @return non-empty-string|null
+     */
+    private function readLocation(ReadEvent $read): ?string
+    {
+        return $read->node === null ? null : $this->location($read->node);
+    }
+
     private function stops(ReadEvent $event, ReadEvent $read, bool $stable): bool
     {
         return match ($event->kind) {
             ReadEvent::OPAQUE => true,
-            ReadEvent::IMPURE => !$stable,
+            ReadEvent::EFFECT => !$stable && $event->mayWrite($this->readLocation($read)),
             ReadEvent::WRITE => $event->key === $read->key || ($event->key === null && $event->base === $read->base),
             ReadEvent::BASE_WRITE => $event->base === null || $event->base === $read->base,
             default => false,

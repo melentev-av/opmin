@@ -28,6 +28,7 @@ final class Rector
         'Opmin\Rector\Rule\HoistLoopInvariantCountRector' => [],
         'Opmin\Rector\Rule\SprintfToConcatRector' => [],
         'Opmin\Rector\Rule\ArrayPushToAssignRector' => [],
+        'Opmin\Rector\Rule\StrStartsWithRector' => [],
     ];
 
     /** @var positive-int */

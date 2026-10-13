@@ -255,6 +255,8 @@ opmin optimize --plan                  # say what the run would use and exit: no
     only, as many arguments as specifiers, each a `string` or an `int` (`%d`: an `int`).
   - `ArrayPushToAssignRector`: `\array_push($a, $v);` → `$a[] = $v;` — one or two values, the result unused, a
     defined local `array` or a property that is surely initialized (a default value, never unset).
+  - `StrStartsWithRector`: `\substr($s, 0, 3) === 'abc'`, `\strpos($s, $p) === 0` → `\str_starts_with($s, …)`
+    (`!==` → `!\str_starts_with()`) — strict comparisons only, a length equal to the literal's, native strings.
 - Code can be excluded from every rule or from some: see [Excluding code](#excluding-code).
 - Which standard Rector rules save opcodes: [docs/standard-rules.md](docs/standard-rules.md).
 
@@ -507,6 +509,7 @@ ignore:
   | `count` | `HoistLoopInvariantCountRector` |
   | `sprintf` | `SprintfToConcatRector` |
   | `array_push` | `ArrayPushToAssignRector` |
+  | `str_starts_with` | `StrStartsWithRector` |
   | `llm` | Stage B: rewrites proposed by the model |
   | `simplifyifreturnboolrector`, … | a standard Rector rule by its short class name |
 

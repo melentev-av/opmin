@@ -34,6 +34,8 @@ final readonly class ReadEvent
      * @param non-empty-string|null $base The base variable without `$`.
      * @param int $statement Index of the top-level statement of the analyzed list.
      * @param bool $conditional Not executed every time the statement runs (a branch, `&&`, a loop body).
+     * @param non-empty-string|null $cause What produced the event, for the decline log: `method_call`,
+     *        `function:strlen`, `by_ref_arg`, `opaque:Stmt_Global`…
      */
     public function __construct(
         public string $kind,
@@ -42,5 +44,6 @@ final readonly class ReadEvent
         public int $statement,
         public bool $conditional,
         public ?Expr $node = null,
+        public ?string $cause = null,
     ) {}
 }

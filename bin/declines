@@ -1,0 +1,117 @@
+#!/usr/bin/env php
+<?php
+
+/**
+ * Why the extract rules (`ExtractRepeated*FetchRector`) give up groups of repeated reads: runs them
+ * in a dry run over the given directories with the decline log on
+ * (`AbstractExtractRepeatedReadRector::DECLINE_LOG`) and sums the log up — the measure for what an
+ * analysis of call effects would unlock (plan, «модель эффектов вызовов»).
+ *
+ *   bin/declines vendor/symfony/console                 # paths relative to --root (default: this repository)
+ *   bin/declines --root=/path/to/project src lib        # the project's vendor/autoload.php is used for reflection
+ *   bin/declines --log=runtime/declines.jsonl src       # keep the raw log (one JSON line per group)
+ *
+ * Nothing is written to the analyzed files. The project-wide data of the rules (stable properties)
+ * is built over the given directories, as `optimize` builds it over the project.
+ */
+
+declare(strict_types=1);
+
+use Opmin\Rector\Rule\AbstractExtractRepeatedReadRector;
+use Opmin\Rector\Rule\ExtractRepeatedArrayDimFetchRector;
+use Opmin\Rector\Rule\ExtractRepeatedPropertyFetchRector;
+use Opmin\Module\Optimize\Rector\RectorRunner;
+use Symfony\Component\Process\Process;
+
+require __DIR__ . '/../vendor/autoload.php';
+
+$options = \getopt('', ['root:', 'log:'], $rest);
+$root = \realpath(\is_string($options['root'] ?? null) ? $options['root'] : __DIR__ . '/..');
+$root === false and fail('No such --root.');
+$paths = \array_slice($argv, $rest);
+$paths === [] and fail('Usage: bin/declines [--root=dir] [--log=file] <path>...');
+
+$work = __DIR__ . '/../runtime/declines';
+\is_dir($work) or \mkdir($work, 0777, true);
+$work = (string) \realpath($work);
+$log = \is_string($options['log'] ?? null) ? $options['log'] : $work . '/declines.jsonl';
+@\unlink($log);
+
+$absolute = [];
+foreach ($paths as $path) {
+    $full = \realpath(\str_starts_with($path, '/') ? $path : $root . '/' . $path);
+    $full === false and fail("No such path: {$path}");
+    $absolute[] = $full;
+}
+
+$config = $work . '/rector.php';
+# A fresh cache: Rector skips the files it has seen, and their groups would be missing from the log.
+$cache = $work . '/cache-' . \bin2hex(\random_bytes(4));
+\file_put_contents($config, \implode("\n", [
+    '<?php',
+    'return static function (Rector\Config\RectorConfig $config): void {',
+    '    $config->paths(' . \var_export($absolute, true) . ');',
+    '    $config->cacheDirectory(' . \var_export($cache, true) . ');',
+    '    $config->parallel(processTimeout: 600, maxNumberOfProcess: 8, jobSize: 8);',
+    '    $config->ruleWithConfiguration(' . \var_export(ExtractRepeatedPropertyFetchRector::class, true) . ', ["min_reads" => "auto"]);',
+    '    $config->ruleWithConfiguration(' . \var_export(ExtractRepeatedArrayDimFetchRector::class, true) . ', ["min_reads" => "auto"]);',
+    '};',
+    '',
+]));
+
+$process = new Process(
+    [\PHP_BINARY, '-d', 'memory_limit=-1', RectorRunner::binary(), 'process', '--dry-run', '--config=' . $config, '--no-progress-bar', '--output-format=json'],
+    $root,
+    [AbstractExtractRepeatedReadRector::DECLINE_LOG => $log],
+    timeout: null,
+);
+$process->run();
+Opmin\Module\Common\FileSystem\FS::removeDir(Internal\Path::create($cache));
+# A dry run with changes exits with 2.
+\str_contains($process->getOutput(), '"totals"') or \fwrite(\STDERR, "Rector exited with {$process->getExitCode()}:\n" . \substr($process->getErrorOutput() . $process->getOutput(), 0, 4000) . "\n");
+
+$groups = [];
+foreach (\is_file($log) ? (array) \file($log, \FILE_IGNORE_NEW_LINES | \FILE_SKIP_EMPTY_LINES) : [] as $line) {
+    /** @var array{rule: string, reason: string, across_calls?: bool} $record */
+    $record = \json_decode((string) $line, true, flags: \JSON_THROW_ON_ERROR);
+    $groups[] = $record;
+}
+
+$rows = [];
+$functions = [];
+foreach ($groups as $group) {
+    $reason = $group['reason'];
+    $reason === 'extracted' && ($group['across_calls'] ?? false) and $reason = 'extracted across calls';
+    if (\str_starts_with($reason, 'function:')) {
+        $functions[$reason] = ($functions[$reason] ?? 0) + 1;
+        $reason = 'function (not known pure)';
+    }
+
+    $rows[$group['rule']][$reason] = ($rows[$group['rule']][$reason] ?? 0) + 1;
+}
+
+foreach ($rows as $rule => $reasons) {
+    \arsort($reasons);
+    $total = \array_sum($reasons);
+    echo "\n{$rule}: {$total} groups of reads that would pay off\n";
+    \printf("  %-40s %7s %6s\n", 'reason', 'groups', '%');
+    foreach ($reasons as $reason => $count) {
+        \printf("  %-40s %7d %5.1f%%\n", $reason, $count, 100 * $count / $total);
+    }
+}
+
+if ($functions !== []) {
+    \arsort($functions);
+    echo "\nFunctions not known pure that stop a group (top 20):\n";
+    foreach (\array_slice($functions, 0, 20, true) as $name => $count) {
+        \printf("  %-40s %7d\n", \substr($name, 9), $count);
+    }
+}
+
+echo "\nLog: {$log}\n";
+
+function fail(string $message): never
+{
+    \fwrite(\STDERR, $message . "\n");
+    exit(2);
+}

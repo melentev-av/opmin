@@ -11,6 +11,8 @@ use Opmin\Rector\Rule\ExtractRepeatedPropertyFetchRector;
 use Opmin\Rector\Rule\FullyQualifyGlobalCallsRector;
 use Opmin\Rector\Rule\HoistLoopInvariantCountRector;
 use Opmin\Rector\Rule\RemoveUnusedClosureUseRector;
+use Opmin\Rector\Rule\NullCheckTernaryToNullsafeRector;
+use Opmin\Rector\Rule\OrIdenticalToInArrayRector;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Data\DataProvider;
@@ -29,8 +31,8 @@ final class RuleCatalogTest
     {
         yield 'alias with a typo' => [
             'fqm',
-            'Unknown Rector rule `fqm` in --rector-rule. Did you mean `fqn`? Name a rule by its alias (fqn, property_fetch, array_dim_fetch, count, closure_use, sprintf, array_push, str_starts_with),'
-            . ' the short class name of a rule of the run or the full class name.',
+            'Unknown Rector rule `fqm` in --rector-rule. Did you mean `fqn`? Name a rule by its alias (fqn, property_fetch, array_dim_fetch, count, closure_use, sprintf, array_push,'
+            . ' str_starts_with, in_array, nullsafe), the short class name of a rule of the run or the full class name.',
         ];
         yield 'short name with a typo' => [
             'HoistLoopInvariantCountRectr',
@@ -62,6 +64,8 @@ final class RuleCatalogTest
             'SprintfToConcatRector',
             'ArrayPushToAssignRector',
             'StrStartsWithRector',
+            'OrIdenticalToInArrayRector',
+            'NullCheckTernaryToNullsafeRector',
         ]);
         Assert::same($rules[0]->options, []);
         Assert::same($rules[1]->options, ['min_reads' => 'auto']);
@@ -154,7 +158,7 @@ final class RuleCatalogTest
 
         [$aliases, $short] = RuleCatalog::ignoreNames($config, $rules);
 
-        Assert::same($aliases, ['fqn', 'property_fetch', 'array_dim_fetch', 'count', 'closure_use', 'sprintf', 'array_push', 'str_starts_with', 'llm']);
+        Assert::same($aliases, ['fqn', 'property_fetch', 'array_dim_fetch', 'count', 'closure_use', 'sprintf', 'array_push', 'str_starts_with', 'in_array', 'nullsafe', 'llm']);
         Assert::same($short, [
             'FullyQualifyGlobalCallsRector',
             'SimplifyIfReturnBoolRector',
@@ -165,6 +169,8 @@ final class RuleCatalogTest
             'SprintfToConcatRector',
             'ArrayPushToAssignRector',
             'StrStartsWithRector',
+            'OrIdenticalToInArrayRector',
+            'NullCheckTernaryToNullsafeRector',
         ]);
     }
 

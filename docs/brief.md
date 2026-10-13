@@ -663,6 +663,8 @@ rector:
     Opmin\Rector\Rule\ExtractRepeatedArrayDimFetchRector: { min_reads: auto }
     Opmin\Rector\Rule\HoistLoopInvariantCountRector: {}
     Opmin\Rector\Rule\RemoveUnusedClosureUseRector: {}
+    Opmin\Rector\Rule\OrIdenticalToInArrayRector: { min_items: 2 }
+    Opmin\Rector\Rule\NullCheckTernaryToNullsafeRector: {}
   standard:              # стандартные правила Rector
     enabled: false       # одна строка: true — включить всю группу
     sets: [DEAD_CODE, EARLY_RETURN, CODE_QUALITY, UP_TO_PHP_TARGET]

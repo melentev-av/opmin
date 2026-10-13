@@ -248,7 +248,10 @@ opmin optimize --plan                  # say what the run would use and exit: no
   php-mock, ClockMock — can shadow it), `ExtractRepeatedPropertyFetchRector` (readonly properties across calls,
   mutable ones while no user code runs, no `__get`/hooks), `ExtractRepeatedArrayDimFetchRector` (only keys proven to
   exist), `HoistLoopInvariantCountRector` (`\count()` of an unchanged local array out of a `for` condition),
-  `RemoveUnusedClosureUseRector` (a by-value `use` of a scalar or array variable the closure never names). For the
+  `RemoveUnusedClosureUseRector` (a by-value `use` of a scalar or array variable the closure never names),
+  `OrIdenticalToInArrayRector` (`$s === 'a' || $s === 'b'` → `\in_array($s, ['a', 'b'], true)`: strict comparisons of
+  one variable, property or element read without side effects with string and integer literals, `min_items`: 2),
+  `NullCheckTernaryToNullsafeRector` (`$x !== null ? $x->a() : null` → `$x?->a()`, `$x` a local variable). For the
   two extraction rules, a call of a pure built-in function (`\explode()`, `\strlen()`, `\htmlspecialchars()`…:
   side-effect free by PHPStan's function metadata, of an always compiled-in extension, minus a denylist of
   nondeterministic ones) with arguments of scalar native types runs no user code
@@ -514,6 +517,8 @@ ignore:
   | `sprintf` | `SprintfToConcatRector` |
   | `array_push` | `ArrayPushToAssignRector` |
   | `str_starts_with` | `StrStartsWithRector` |
+  | `in_array` | `OrIdenticalToInArrayRector` |
+  | `nullsafe` | `NullCheckTernaryToNullsafeRector` |
   | `llm` | Stage B: rewrites proposed by the model |
   | `simplifyifreturnboolrector`, … | a standard Rector rule by its short class name |
 

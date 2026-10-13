@@ -30,6 +30,8 @@ final class Rector
         'Opmin\Rector\Rule\SprintfToConcatRector' => [],
         'Opmin\Rector\Rule\ArrayPushToAssignRector' => [],
         'Opmin\Rector\Rule\StrStartsWithRector' => [],
+        'Opmin\Rector\Rule\OrIdenticalToInArrayRector' => ['min_items' => 2],
+        'Opmin\Rector\Rule\NullCheckTernaryToNullsafeRector' => [],
     ];
 
     /** @var positive-int */

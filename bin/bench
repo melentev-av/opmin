@@ -16,6 +16,8 @@
 declare(strict_types=1);
 
 use Internal\Path;
+use Opmin\Module\Common\Cache\StoreFactory;
+use Opmin\Module\Config\Schema\CacheDriver;
 use Opmin\Module\Opcode\CountCache;
 use Opmin\Module\Opcode\Dump\OpcacheDumper;
 use Opmin\Module\Opcode\OpcodeCounter;
@@ -34,19 +36,27 @@ $root = __DIR__ . '/../runtime/bench';
 \is_dir($root) or \mkdir($root, 0777, true);
 $root = (string) \realpath($root);
 $project = new Project(Path::create($root), false, null);
-$counter = new OpcodeCounter(new OpcacheDumper($php, 1), new CountCache(Path::create($root . '/.cache'), $php));
+$counter = new OpcodeCounter(new OpcacheDumper($php, 1), new CountCache(StoreFactory::forThisPhp()->create(CacheDriver::Auto, Path::create($root . '/.cache')), $php));
 
-# Every body is measured as the method `Bench\Foo::f()`: `$this`, a typed object `$x`, an array `$a`
-# and an untyped `$v` are available.
+# Every body is measured as the method `Bench\Foo::f()` of a final class, together with its closures:
+# `$this`, a typed object `$x`, an array `$a`, an untyped `$v`, a string `$s`, an int `$i`, a bool `$b`
+# and a nullable object `$nx` are available, as well as `self::K`, `self::$cache`, the private
+# `$this->p`, `getP()`, `twice()` and the function `pure_fn()`.
 $class = <<<'PHP'
     final class Foo
     {
-        public function __construct(public readonly Foo $foo, public int $n = 0) {}
+        public const K = 5;
+        public static array $cache = [];
+        private int $p = 0;
+        public function __construct(public readonly Foo $foo, public int $n = 0, public ?Foo $nf = null) {}
         public function m(mixed ...$args): void { ++$this->n; }
-        public function f(Foo $x, array $a, $v) {
+        private function getP(): int { return $this->p; }
+        private function twice(int $i): int { return $i * 2; }
+        public function f(Foo $x, array $a, $v, string $s, int $i, bool $b, ?Foo $nx) {
             %s
         }
     }
+    function pure_fn(int $i): int { return $i + 1; }
     PHP;
 
 /**
@@ -67,7 +77,9 @@ $measure = static function (array $pairs) use ($counter, $project, $root, $class
     $result->errors === [] or throw new \RuntimeException(\print_r($result->errors, true));
     $ops = [];
     foreach ($result->functions as $function) {
-        $function->key === 'Bench\Foo::f' and $ops[$function->file] = $function->opsOpt;
+        if ($function->key === 'Bench\Foo::f' || \str_starts_with($function->key, 'Bench\Foo::f::')) {
+            $ops[$function->file] = ($ops[$function->file] ?? 0) + $function->opsOpt;
+        }
     }
 
     $rows = [];
@@ -216,6 +228,141 @@ if ($only === null || $only === 'patterns') {
     ];
 
     $print('Patterns of the skill', $measure($pairs));
+
+    # Rewrites considered for opmin's own rules: the duplicates of the pairs above are left out.
+    $print('Rule candidates', $measure([
+        'sprintf %s-%s → concat' => ["return \\sprintf('%s-%s', \$s, \$s);", "return \$s . '-' . \$s;"],
+        'sprintf %d → concat int' => ["return \\sprintf('n=%d', \$i);", "return 'n=' . \$i;"],
+        'implode [a,b] → concat' => ["return \\implode(',', [\$s, \$s]);", "return \$s . ',' . \$s;"],
+        'array_push 2 → []= x2' => ['\array_push($a, $v, $s); return $a;', '$a[] = $v; $a[] = $s; return $a;'],
+        'substr==lit → str_starts_with' => ["return \\substr(\$s, 0, 3) === 'abc';", "return \\str_starts_with(\$s, 'abc');"],
+        'strpos===0 → str_starts_with' => ["return \\strpos(\$s, 'abc') === 0;", "return \\str_starts_with(\$s, 'abc');"],
+        'strpos!==false → str_contains' => ["return \\strpos(\$s, 'a') !== false;", "return \\str_contains(\$s, 'a');"],
+        'substr(-3)==lit → str_ends_with' => ["return \\substr(\$s, -3) === 'abc';", "return \\str_ends_with(\$s, 'abc');"],
+        'count>0 → !==[]' => ['return \count($a) > 0;', 'return $a !== [];'],
+        'empty($a) → ===[]' => ['return empty($a);', 'return $a === [];'],
+        'strlen===0 → ===\'\'' => ['return \strlen($s) === 0;', "return \$s === '';"],
+        '$s = $s . x → .=' => ["\$s = \$s . 'x'; return \$s;", "\$s .= 'x'; return \$s;"],
+        '$i = $i + 1 → ++' => ['$i = $i + 1; return $i;', '++$i; return $i;'],
+        '$i = $i + 2 → +=' => ['$i = $i + 2; return $i;', '$i += 2; return $i;'],
+        '.= x; .= y → .= x.y' => ["\$s .= 'a'; \$s .= \$s; return \$s;", "\$s .= 'a' . \$s; return \$s;"],
+        'null-check ternary → ?->' => ['return $nx !== null ? $nx->n : null;', 'return $nx?->n;'],
+        'null-check ternary → ??' => ['return $nx !== null ? $nx : $x;', 'return $nx ?? $x;'],
+        'if null assign → ??=' => ['if ($nx === null) { $nx = $x; } return $nx;', '$nx ??= $x; return $nx;'],
+        '$v = $v ?? d → ??=' => ['$v = $v ?? 1; return $v;', '$v ??= 1; return $v;'],
+        '$v ? $v : d → ?:' => ['return $v ? $v : 1;', 'return $v ?: 1;'],
+        'isset && !==null → isset' => ["return isset(\$a['k']) && \$a['k'] !== null;", "return isset(\$a['k']);"],
+        'ake && !==null → isset' => ["return \\array_key_exists('k', \$a) && \$a['k'] !== null;", "return isset(\$a['k']);"],
+        'isset(a)&&isset(b) → isset(a,b)' => ["return isset(\$a['k']) && isset(\$a['j']);", "return isset(\$a['k'], \$a['j']);"],
+        'c ? true : false (bool) → c' => ['return $b ? true : false;', 'return $b;'],
+        'b === true → b' => ['return $b === true;', 'return $b;'],
+        'b === false → !b' => ['return $b === false;', 'return !$b;'],
+        '(string)$s → $s' => ['return (string) $s;', 'return $s;'],
+        '(int)$i → $i' => ['return (int) $i . "";', 'return $i . "";'],
+        '(bool) in if' => ['if ((bool) $v) { return 1; } return 2;', 'if ($v) { return 1; } return 2;'],
+        'is_string($s) native → true' => ['return \is_string($s);', 'return true;'],
+        '$x instanceof Foo native' => ['return $x instanceof Foo;', 'return true;'],
+        '$x === null native' => ['return $x === null;', 'return false;'],
+        'get_class($x) → $x::class' => ['return \get_class($x);', 'return $x::class;'],
+        'get_class($this) → self::class' => ['return \get_class($this);', 'return self::class;'],
+        'static::class → self::class (final)' => ['return static::class;', 'return self::class;'],
+        'static::K → self::K (final)' => ['return static::K + $i;', 'return self::K + $i;'],
+        'self::K → literal' => ['return self::K + $i;', 'return 5 + $i;'],
+        'call_user_func → $f()' => ['return \call_user_func($v, $s);', 'return $v($s);'],
+        'call_user_func_array → $f(...)' => ['return \call_user_func_array($v, $a);', 'return $v(...\array_values($a));'],
+        'array_merge(a,b) → [...a,...b]' => ['return \array_merge($a, $a);', 'return [...$a, ...$a];'],
+        'pow(x,2) → x**2' => ['return \pow($i, 2);', 'return $i ** 2;'],
+        'x**2 → x*x' => ['return $i ** 2;', 'return $i * $i;'],
+        'sizeof → count' => ['return \sizeof($a);', 'return \count($a);'],
+        'join → implode' => ["return \\join(',', \$a);", "return \\implode(',', \$a);"],
+        'is_integer → is_int' => ['return \is_integer($v);', 'return \is_int($v);'],
+        'is_double → is_float' => ['return \is_double($v);', 'return \is_float($v);'],
+        'key_exists → array_key_exists' => ["return \\key_exists('k', \$a);", "return \\array_key_exists('k', \$a);"],
+        'chop → rtrim' => ['return \chop($s);', 'return \rtrim($s);'],
+        'doubleval → floatval' => ['return \doubleval($v);', 'return \floatval($v);'],
+        'strval → (string)' => ['return \strval($i);', 'return (string) $i;'],
+        'print → echo' => ['print $s; return 1;', 'echo $s; return 1;'],
+        'printf %s → echo' => ["\\printf('%s', \$s); return 1;", 'echo $s; return 1;'],
+        'echo a; echo b → echo a, b' => ['echo $s; echo $s; return 1;', 'echo $s, $s; return 1;'],
+        'trailing return; in void' => ['$this->m(); return;', '$this->m();'],
+        'array_map fn → foreach' => ['return \array_map(static fn($e) => $e * 2, $a);', '$r = []; foreach ($a as $k => $e) { $r[$k] = $e * 2; } return $r;'],
+        'array_filter fn → foreach' => ['return \array_filter($a, static fn($e) => $e > 1);', '$r = []; foreach ($a as $k => $e) { if ($e > 1) { $r[$k] = $e; } } return $r;'],
+        'array_map fn(trim) → trim(...)' => ['return \array_map(static fn($e) => \trim($e), $a);', 'return \array_map(\trim(...), $a);'],
+        'array_map fn(trim) → \'trim\'' => ['return \array_map(static fn($e) => \trim($e), $a);', "return \\array_map('trim', \$a);"],
+        'closure unused use' => ['return static function () use ($s, $i) { return $i; };', 'return static function () use ($i) { return $i; };'],
+        'foreach $k=>$v, $k unused' => ['$t = 0; foreach ($a as $k => $e) { $t += $e; } return $t;', '$t = 0; foreach ($a as $e) { $t += $e; } return $t;'],
+        'foreach array_keys → $k=>' => ['$t = 0; foreach (\array_keys($a) as $k) { $t += $k; } return $t;', '$t = 0; foreach ($a as $k => $_) { $t += $k; } return $t;'],
+        'switch → match (3 str)' => ["switch (\$s) { case 'a': return 1; case 'b': return 2; case 'c': return 3; default: return 0; }", "return match (\$s) { 'a' => 1, 'b' => 2, 'c' => 3, default => 0 };"],
+        'if-chain === → match (3 str)' => ["if (\$s === 'a') { return 1; } if (\$s === 'b') { return 2; } if (\$s === 'c') { return 3; } return 0;", "return match (\$s) { 'a' => 1, 'b' => 2, 'c' => 3, default => 0 };"],
+        'if-chain === → match (5 int)' => ["if (\$i === 1) { return 'a'; } if (\$i === 2) { return 'b'; } if (\$i === 3) { return 'c'; } if (\$i === 4) { return 'd'; } if (\$i === 5) { return 'e'; } return '';", "return match (\$i) { 1 => 'a', 2 => 'b', 3 => 'c', 4 => 'd', 5 => 'e', default => '' };"],
+        'if-chain → const array lookup' => ["if (\$i === 1) { return 'a'; } if (\$i === 2) { return 'b'; } if (\$i === 3) { return 'c'; } return '';", "return [1 => 'a', 2 => 'b', 3 => 'c'][\$i] ?? '';"],
+        'match → const array lookup' => ["return match (\$i) { 1 => 'a', 2 => 'b', 3 => 'c', default => '' };", "return [1 => 'a', 2 => 'b', 3 => 'c'][\$i] ?? '';"],
+        '|| of 3 === → in_array' => ["return \$s === 'a' || \$s === 'b' || \$s === 'c';", "return \\in_array(\$s, ['a', 'b', 'c'], true);"],
+        '|| of 5 === → in_array' => ["return \$i === 1 || \$i === 2 || \$i === 3 || \$i === 4 || \$i === 5;", "return \\in_array(\$i, [1, 2, 3, 4, 5], true);"],
+        'same branch bodies → ||' => ["if (\$i === 1) { return \$s . 'x'; } if (\$b) { return \$s . 'x'; } return '';", "if (\$i === 1 || \$b) { return \$s . 'x'; } return '';"],
+        'common tail out of if/else' => ["if (\$b) { \$t = 1; \$this->m(\$t); } else { \$t = 2; \$this->m(\$t); } return \$t;", "\$t = \$b ? 1 : 2; \$this->m(\$t); return \$t;"],
+        'if assign else assign → ternary' => ['if ($b) { $t = $s; } else { $t = "x"; } return $t . $s;', '$t = $b ? $s : "x"; return $t . $s;'],
+        'array literal by []=' => ["\$r = []; \$r['a'] = 1; \$r['b'] = \$i; return \$r;", "return ['a' => 1, 'b' => \$i];"],
+        'list literal by []=' => ['$r = []; $r[] = $s; $r[] = $i; return $r;', 'return [$s, $i];'],
+        'dup pure builtin call CSE (strlen 2)' => ['return \strlen($s) + \strlen($s);', '$l = \strlen($s); return $l + $l;'],
+        'dup pure builtin CSE (strtolower 2)' => ['return \strtolower($s) . \strtolower($s);', '$l = \strtolower($s); return $l . $l;'],
+        'dup pure builtin CSE (strtolower 3)' => ['return \strtolower($s) . \strtolower($s) . \strtolower($s);', '$l = \strtolower($s); return $l . $l . $l;'],
+        'dup count CSE (2)' => ['return \count($a) + \count($a);', '$n = \count($a); return $n + $n;'],
+        'dup pure method CSE (2)' => ['return $this->getP() + $this->getP();', '$p = $this->getP(); return $p + $p;'],
+        'dup pure method CSE (3)' => ['return $this->getP() + $this->getP() + $this->getP();', '$p = $this->getP(); return $p + $p + $p;'],
+        'dup pure fn CSE (2)' => ['return pure_fn($i) + pure_fn($i);', '$p = pure_fn($i); return $p + $p;'],
+        'inline private getter' => ['return $this->getP() + 1;', 'return $this->p + 1;'],
+        'inline private expr method' => ['return $this->twice($i) + 1;', 'return $i * 2 + 1;'],
+        'dup static prop read' => ["return \\count(self::\$cache) + \\count(self::\$cache);", "\$c = self::\$cache; return \\count(\$c) + \\count(\$c);"],
+        'dup static prop dim read (3)' => ["return self::\$cache['a'] . self::\$cache['a'] . self::\$cache['a'];", "\$c = self::\$cache['a']; return \$c . \$c . \$c;"],
+        'dead pure call stmt' => ['\strlen($s); return 1;', 'return 1;'],
+        'dead pure method call stmt' => ['$this->getP(); return 1;', 'return 1;'],
+        'dead store overwritten' => ['$t = \trim($s); $t = $s; return $t;', '$t = $s; return $t;'],
+        'concat many → rope?' => ['return $s . $s . $s . $s . $s;', 'return "{$s}{$s}{$s}{$s}{$s}";'],
+        'interp → concat' => ['return "a{$s}b{$s}c";', "return 'a' . \$s . 'b' . \$s . 'c';"],
+        'const fold pure builtin' => ["return \\strtoupper('abc') . \$s;", "return 'ABC' . \$s;"],
+        'const fold str_repeat' => ["return \\str_repeat('-', 3) . \$s;", "return '---' . \$s;"],
+        'array_key_first(array_keys)' => ['return \array_keys($a)[0] ?? null;', 'return \array_key_first($a);'],
+        '$a[count-1] → array_key_last' => ['return $a[\count($a) - 1];', 'return $a[\array_key_last($a)];'],
+        'in_array(array_keys) → ake' => ['return \in_array($v, \array_keys($a), true);', 'return \array_key_exists($v, $a);'],
+        'array_search!==false → in_array' => ['return \array_search($v, $a, true) !== false;', 'return \in_array($v, $a, true);'],
+        'count(array_filter)>0 → loop' => ['return \count(\array_filter($a, static fn($e) => $e > 1)) > 0;', 'foreach ($a as $e) { if ($e > 1) { return true; } } return false;'],
+        '!($p === $q) → !==' => ['return !($s === $v);', 'return $s !== $v;'],
+        'unreachable after return' => ['return 1; $this->m();', 'return 1;'],
+        '$t=expr; return $t' => ['$t = $s . "x"; return $t;', 'return $s . "x";'],
+        '$t=call; return $t' => ['$t = \trim($s); return $t;', 'return \trim($s);'],
+        'return $b ? true : false → (bool)' => ['return $v ? true : false;', 'return (bool) $v;'],
+        'nullsafe chain' => ['return $nx === null ? null : $nx->foo->n;', 'return $nx?->foo->n;'],
+        'isset(prop) ternary → ??' => ['return isset($nx->n) ? $nx->n : 0;', 'return $nx->n ?? 0;'],
+        'array_values on list literal' => ['return \array_values([$s, $i]);', 'return [$s, $i];'],
+        'str_replace 1 char → strtr' => ["return \\str_replace('a', 'b', \$s);", "return \\strtr(\$s, 'a', 'b');"],
+        'array_slice(0,1)[0]' => ['return \array_slice($a, 0, 1)[0] ?? null;', 'return $a[\array_key_first($a)] ?? null;'],
+        'compact → array' => ["\$q = 1; return \\compact('q', 's');", "\$q = 1; return ['q' => \$q, 's' => \$s];"],
+        'count === count literal' => ['return \count([1, 2, 3]) + $i;', 'return 3 + $i;'],
+        'intdiv vs (int)(a/b)' => ['return (int) ($i / 2);', 'return \intdiv($i, 2);'],
+        'strtolower===strtolower → strcasecmp' => ['return \strtolower($s) === \strtolower($s . "x");', 'return \strcasecmp($s, $s . "x") === 0;'],
+        'strstr!==false → str_contains' => ["return \\strstr(\$s, 'a') !== false;", "return \\str_contains(\$s, 'a');"],
+        'strlen>0 → !==\'\'' => ['return \strlen($s) > 0;', "return \$s !== '';"],
+        'is_a($x, C) → instanceof' => ['return \is_a($v, Foo::class);', 'return $v instanceof Foo;'],
+        'max(a,b) int → ternary' => ['return \max($i, 0);', 'return $i > 0 ? $i : 0;'],
+        'if !isset assign → ??=' => ["if (!isset(\$a['k'])) { \$a['k'] = \$v; } return \$a;", "\$a['k'] ??= \$v; return \$a;"],
+        'ake ? a[k] : d → ??' => ["return \\array_key_exists('k', \$a) ? \$a['k'] : 0;", "return \$a['k'] ?? 0;"],
+        'array_merge(a,[v]) → a[]=v' => ['$a = \array_merge($a, [$v]); return $a;', '$a[] = $v; return $a;'],
+        'array_slice(-1)[0] → [array_key_last]' => ['return \array_slice($a, -1)[0] ?? null;', 'return $a === [] ? null : $a[\array_key_last($a)];'],
+        'substr($s,0,1) → $s[0]' => ['return \substr($s, 0, 1);', 'return $s[0];'],
+        'ord($s[0])===x' => ["return \\substr(\$s, 0, 1) === 'a';", "return \\str_starts_with(\$s, 'a');"],
+        'str_replace in loop const' => ["return \\str_replace(['a', 'b'], ['c', 'd'], \$s);", "return \\strtr(\$s, ['a' => 'c', 'b' => 'd']);"],
+        'array_keys + count' => ['return \count(\array_keys($a));', 'return \count($a);'],
+        'iterator foreach build list' => ['$r = []; foreach ($a as $e) { $r[] = $e; } return $r;', 'return \array_values($a);'],
+        'array_map identity keys' => ['$r = []; foreach ($a as $k => $e) { $r[$k] = $e; } return $r;', 'return $a;'],
+        'in_array in loop flip' => ['$t = 0; foreach ($a as $e) { if (\in_array($e, $a, true)) { $t++; } } return $t;', '$t = 0; foreach ($a as $e) { $t++; } return $t;'],
+        'implode loop .= → implode' => ["\$r = ''; foreach (\$a as \$e) { \$r .= \$e . ','; } return \$r;", "return \\implode(',', \$a) . (\$a === [] ? '' : ',');"],
+        'nested ternary null coalesce chain' => ['return $nx !== null ? $nx : ($x !== null ? $x : null);', 'return $nx ?? $x;'],
+        'getter in condition twice (pure method, ternary)' => ['return $this->getP() > 0 ? $this->getP() : 0;', '$p = $this->getP(); return $p > 0 ? $p : 0;'],
+        '?: with pure method twice' => ['return $this->getP() ? $this->getP() : 1;', 'return $this->getP() ?: 1;'],
+        'self::$cache[k] ?? set' => ["if (!isset(self::\$cache[\$s])) { self::\$cache[\$s] = \$i; } return self::\$cache[\$s];", "return self::\$cache[\$s] ??= \$i;"],
+        '$this->p ?? via isset ternary' => ['return isset($this->nf) ? $this->nf : $x;', 'return $this->nf ?? $x;'],
+    ]));
 }
 
 if ($only === 'standard') {
@@ -250,7 +397,7 @@ if ($only === 'standard') {
         $spec = RuleCatalog::build(new Opmin\Module\Config\Schema\Rector(), new Opmin\Module\Config\Schema\RectorStandard(), true, [$rule], '8.1')[0];
         $runner->run($spec, [Path::create($file)]);
         $changed = (string) \file_get_contents($file);
-        \preg_match('/public function f\(Foo \$x, array \$a, \$v\) \{(.*)\n    \}\n\}/s', $changed, $m);
+        \preg_match('/public function f\(Foo \$x, array \$a, \$v, string \$s, int \$i, bool \$b, \?Foo \$nx\) \{(.*)\n    \}\n\}/s', $changed, $m);
         $after = $changed === $code ? $before : $measure([$rule . '#after' => [$m[1] ?? $body, $m[1] ?? $body]])[$rule . '#after'][0];
         $rows[\substr($rule, (int) \strrpos($rule, '\\') + 1) . ($changed === $code ? ' (no change)' : '')] = [$before, $after];
     }

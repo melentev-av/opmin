@@ -24,6 +24,15 @@ final readonly class FileReferences
      * @param list<lowercase-string> $dynamicMethodScopes Classes with a call of an unknown method
      *        (`$obj->$name()`); {@see self::ANY_CLASS} when the call is outside a class or on another object.
      * @param list<lowercase-string> $reflectedClasses Classes inspected through `Reflection*`.
+     * @param list<non-empty-string> $closureWrites Properties a closure writes or references (any
+     *        object's): bound to a class (`Closure::bind()`, `->call()`) it writes even a private one;
+     *        {@see PropertyWrites::ANY} for any property.
+     * @param bool $reinitializes `__construct()`, `__clone()`, `__wakeup()` or `__unserialize()` is
+     *        called explicitly on an object that exists (not `parent::__construct()` in a constructor).
+     * @param bool $reflectionWrites A method that writes a property through reflection is called
+     *        (`setValue()`, `resetAsLazyGhost()`…): with a class in $reflectedClasses its properties change.
+     * @param bool $walksObjects `array_walk()` or `new ArrayObject()` of what may be an object: it
+     *        writes any property, private ones too, from any scope.
      */
     public function __construct(
         public array $functions = [],
@@ -31,6 +40,10 @@ final readonly class FileReferences
         public bool $dynamicFunctionCalls = false,
         public array $dynamicMethodScopes = [],
         public array $reflectedClasses = [],
+        public array $closureWrites = [],
+        public bool $reinitializes = false,
+        public bool $reflectionWrites = false,
+        public bool $walksObjects = false,
     ) {}
 
     /**
@@ -38,13 +51,36 @@ final readonly class FileReferences
      */
     public static function fromArray(array $data): self
     {
-        /** @var array{functions: list<lowercase-string>, methods: list<lowercase-string>, dynamic_function_calls: bool, dynamic_method_scopes: list<lowercase-string>, reflected_classes: list<lowercase-string>} $data */
+        /** @var array{functions: list<lowercase-string>, methods: list<lowercase-string>, dynamic_function_calls: bool, dynamic_method_scopes: list<lowercase-string>, reflected_classes: list<lowercase-string>, closure_writes: list<non-empty-string>, reinitializes: bool, reflection_writes: bool, walks_objects: bool} $data */
         return new self(
             $data['functions'],
             $data['methods'],
             $data['dynamic_function_calls'],
             $data['dynamic_method_scopes'],
             $data['reflected_classes'],
+            $data['closure_writes'],
+            $data['reinitializes'],
+            $data['reflection_writes'],
+            $data['walks_objects'],
+        );
+    }
+
+    /**
+     * The facts of property writes (and the reflected classes) of both sets, the rest left out.
+     */
+    public function effectsWith(self $other): self
+    {
+        $classes = \array_values(\array_unique([...$this->reflectedClasses, ...$other->reflectedClasses]));
+        $writes = \array_values(\array_unique([...$this->closureWrites, ...$other->closureWrites]));
+        \sort($classes, \SORT_STRING);
+        \sort($writes, \SORT_STRING);
+
+        return new self(
+            reflectedClasses: $classes,
+            closureWrites: $writes,
+            reinitializes: $this->reinitializes || $other->reinitializes,
+            reflectionWrites: $this->reflectionWrites || $other->reflectionWrites,
+            walksObjects: $this->walksObjects || $other->walksObjects,
         );
     }
 
@@ -59,6 +95,10 @@ final readonly class FileReferences
             'dynamic_function_calls' => $this->dynamicFunctionCalls,
             'dynamic_method_scopes' => $this->dynamicMethodScopes,
             'reflected_classes' => $this->reflectedClasses,
+            'closure_writes' => $this->closureWrites,
+            'reinitializes' => $this->reinitializes,
+            'reflection_writes' => $this->reflectionWrites,
+            'walks_objects' => $this->walksObjects,
         ];
     }
 }

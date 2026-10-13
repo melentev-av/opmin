@@ -10,6 +10,7 @@ use Opmin\Module\Common\Cpu;
 use Opmin\Module\Common\FileSystem\FS;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Release\Installation;
+use Opmin\Rector\Rule\ExtractRepeatedPropertyFetchRector;
 use Opmin\Rector\Rule\FullyQualifyGlobalCallsRector;
 use Symfony\Component\Process\Process;
 
@@ -55,7 +56,7 @@ final readonly class RectorRunner
      * Name of the rule's cache directory. Rector skips a file whose hash it saw unchanged under the
      * same rule, so the key holds everything that decides what the rule does: the class and options,
      * `php.target` and the opmin version (a new opmin may improve the rule). An option that points to
-     * a data file of the run ({@see FullyQualifyGlobalCallsRector::FILE_OPTIONS}) enters with the
+     * a data file of the run (`FILE_OPTIONS` of a rule) enters with the
      * content hash of the file instead of its path: the run directory is new every run, the data
      * mostly is not.
      *
@@ -66,8 +67,13 @@ final readonly class RectorRunner
     public static function cacheKey(RuleSpec $rule, ?string $phpTarget, ?string $version = null): string
     {
         $options = $rule->options;
-        if ($options !== null && \is_a($rule->class, FullyQualifyGlobalCallsRector::class, true)) {
-            foreach (FullyQualifyGlobalCallsRector::FILE_OPTIONS as $name) {
+        $fileOptions = match (true) {
+            \is_a($rule->class, FullyQualifyGlobalCallsRector::class, true) => FullyQualifyGlobalCallsRector::FILE_OPTIONS,
+            \is_a($rule->class, ExtractRepeatedPropertyFetchRector::class, true) => ExtractRepeatedPropertyFetchRector::FILE_OPTIONS,
+            default => [],
+        };
+        if ($options !== null) {
+            foreach ($fileOptions as $name) {
                 /** @var mixed $path */
                 $path = $options[$name] ?? null;
                 if (\is_string($path)) {

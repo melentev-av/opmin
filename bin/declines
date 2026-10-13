@@ -10,13 +10,16 @@
  *   bin/declines vendor/symfony/console                 # paths relative to --root (default: this repository)
  *   bin/declines --root=/path/to/project src lib        # the project's vendor/autoload.php is used for reflection
  *   bin/declines --log=runtime/declines.jsonl src       # keep the raw log (one JSON line per group)
+ *   bin/declines --no-effects src                       # without the project data: no stable properties
+ *   bin/declines --effects=effects.json src             # with given project data (what-if: a fact relaxed)
  *
  * Nothing is written to the analyzed files. The project-wide data of the rules (stable properties)
- * is built over the given directories, as `optimize` builds it over the project.
+ * is built over the given paths, as `optimize` builds it over the project.
  */
 
 declare(strict_types=1);
 
+use Opmin\Module\Analysis\ReferenceIndex;
 use Opmin\Rector\Rule\AbstractExtractRepeatedReadRector;
 use Opmin\Rector\Rule\ExtractRepeatedArrayDimFetchRector;
 use Opmin\Rector\Rule\ExtractRepeatedPropertyFetchRector;
@@ -25,11 +28,11 @@ use Symfony\Component\Process\Process;
 
 require __DIR__ . '/../vendor/autoload.php';
 
-$options = \getopt('', ['root:', 'log:'], $rest);
+$options = \getopt('', ['root:', 'log:', 'no-effects', 'effects:'], $rest);
 $root = \realpath(\is_string($options['root'] ?? null) ? $options['root'] : __DIR__ . '/..');
 $root === false and fail('No such --root.');
 $paths = \array_slice($argv, $rest);
-$paths === [] and fail('Usage: bin/declines [--root=dir] [--log=file] <path>...');
+$paths === [] and fail('Usage: bin/declines [--root=dir] [--log=file] [--no-effects | --effects=file] <path>...');
 
 $work = __DIR__ . '/../runtime/declines';
 \is_dir($work) or \mkdir($work, 0777, true);
@@ -44,6 +47,23 @@ foreach ($paths as $path) {
     $absolute[] = $full;
 }
 
+$effects = [];
+if (\is_string($options['effects'] ?? null)) {
+    $effects = [ExtractRepeatedPropertyFetchRector::EFFECTS => (string) \realpath($options['effects'])];
+} elseif (!isset($options['no-effects'])) {
+    $index = new ReferenceIndex();
+    foreach ($absolute as $dir) {
+        $files = \is_file($dir) ? [$dir] : new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS));
+        foreach ($files as $file) {
+            $file = (string) $file;
+            \str_ends_with($file, '.php') and $index->add(\ltrim($file, '/'), (string) \file_get_contents($file));
+        }
+    }
+
+    $effects = [ExtractRepeatedPropertyFetchRector::EFFECTS => $work . '/effects.json'];
+    \file_put_contents($work . '/effects.json', \json_encode($index->effects()->toArray(), \JSON_THROW_ON_ERROR));
+}
+
 $config = $work . '/rector.php';
 # A fresh cache: Rector skips the files it has seen, and their groups would be missing from the log.
 $cache = $work . '/cache-' . \bin2hex(\random_bytes(4));
@@ -53,7 +73,7 @@ $cache = $work . '/cache-' . \bin2hex(\random_bytes(4));
     '    $config->paths(' . \var_export($absolute, true) . ');',
     '    $config->cacheDirectory(' . \var_export($cache, true) . ');',
     '    $config->parallel(processTimeout: 600, maxNumberOfProcess: 8, jobSize: 8);',
-    '    $config->ruleWithConfiguration(' . \var_export(ExtractRepeatedPropertyFetchRector::class, true) . ', ["min_reads" => "auto"]);',
+    '    $config->ruleWithConfiguration(' . \var_export(ExtractRepeatedPropertyFetchRector::class, true) . ', ' . \var_export(['min_reads' => 'auto'] + $effects, true) . ');',
     '    $config->ruleWithConfiguration(' . \var_export(ExtractRepeatedArrayDimFetchRector::class, true) . ', ["min_reads" => "auto"]);',
     '};',
     '',
@@ -81,7 +101,7 @@ $rows = [];
 $functions = [];
 foreach ($groups as $group) {
     $reason = $group['reason'];
-    $reason === 'extracted' && ($group['across_calls'] ?? false) and $reason = 'extracted across calls';
+    $reason === 'extracted' && ($group['across_calls'] ?? false) and $reason = ($group['l1'] ?? false) ? 'extracted across calls (stable)' : 'extracted across calls';
     if (\str_starts_with($reason, 'function:')) {
         $functions[$reason] = ($functions[$reason] ?? 0) + 1;
         $reason = 'function (not known pure)';

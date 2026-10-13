@@ -16,7 +16,9 @@ use PhpParser\NodeVisitorAbstract;
 /**
  * Collects the {@see FileReferences} of a file: everything that can call or inspect a function
  * without a static call site, so the called side gets {@see Flag::CalledDynamically} or
- * {@see Flag::Reflection}.
+ * {@see Flag::Reflection}; and everything that can write a property bypassing its class (closures
+ * that may be bound to it, reflection, a second constructor call), which a stable property must
+ * not have.
  *
  * Over-approximates on purpose: a string that only looks like a callable still protects the function.
  *
@@ -31,6 +33,17 @@ final class ReferenceCollector extends NodeVisitorAbstract
         'array_walk_recursive' => 1, 'array_reduce' => 1, 'usort' => 1, 'uasort' => 1, 'uksort' => 1,
         'iterator_apply' => 1, 'register_shutdown_function' => 0, 'spl_autoload_register' => 0,
         'set_error_handler' => 0, 'set_exception_handler' => 0, 'preg_replace_callback' => 1, 'ob_start' => 0,
+    ];
+
+    /** Methods that initialize a new object: only they may write a stable property. */
+    private const array INITIALIZERS = ['__construct' => true, '__clone' => true, '__wakeup' => true, '__unserialize' => true];
+
+    /** Methods that write a property through reflection (an existing object's). */
+    private const array REFLECTION_WRITERS = [
+        'setvalue' => true, 'setrawvalue' => true, 'setrawvaluewithoutlazyinitialization' => true,
+        'skiplazyinitialization' => true, 'resetaslazyghost' => true, 'resetaslazyproxy' => true,
+        # The constructor through reflection may be invoked on an existing object.
+        'getconstructor' => true,
     ];
 
     /** @var array<lowercase-string, true> */
@@ -50,6 +63,17 @@ final class ReferenceCollector extends NodeVisitorAbstract
     /** @var list<lowercase-string|null> Enclosing classes, null for an anonymous one. */
     private array $classes = [];
 
+    /** @var list<array{bool, lowercase-string|null, bool}> Enclosing functions: [closure, method name, returns by reference]. */
+    private array $functionLikes = [];
+
+    /** @var array<non-empty-string, true> */
+    private array $closureWrites = [];
+
+    private bool $reinitializes = false;
+    private bool $reflectionWrites = false;
+    private bool $walksObjects = false;
+    private ?PropertyWrites $writes = null;
+
     /**
      * @param array<array-key, Node> $stmts Parsed, without name resolution.
      */
@@ -57,7 +81,9 @@ final class ReferenceCollector extends NodeVisitorAbstract
     {
         $this->functions = $this->methods = $this->dynamicMethodScopes = $this->reflectedClasses = [];
         $this->dynamicFunctionCalls = false;
-        $this->classes = [];
+        $this->classes = $this->functionLikes = $this->closureWrites = [];
+        $this->reinitializes = $this->reflectionWrites = $this->walksObjects = false;
+        $this->writes ??= new PropertyWrites(self::byReference(...), static fn(Expr $e): bool => $e instanceof Expr\Array_);
         (new NodeTraverser(new NameResolver(), $this))->traverse($stmts);
 
         return new FileReferences(
@@ -66,11 +92,21 @@ final class ReferenceCollector extends NodeVisitorAbstract
             dynamicFunctionCalls: $this->dynamicFunctionCalls,
             dynamicMethodScopes: self::sorted($this->dynamicMethodScopes),
             reflectedClasses: self::sorted($this->reflectedClasses),
+            closureWrites: self::sortedNames($this->closureWrites),
+            reinitializes: $this->reinitializes,
+            reflectionWrites: $this->reflectionWrites,
+            walksObjects: $this->walksObjects,
         );
     }
 
     public function enterNode(Node $node): null
     {
+        $node instanceof Node\FunctionLike and $this->functionLikes[] = [
+            $node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction,
+            $node instanceof Stmt\ClassMethod ? $node->name->toLowerString() : null,
+            $node->returnsByRef(),
+        ];
+        $this->effects($node);
         match (true) {
             $node instanceof Stmt\ClassLike => $this->classes[] = $node->namespacedName?->toLowerString(),
             $node instanceof String_ => $this->string($node->value),
@@ -88,8 +124,52 @@ final class ReferenceCollector extends NodeVisitorAbstract
     public function leaveNode(Node $node): null
     {
         $node instanceof Stmt\ClassLike and \array_pop($this->classes);
+        $node instanceof Node\FunctionLike and \array_pop($this->functionLikes);
 
         return null;
+    }
+
+    /**
+     * @param array<non-empty-string, true> $set
+     * @return list<non-empty-string>
+     */
+    private static function sortedNames(array $set): array
+    {
+        $list = [];
+        foreach ($set as $name => $_) {
+            $list[] = (string) $name;
+        }
+
+        \sort($list, \SORT_STRING);
+
+        /** @var list<non-empty-string> */
+        return $list;
+    }
+
+    /**
+     * Whether an argument of a call is passed by reference, for a write inside a closure: known only
+     * for internal functions (of the PHP running opmin).
+     */
+    private static function byReference(Expr\CallLike $call, int $position): ?bool
+    {
+        $name = $call instanceof Expr\FuncCall ? DynamicScopeDetector::globalFunction($call->name) : null;
+        if ($name === null || !\function_exists($name)) {
+            return null;
+        }
+
+        /** @var callable-string $name */
+        $function = new \ReflectionFunction($name);
+        if (!$function->isInternal()) {
+            return null;
+        }
+
+        $parameters = $function->getParameters();
+        $parameter = $parameters[$position] ?? null;
+        if ($parameter === null && $parameters !== [] && $parameters[\count($parameters) - 1]->isVariadic()) {
+            $parameter = $parameters[\count($parameters) - 1];
+        }
+
+        return $parameter?->isPassedByReference() ?? false;
     }
 
     /**
@@ -118,6 +198,39 @@ final class ReferenceCollector extends NodeVisitorAbstract
     }
 
     /**
+     * What may write a property bypassing its class.
+     */
+    private function effects(Node $node): void
+    {
+        \assert($this->writes !== null);
+        $this->walksObjects = $this->walksObjects || $this->writes->walksObject($node);
+        $function = $this->functionLikes === [] ? null : $this->functionLikes[\array_key_last($this->functionLikes)];
+        # A closure may be bound to any class: it writes the properties of that class.
+        if ($function !== null && $function[0]) {
+            foreach ($this->writes->of($node, $function[2]) as $write) {
+                $this->closureWrites[$write->name] = true;
+            }
+        }
+
+        $name = $node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall || $node instanceof Expr\StaticCall
+            ? $node->name : null;
+        $name = match (true) {
+            $name instanceof Node\Identifier => $name->toLowerString(),
+            $name instanceof String_ => \strtolower($name->value),
+            default => null,
+        };
+        if ($name === null) {
+            return;
+        }
+
+        isset(self::REFLECTION_WRITERS[$name]) and $this->reflectionWrites = true;
+        # `parent::__construct()` of a constructor initializes the same new object.
+        $initializing = $node instanceof Expr\StaticCall && $node->class instanceof Name && $node->class->toLowerString() === 'parent'
+            && $function !== null && $function[1] === $name;
+        isset(self::INITIALIZERS[$name]) && !$initializing and $this->reinitializes = true;
+    }
+
+    /**
      * `'App\fn'`, `'App\Foo::bar'`, `'App\Foo@bar'` (Laravel); a bare `'fn'` names a global function.
      */
     private function string(string $value): void
@@ -129,6 +242,7 @@ final class ReferenceCollector extends NodeVisitorAbstract
 
         if (isset($m[2])) {
             $this->methods[\strtolower($m[1] . '::' . $m[2])] = true;
+            isset(self::INITIALIZERS[\strtolower($m[2])]) and $this->reinitializes = true;
             return;
         }
 
@@ -151,6 +265,7 @@ final class ReferenceCollector extends NodeVisitorAbstract
 
         if ($method->value instanceof String_) {
             $this->methods[$this->classOf($target->value) . '::' . \strtolower($method->value->value)] = true;
+            isset(self::INITIALIZERS[\strtolower($method->value->value)]) and $this->reinitializes = true;
             return;
         }
 
@@ -235,6 +350,8 @@ final class ReferenceCollector extends NodeVisitorAbstract
             return;
         }
 
+        $method = $args[1]->value ?? null;
+        $method instanceof String_ && isset(self::INITIALIZERS[\strtolower($method->value)]) and $this->reinitializes = true;
         if ($first instanceof String_) {
             $this->reflectedClasses[\strtolower(\explode('::', \ltrim($first->value, '\\'))[0])] = true;
             $this->string($first->value);

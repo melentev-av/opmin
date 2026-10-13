@@ -86,6 +86,39 @@ final class ReferenceIndexTest
     }
 
     /**
+     * What may write a property bypassing its class: [code, closure writes, reinitializes,
+     * reflection writes, walks objects].
+     *
+     * @return iterable<string, array{string, list<string>, bool, bool, bool}>
+     */
+    public static function propertyWrites(): iterable
+    {
+        yield 'nothing' => ['class A { function __construct() { $this->p = 1; } function f() { $this->q = 2; } }', [], false, false, false];
+        yield 'closure assigns' => ['$f = function ($o) { $o->p = 1; };', ['p'], false, false, false];
+        yield 'arrow function increments' => ['$f = fn($o) => $o->n++;', ['n'], false, false, false];
+        yield 'closure references' => ['$f = function ($o) { $r = &$o->items; };', ['items'], false, false, false];
+        yield 'closure passes by reference' => ['$f = function ($o) { sort($o->list); };', ['list'], false, false, false];
+        yield 'closure passes by value' => ['$f = function ($o) { return strlen($o->name); };', [], false, false, false];
+        yield 'closure passes to a method' => ['$f = function ($o) { $o->m($o->name); };', ['name'], false, false, false];
+        yield 'closure writes a dynamic name' => ['$f = function ($o, $n) { $o->$n = 1; };', ['*'], false, false, false];
+        yield 'closure iterates an object by reference' => ['$f = function ($o) { foreach ($o as &$v) {} };', ['*'], false, false, false];
+        yield 'closure unsets' => ['$f = function ($o) { unset($o->p); };', ['p'], false, false, false];
+        yield 'method writes, not a closure' => ['class A { function f($o) { $o->p = 1; } }', [], false, false, false];
+        yield 'constructor called again' => ['$o->__construct();', [], true, false, false];
+        yield 'own constructor called again' => ['class A { function reset() { $this->__construct(); } }', [], true, false, false];
+        yield 'parent constructor in a constructor' => ['class A extends B { function __construct() { parent::__construct(); } }', [], false, false, false];
+        yield 'parent constructor elsewhere' => ['class A extends B { function reset() { parent::__construct(); } }', [], true, false, false];
+        yield 'unserialize called' => ['$o->__unserialize([]);', [], true, false, false];
+        yield 'constructor as a callable' => ['call_user_func([$o, "__construct"]);', [], true, false, false];
+        yield 'constructor through reflection' => ['(new \ReflectionClass($c))->getConstructor()->invoke($o);', [], false, true, false];
+        yield 'reflection writes a property' => ['$p->setValue($o, 1);', [], false, true, false];
+        yield 'lazy object reset' => ['$r->resetAsLazyGhost($o, $init);', [], false, true, false];
+        yield 'array_walk of a variable' => ['array_walk($o, $f);', [], false, false, true];
+        yield 'array_walk of an array literal' => ['array_walk([1, 2], $f);', [], false, false, false];
+        yield 'ArrayObject of a variable' => ['new \ArrayObject($o);', [], false, false, true];
+    }
+
+    /**
      * @param non-empty-string $key
      * @param list<Flag> $expected
      */
@@ -108,6 +141,41 @@ final class ReferenceIndexTest
         $index->add('routes.php', "<?php {$code}");
 
         Assert::same($index->flagsFor($key, $kind), []);
+    }
+
+    /**
+     * @param list<string> $closureWrites
+     */
+    #[DataProvider('propertyWrites')]
+    public function collectsWhatWritesPropertiesBypassingTheClass(
+        string $code,
+        array $closureWrites,
+        bool $reinitializes,
+        bool $reflectionWrites,
+        bool $walksObjects,
+    ): void {
+        $index = new ReferenceIndex();
+        $index->add('src/a.php', "<?php {$code}");
+
+        $effects = $index->effects();
+
+        Assert::same(
+            [$effects->closureWrites, $effects->reinitializes, $effects->reflectionWrites, $effects->walksObjects],
+            [$closureWrites, $reinitializes, $reflectionWrites, $walksObjects],
+        );
+    }
+
+    public function effectsOfFilesAreMerged(): void
+    {
+        $index = new ReferenceIndex();
+        $index->add('src/a.php', '<?php $f = fn($o) => $o->b = 1; new \ReflectionClass(\App\A::class);');
+        $index->add('src/b.php', '<?php $f = fn($o) => $o->a = 1; $o->__wakeup();');
+
+        $effects = FileReferences::fromArray(\json_decode((string) \json_encode($index->effects()->toArray()), true));
+
+        Assert::same($effects->closureWrites, ['a', 'b']);
+        Assert::same($effects->reflectedClasses, ['app\a']);
+        Assert::true($effects->reinitializes);
     }
 
     public function dynamicCallInsideAClassReachesItsOwnMethods(): void

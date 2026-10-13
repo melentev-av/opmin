@@ -130,6 +130,15 @@ abstract class AbstractExtractRepeatedReadRector extends AbstractRector implemen
     }
 
     /**
+     * The read is {@see ReadSpec::stable()} only because its class keeps it from being written (not
+     * readonly), for the decline log.
+     */
+    protected function unlockedByEncapsulation(Expr $read): bool
+    {
+        return false;
+    }
+
+    /**
      * Why {@see ReadSpec::safe()} refuses the read, for the decline log.
      *
      * @return non-empty-string
@@ -313,7 +322,11 @@ abstract class AbstractExtractRepeatedReadRector extends AbstractRector implemen
             }
 
             if (\count($reads) >= $this->minReads) {
-                $this->logGroup($events, $i, 'extracted', ['reads' => \count($reads), 'across_calls' => $crossed]);
+                $this->logGroup($events, $i, 'extracted', [
+                    'reads' => \count($reads),
+                    'across_calls' => $crossed,
+                    'l1' => $crossed && $this->unlockedByEncapsulation($event->node),
+                ]);
                 return [$event->statement, $event->node, $reads];
             }
 

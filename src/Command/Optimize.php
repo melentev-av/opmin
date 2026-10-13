@@ -6,6 +6,7 @@ namespace Opmin\Command;
 
 use Internal\Path;
 use Opmin\Module\Analysis\IgnoreMarks;
+use Opmin\Module\Analysis\ReferenceIndex;
 use Opmin\Module\Analysis\Shadow\ShadowIndex;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Config\Schema\NativeTypesPolicy;
@@ -32,6 +33,7 @@ use Opmin\Module\Project\Targets;
 use Opmin\Module\Report\ConsoleSummary;
 use Opmin\Module\Verification\Verifier;
 use Opmin\Rector\Rule\AbstractExtractRepeatedReadRector;
+use Opmin\Rector\Rule\ExtractRepeatedPropertyFetchRector;
 use Opmin\Rector\Rule\FullyQualifyGlobalCallsRector;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -525,7 +527,8 @@ final class Optimize extends Stage
 
     /**
      * Options opmin's own rules get from the run: the shadow index and the internal symbols of
-     * `php.binary` for the FQN rule, `min_reads` for the extract rules.
+     * `php.binary` for the FQN rule, `min_reads` for the extract rules, the project-wide property
+     * writes for stable properties.
      *
      * @param list<RuleSpec> $rules
      * @return list<RuleSpec>
@@ -548,6 +551,15 @@ final class Optimize extends Stage
                 ]);
             } elseif (\is_a($rule->class, AbstractExtractRepeatedReadRector::class, true)) {
                 $rule = $rule->withOptions(($rule->options ?? []) + [AbstractExtractRepeatedReadRector::MIN_READS => 'auto']);
+            }
+
+            if (\is_a($rule->class, ExtractRepeatedPropertyFetchRector::class, true)) {
+                $effects = $runDir->join('effects.json');
+                $effects->exists() or \file_put_contents(
+                    (string) $effects,
+                    \json_encode(ReferenceIndex::build($project, $cacheDir, $this->cacheStore())->effects()->toArray(), \JSON_THROW_ON_ERROR),
+                );
+                $rule = $rule->withOptions(($rule->options ?? []) + [ExtractRepeatedPropertyFetchRector::EFFECTS => (string) $effects]);
             }
 
             $result[] = $rule;

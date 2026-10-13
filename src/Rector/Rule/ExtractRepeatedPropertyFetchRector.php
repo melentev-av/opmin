@@ -4,11 +4,18 @@ declare(strict_types=1);
 
 namespace Opmin\Rector\Rule;
 
+use Opmin\Module\Analysis\FileReferences;
+use Opmin\Module\Analysis\PropertyWrites;
+use Opmin\Module\Analysis\ReferenceCollector;
+use Opmin\Rector\Support\ArgumentPassing;
+use Opmin\Rector\Support\StableProperties;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Stmt;
 use PhpParser\NodeFinder;
 use PHPStan\Reflection\ClassReflection;
+use PHPStan\Reflection\ReflectionProvider;
+use Rector\Reflection\ReflectionResolver;
 use Symplify\RuleDocGenerator\ValueObject\CodeSample\ConfiguredCodeSample;
 use Symplify\RuleDocGenerator\ValueObject\RuleDefinition;
 use Testo\Bridge\Rector\Testing\TestRectorFixtures;
@@ -22,21 +29,82 @@ use Testo\Bridge\Rector\Testing\TestRectorFixtures;
  *   not reassigned between the reads;
  * - the property is declared and not static, without hooks; the class and its parents have no
  *   `__get()`, and a subclass cannot add one to it: the class is final or the property private;
- * - a readonly property may be read across calls (its value cannot change); any other property only
- *   while no user code may run between the reads, and only when it cannot be undefined (not public,
- *   never `unset()` in its class) — an undefined property warns on every read;
+ * - a readonly property may be read across calls (its value cannot change), and so may a stable one
+ *   (below); any other property only while no user code may run between the reads, and only when it
+ *   cannot be undefined (not public, never `unset()` in its class) — an undefined property warns on
+ *   every read;
  * - no write to `$x->foo` and no reference to it between the reads.
  *
+ * A stable property (plan, L1 of the model of call effects) is private, declared in the class of
+ * the method itself (not in a trait, the class uses no trait and has no `__get()`/`__set()`), and
+ * only the initializers of its class write it, as `$this->foo` ({@see StableProperties}); in the
+ * whole project ({@see self::EFFECTS}) no closure writes or references a property of that name (it
+ * may be bound to the class), no initializer is called again on an existing object, no object is
+ * walked like an array (`array_walk()`, `new ArrayObject($object)`), and no reflection writes a
+ * property of the class. Without the project data no property is stable. `protected` and `public`
+ * properties need a closed world (code outside the project may write them) and are not handled.
+ *
+ * Options:
+ * - `min_reads` ({@see AbstractExtractRepeatedReadRector::MIN_READS});
+ * - `effects`: JSON file with {@see \Opmin\Module\Analysis\ReferenceIndex::effects()} of the project.
+ *
+ * Not final: the tests fix the options in a subclass (testo/bridge-rector passes none).
+ *
  * @internal
+ * @psalm-suppress ClassMustBeFinal
  */
 #[TestRectorFixtures('Fixture/ExtractRepeatedPropertyFetch')]
-final class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedReadRector
+class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedReadRector
 {
+    public const string EFFECTS = 'effects';
+
+    /** Options that hold a path to a JSON file: the rule's cache is keyed on the file's content. */
+    public const array FILE_OPTIONS = [self::EFFECTS];
+
     private ?\PhpParser\Parser $parser = null;
+
+    /** What may write a property bypassing its class in the project; null — unknown, nothing is stable. */
+    private ?FileReferences $effects = null;
+
+    /** @var array<string, array<non-empty-string, true>> Stable properties by file and class. */
+    private array $stable = [];
+
+    public function __construct(
+        ReflectionResolver $reflectionResolver,
+        private readonly ReflectionProvider $reflectionProvider,
+    ) {
+        parent::__construct($reflectionResolver);
+    }
 
     public static function alias(): string
     {
         return 'property_fetch';
+    }
+
+    /**
+     * @param array<array-key, mixed> $configuration {@see AbstractExtractRepeatedReadRector::configure()},
+     *        `effects`: a path to the JSON file or the array itself (tests).
+     */
+    public function configure(array $configuration): void
+    {
+        parent::configure($configuration);
+        /** @var mixed $effects */
+        $effects = $configuration[self::EFFECTS] ?? null;
+        if ($effects === null) {
+            $this->effects = null;
+            return;
+        }
+
+        if (\is_string($effects)) {
+            $json = @\file_get_contents($effects);
+            $json === false and throw new \InvalidArgumentException(self::class . ": cannot read `effects` file {$effects}.");
+            /** @var mixed $effects */
+            $effects = \json_decode($json, true, flags: \JSON_THROW_ON_ERROR);
+        }
+
+        \is_array($effects) or throw new \InvalidArgumentException(self::class . ': `effects` must be a path or an array.');
+        $this->effects = FileReferences::fromArray($effects + (new FileReferences())->toArray());
+        $this->stable = [];
     }
 
     public function getRuleDefinition(): RuleDefinition
@@ -96,9 +164,11 @@ final class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedRe
         }
 
         $class = $this->objectClass($read->var);
+        if ($class === null || !$class->hasNativeProperty($read->name->toString())) {
+            return false;
+        }
 
-        return $class !== null && $class->hasNativeProperty($read->name->toString())
-            && $class->getNativeProperty($read->name->toString())->isReadOnly();
+        return $class->getNativeProperty($read->name->toString())->isReadOnly() || $this->encapsulated($read);
     }
 
     public function location(Expr $read): ?string
@@ -119,6 +189,18 @@ final class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedRe
     public function name(Expr $read): string
     {
         return $read instanceof Expr\PropertyFetch && $read->name instanceof Node\Identifier ? $read->name->toString() : 'value';
+    }
+
+    protected function unlockedByEncapsulation(Expr $read): bool
+    {
+        if (!$read instanceof Expr\PropertyFetch || !$read->name instanceof Node\Identifier) {
+            return false;
+        }
+
+        $class = $this->objectClass($read->var);
+
+        return $class !== null && $class->hasNativeProperty($read->name->toString())
+            && !$class->getNativeProperty($read->name->toString())->isReadOnly() && $this->encapsulated($read);
     }
 
     protected function unsafeReason(Expr $read): string
@@ -195,6 +277,123 @@ final class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedRe
         }
 
         return true;
+    }
+
+    /**
+     * The property is stable: only the initializers of its class write it ({@see self::EFFECTS}).
+     */
+    private function encapsulated(Expr\PropertyFetch $read): bool
+    {
+        $class = $this->objectClass($read->var);
+        $scope = self::scope($read)?->getClassReflection();
+        if ($this->effects === null || !$read->name instanceof Node\Identifier || $class === null || $scope === null
+            || !$class->hasNativeProperty($read->name->toString())
+        ) {
+            return false;
+        }
+
+        $name = $read->name->toString();
+        $property = $class->getNativeProperty($name);
+        $declaring = $property->getDeclaringClass();
+        if (!$property->isPrivate() || $property->isStatic() || $property->isHooked() || $property->isVirtual()->yes()
+            || $property->getDeclaringTrait() !== null || $declaring->getName() !== $scope->getName() || $declaring->isAnonymous()
+        ) {
+            return false;
+        }
+
+        $key = $this->file->getFilePath() . "\0" . $declaring->getName();
+        $this->stable[$key] ??= $this->stableProperties($declaring);
+
+        return isset($this->stable[$key][$name]);
+    }
+
+    /**
+     * @return array<non-empty-string, true>
+     */
+    private function stableProperties(ClassReflection $class): array
+    {
+        if ($this->effects === null || $class->hasNativeMethod('__get') || $class->hasNativeMethod('__set')
+            || $class->getTraits() !== []
+        ) {
+            return [];
+        }
+
+        $local = $this->fileReferences($class->getFileName());
+        if ($local === null) {
+            return [];
+        }
+
+        $facts = $this->effects->effectsWith($local);
+        if ($facts->reinitializes || $facts->walksObjects || ($facts->reflectionWrites && $this->reflected($class, $facts->reflectedClasses))) {
+            return [];
+        }
+
+        $node = null;
+        foreach ((new NodeFinder())->findInstanceOf($this->file->getNewStmts(), Stmt\Class_::class) as $candidate) {
+            $this->isName($candidate, $class->getName()) and $node = $candidate;
+        }
+
+        if ($node === null) {
+            return [];
+        }
+
+        $unstable = StableProperties::unstable(
+            $node,
+            fn(Expr\CallLike $call, int $position): ?bool => (new ArgumentPassing($this->reflectionResolver))->byReference($call, $position),
+            fn(Expr $e): bool => $this->nativeType($e)?->isArray()->yes() === true,
+        );
+        foreach ($facts->closureWrites as $name) {
+            $unstable[$name] = true;
+        }
+
+        if (isset($unstable[PropertyWrites::ANY])) {
+            return [];
+        }
+
+        $stable = [];
+        foreach ($class->getNativeReflection()->getProperties() as $property) {
+            $name = $property->getName();
+            $property->isPrivate() && !isset($unstable[$name]) and $stable[$name] = true;
+        }
+
+        return $stable;
+    }
+
+    /**
+     * Reflection of the class or a subclass reaches its private properties; `*` — an unknown class.
+     *
+     * @param list<lowercase-string> $reflected
+     */
+    private function reflected(ClassReflection $class, array $reflected): bool
+    {
+        foreach ($reflected as $name) {
+            if ($name === FileReferences::ANY_CLASS || $name === \strtolower($class->getName())
+                || !$this->reflectionProvider->hasClass($name)
+                || $this->reflectionProvider->getClass($name)->isSubclassOfClass($class)
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * What the file of the class itself does to properties ({@see ReferenceCollector}); null when it
+     * cannot be read.
+     */
+    private function fileReferences(?string $file): ?FileReferences
+    {
+        $code = $file === null ? false : @\file_get_contents($file);
+        if ($code === false) {
+            return null;
+        }
+
+        try {
+            return (new ReferenceCollector())->collect($this->parser()->parse($code) ?? []);
+        } catch (\PhpParser\Error) {
+            return null;
+        }
     }
 
     private function parser(): \PhpParser\Parser

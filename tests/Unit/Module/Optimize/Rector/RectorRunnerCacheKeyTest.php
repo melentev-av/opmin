@@ -6,6 +6,7 @@ namespace Opmin\Tests\Unit\Module\Optimize\Rector;
 
 use Opmin\Module\Optimize\Rector\RectorRunner;
 use Opmin\Module\Optimize\Rector\RuleSpec;
+use Opmin\Rector\Rule\ExtractRepeatedPropertyFetchRector;
 use Opmin\Rector\Rule\FullyQualifyGlobalCallsRector;
 use Testo\Assert;
 use Testo\Codecov\Covers;
@@ -57,6 +58,20 @@ final class RectorRunnerCacheKeyTest
         Assert::same($keyA, $keyB);
     }
 
+    public function effectsFileEntersByContent(): void
+    {
+        $rule = fn(string $run, string $json): RuleSpec => new RuleSpec(ExtractRepeatedPropertyFetchRector::class, [
+            ExtractRepeatedPropertyFetchRector::EFFECTS => $this->write($run . '/effects.json', $json),
+        ]);
+
+        $a = RectorRunner::cacheKey($rule('run-a', '{"closure_writes":[]}'), '8.3', '1.0.0');
+        $b = RectorRunner::cacheKey($rule('run-b', '{"closure_writes":[]}'), '8.3', '1.0.0');
+        $other = RectorRunner::cacheKey($rule('run-b', '{"closure_writes":["p"]}'), '8.3', '1.0.0');
+
+        Assert::same($a, $b);
+        Assert::true($b !== $other);
+    }
+
     public function otherSymbolsChangeTheKey(): void
     {
         $a = $this->fqRule('run-a', '{"functions":["strlen"]}', '{"symbols":[]}');
@@ -87,6 +102,13 @@ final class RectorRunnerCacheKeyTest
         $keyB = RectorRunner::cacheKey($rule, '8.4', '1.0.0');
 
         Assert::true($keyA !== $keyB);
+    }
+
+    private function write(string $file, string $content): string
+    {
+        \file_put_contents("{$this->dir}/{$file}", $content);
+
+        return "{$this->dir}/{$file}";
     }
 
     private function fqRule(string $run, string $symbols, string $shadows): RuleSpec

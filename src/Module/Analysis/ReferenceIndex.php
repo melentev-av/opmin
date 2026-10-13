@@ -28,7 +28,7 @@ use PhpParser\ParserFactory;
 final class ReferenceIndex
 {
     /** Bump when the collected data changes. */
-    private const FORMAT = 1;
+    private const FORMAT = 2;
 
     /**
      * Never scanned. `.*` is every hidden entry — VCS, IDE, agent and CI tooling (`.agents/`,
@@ -52,6 +52,7 @@ final class ReferenceIndex
     /** @var array<lowercase-string, true> */
     private array $reflectedClasses = [];
 
+    private ?FileReferences $effects = null;
     private readonly Parser $parser;
 
     /**
@@ -104,6 +105,16 @@ final class ReferenceIndex
         }
 
         $this->dynamicFunctionCalls = $this->dynamicFunctionCalls || $references->dynamicFunctionCalls;
+        $this->effects = ($this->effects ?? new FileReferences())->effectsWith($references);
+    }
+
+    /**
+     * What may write a property bypassing its class anywhere in the project (only the fields of
+     * property writes and the reflected classes are filled): the data of stable properties.
+     */
+    public function effects(): FileReferences
+    {
+        return $this->effects ?? new FileReferences();
     }
 
     /**

@@ -247,7 +247,8 @@ opmin optimize --plan                  # say what the run would use and exit: no
   `FullyQualifyGlobalCallsRector` (`strlen()` → `\strlen()`, only when no namespaced function or test mock —
   php-mock, ClockMock — can shadow it), `ExtractRepeatedPropertyFetchRector` (readonly properties across calls,
   mutable ones while no user code runs, no `__get`/hooks), `ExtractRepeatedArrayDimFetchRector` (only keys proven to
-  exist), `HoistLoopInvariantCountRector` (`\count()` of an unchanged local array out of a `for` condition). For the
+  exist), `HoistLoopInvariantCountRector` (`\count()` of an unchanged local array out of a `for` condition),
+  `RemoveUnusedClosureUseRector` (a by-value `use` of a scalar or array variable the closure never names). For the
   two extraction rules, a call of a known pure built-in function (`\explode()`, `\strlen()`, `\abs()`…) with
   arguments of scalar native types runs no user code (`Opmin\Rector\Support\PureFunctionCall`).
 - Code can be excluded from every rule or from some: see [Excluding code](#excluding-code).
@@ -488,7 +489,7 @@ ignore:
 
   ```text
   [WARNING] src/Cart.php:12: `@opmin-ignore` lists `fqm`, which names no known rule, so it excludes nothing.
-            Did you mean `fqn`? Known names: fqn, property_fetch, array_dim_fetch, count, llm, or the short
+            Did you mean `fqn`? Known names: fqn, property_fetch, array_dim_fetch, count, closure_use, llm, or the short
             class name of a rule.
   ```
 
@@ -500,6 +501,7 @@ ignore:
   | `property_fetch` | `ExtractRepeatedPropertyFetchRector` |
   | `array_dim_fetch` | `ExtractRepeatedArrayDimFetchRector` |
   | `count` | `HoistLoopInvariantCountRector` |
+  | `closure_use` | `RemoveUnusedClosureUseRector` |
   | `llm` | Stage B: rewrites proposed by the model |
   | `simplifyifreturnboolrector`, … | a standard Rector rule by its short class name |
 

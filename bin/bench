@@ -290,6 +290,7 @@ if ($only === null || $only === 'patterns') {
         'array_map fn(trim) → trim(...)' => ['return \array_map(static fn($e) => \trim($e), $a);', 'return \array_map(\trim(...), $a);'],
         'array_map fn(trim) → \'trim\'' => ['return \array_map(static fn($e) => \trim($e), $a);', "return \\array_map('trim', \$a);"],
         'closure unused use' => ['return static function () use ($s, $i) { return $i; };', 'return static function () use ($i) { return $i; };'],
+        'closure unused use (2)' => ['return static function () use ($s, $b, $i) { return $i; };', 'return static function () use ($i) { return $i; };'],
         'foreach $k=>$v, $k unused' => ['$t = 0; foreach ($a as $k => $e) { $t += $e; } return $t;', '$t = 0; foreach ($a as $e) { $t += $e; } return $t;'],
         'foreach array_keys → $k=>' => ['$t = 0; foreach (\array_keys($a) as $k) { $t += $k; } return $t;', '$t = 0; foreach ($a as $k => $_) { $t += $k; } return $t;'],
         'switch → match (3 str)' => ["switch (\$s) { case 'a': return 1; case 'b': return 2; case 'c': return 3; default: return 0; }", "return match (\$s) { 'a' => 1, 'b' => 2, 'c' => 3, default => 0 };"],

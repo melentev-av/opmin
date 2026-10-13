@@ -146,7 +146,8 @@
                             "min_reads": "auto"
                         },
                         "Opmin\\Rector\\Rule\\HoistLoopInvariantCountRector": [],
-                        "Opmin\\Rector\\Rule\\SprintfToConcatRector": []
+                        "Opmin\\Rector\\Rule\\SprintfToConcatRector": [],
+                        "Opmin\\Rector\\Rule\\ArrayPushToAssignRector": []
                     }
                 },
                 "max_passes": {

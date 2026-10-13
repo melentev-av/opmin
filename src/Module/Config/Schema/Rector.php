@@ -27,6 +27,7 @@ final class Rector
         'Opmin\Rector\Rule\ExtractRepeatedArrayDimFetchRector' => ['min_reads' => 'auto'],
         'Opmin\Rector\Rule\HoistLoopInvariantCountRector' => [],
         'Opmin\Rector\Rule\SprintfToConcatRector' => [],
+        'Opmin\Rector\Rule\ArrayPushToAssignRector' => [],
     ];
 
     /** @var positive-int */

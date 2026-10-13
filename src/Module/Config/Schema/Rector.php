@@ -26,6 +26,8 @@ final class Rector
         'Opmin\Rector\Rule\ExtractRepeatedPropertyFetchRector' => ['min_reads' => 'auto'],
         'Opmin\Rector\Rule\ExtractRepeatedArrayDimFetchRector' => ['min_reads' => 'auto'],
         'Opmin\Rector\Rule\HoistLoopInvariantCountRector' => [],
+        'Opmin\Rector\Rule\IfChainToMatchRector' => ['min_arms' => 'auto'],
+        'Opmin\Rector\Rule\SwitchToMatchRector' => ['min_arms' => 'auto'],
     ];
 
     /** @var positive-int */

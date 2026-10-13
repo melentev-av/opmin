@@ -247,7 +247,10 @@ opmin optimize --plan                  # say what the run would use and exit: no
   `FullyQualifyGlobalCallsRector` (`strlen()` → `\strlen()`, only when no namespaced function or test mock —
   php-mock, ClockMock — can shadow it), `ExtractRepeatedPropertyFetchRector` (readonly properties across calls,
   mutable ones while no user code runs, no `__get`/hooks), `ExtractRepeatedArrayDimFetchRector` (only keys proven to
-  exist), `HoistLoopInvariantCountRector` (`\count()` of an unchanged local array out of a `for` condition). For the
+  exist), `HoistLoopInvariantCountRector` (`\count()` of an unchanged local array out of a `for` condition),
+  `IfChainToMatchRector` (`if ($v === 1) return …; if ($v === 2) return …; return …;` → `return match`) and
+  `SwitchToMatchRector` (a `switch` of `return`s → `return match`, only where `==` and `===` agree: a native `int`
+  subject with int labels or a native `string` one with non-numeric string labels). For the
   two extraction rules, a call of a known pure built-in function (`\explode()`, `\strlen()`, `\abs()`…) with
   arguments of scalar native types runs no user code (`Opmin\Rector\Support\PureFunctionCall`).
 - Code can be excluded from every rule or from some: see [Excluding code](#excluding-code).
@@ -500,6 +503,8 @@ ignore:
   | `property_fetch` | `ExtractRepeatedPropertyFetchRector` |
   | `array_dim_fetch` | `ExtractRepeatedArrayDimFetchRector` |
   | `count` | `HoistLoopInvariantCountRector` |
+  | `if_to_match` | `IfChainToMatchRector` |
+  | `switch_to_match` | `SwitchToMatchRector` |
   | `llm` | Stage B: rewrites proposed by the model |
   | `simplifyifreturnboolrector`, … | a standard Rector rule by its short class name |
 

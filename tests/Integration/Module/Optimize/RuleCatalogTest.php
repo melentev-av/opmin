@@ -28,8 +28,8 @@ final class RuleCatalogTest
     {
         yield 'alias with a typo' => [
             'fqm',
-            'Unknown Rector rule `fqm` in --rector-rule. Did you mean `fqn`? Name a rule by its alias (fqn, property_fetch, array_dim_fetch, count),'
-            . ' the short class name of a rule of the run or the full class name.',
+            'Unknown Rector rule `fqm` in --rector-rule. Did you mean `fqn`? Name a rule by its alias (fqn, property_fetch, array_dim_fetch, count, if_to_match,'
+            . ' switch_to_match), the short class name of a rule of the run or the full class name.',
         ];
         yield 'short name with a typo' => [
             'HoistLoopInvariantCountRectr',
@@ -57,6 +57,8 @@ final class RuleCatalogTest
             'ExtractRepeatedPropertyFetchRector',
             'ExtractRepeatedArrayDimFetchRector',
             'HoistLoopInvariantCountRector',
+            'IfChainToMatchRector',
+            'SwitchToMatchRector',
         ]);
         Assert::same($rules[0]->options, []);
         Assert::same($rules[1]->options, ['min_reads' => 'auto']);
@@ -74,7 +76,7 @@ final class RuleCatalogTest
 
         $rules = RuleCatalog::build($config, new Schema\RectorStandard(), null, [], '8.3');
 
-        Assert::same(\count($rules), 3);
+        Assert::same(\count($rules), 5);
     }
 
     public function standardSetsExpandIntoSingleRulesAfterOwnOnes(): void
@@ -87,16 +89,18 @@ final class RuleCatalogTest
         $rules = RuleCatalog::build(new Schema\Rector(), $standard, true, [], '8.3');
         $names = \array_map(static fn(RuleSpec $r): string => $r->class, $rules);
 
-        Assert::same(\array_slice($names, 0, 4), [
+        Assert::same(\array_slice($names, 0, 6), [
             FullyQualifyGlobalCallsRector::class,
             ExtractRepeatedPropertyFetchRector::class,
             'Opmin\Rector\Rule\ExtractRepeatedArrayDimFetchRector',
             HoistLoopInvariantCountRector::class,
+            'Opmin\Rector\Rule\IfChainToMatchRector',
+            'Opmin\Rector\Rule\SwitchToMatchRector',
         ]);
         Assert::true(\in_array('Rector\DeadCode\Rector\Cast\RecastingRemovalRector', $names, true));
         Assert::false(\in_array('Rector\DeadCode\Rector\Foreach_\RemoveUnusedForeachKeyRector', $names, true));
         Assert::same(\end($names), 'Rector\CodeQuality\Rector\If_\SimplifyIfReturnBoolRector');
-        $fromSet = $rules[4];
+        $fromSet = $rules[6];
         Assert::string((string) $fromSet->set)->endsWith('dead-code.php');
         Assert::false(\in_array($fromSet->class, $fromSet->skip, true));
         Assert::true(\count($fromSet->skip) > 3);
@@ -107,7 +111,7 @@ final class RuleCatalogTest
         $standard = new Schema\RectorStandard();
         $standard->enabled = true;
 
-        Assert::same(\count(RuleCatalog::build(new Schema\Rector(), $standard, false, [], '8.3')), 4);
+        Assert::same(\count(RuleCatalog::build(new Schema\Rector(), $standard, false, [], '8.3')), 6);
     }
 
     public function onlyTheGivenRules(): void
@@ -148,13 +152,15 @@ final class RuleCatalogTest
 
         [$aliases, $short] = RuleCatalog::ignoreNames($config, $rules);
 
-        Assert::same($aliases, ['fqn', 'property_fetch', 'array_dim_fetch', 'count', 'llm']);
+        Assert::same($aliases, ['fqn', 'property_fetch', 'array_dim_fetch', 'count', 'if_to_match', 'switch_to_match', 'llm']);
         Assert::same($short, [
             'FullyQualifyGlobalCallsRector',
             'SimplifyIfReturnBoolRector',
             'ExtractRepeatedPropertyFetchRector',
             'ExtractRepeatedArrayDimFetchRector',
             'HoistLoopInvariantCountRector',
+            'IfChainToMatchRector',
+            'SwitchToMatchRector',
         ]);
     }
 

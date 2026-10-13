@@ -11,8 +11,6 @@ use Opmin\Rector\Rule\ExtractRepeatedPropertyFetchRector;
 use Opmin\Rector\Rule\FullyQualifyGlobalCallsRector;
 use Opmin\Rector\Rule\HoistLoopInvariantCountRector;
 use Opmin\Rector\Rule\RemoveUnusedClosureUseRector;
-use Opmin\Rector\Rule\NullCheckTernaryToNullsafeRector;
-use Opmin\Rector\Rule\OrIdenticalToInArrayRector;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Data\DataProvider;

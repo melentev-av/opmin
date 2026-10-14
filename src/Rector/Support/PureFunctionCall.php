@@ -148,6 +148,8 @@ final readonly class PureFunctionCall
         'preg_split', 'json_validate',
         # Newer than PHP 8.1, the oldest target: there a polyfill (user code) may stand in for them.
         'str_increment', 'str_decrement', 'array_first', 'array_last',
+        # Only in a build with `--with-mhash`, deprecated since PHP 8.1.
+        'mhash', 'mhash_count', 'mhash_get_block_size', 'mhash_get_hash_name', 'mhash_keygen_s2k',
     ];
 
     /**

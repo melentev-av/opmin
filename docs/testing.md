@@ -119,6 +119,11 @@ final class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedRe
 - **Positive fixtures must save opcodes**: `tests/Integration/Rector/RuleGainTest.php` counts the input and the
   expected output of every positive fixture under `php.binary` (the CI matrix: 8.1–8.5). It caught a fixture the
   optimizer folds into a constant anyway — a fixture that saves nothing proves nothing about the rule.
+- **Their output must compile**: `tests/Integration/Rector/FixtureLintTest.php` runs `php -l` under `php.binary`
+  on the expected output of every positive fixture. An original subnode moved under a new operator is printed as
+  its original text, without the parentheses its new place needs (`Opmin\Rector\Support\Reprint`): a nested
+  ternary that lost them is a compile error, a lone one silently changes the meaning — write a fixture with
+  loose operands (`?:`, `??`, `and`) and tight contexts (`[0]`, `-`, casts) for every rule that builds operators.
 - `bin/bench` measures the opcode effect of the rules' rewrites on a `php.binary` (`--php=`); the defaults
   (`min_reads`) and the claims in the rule docblocks come from it.
 - Smoke rule: `tests/Rector/SmokeRector.php`.

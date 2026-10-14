@@ -19,7 +19,10 @@ package="${1:?package}"
 php="${2:?php minor}"
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 opmin="${OPMIN:-$root/bin/opmin}"
-image_template="${SMOKE_IMAGE:-opmin:smoke-php{php}}"
+# The default goes through a variable: in `${SMOKE_IMAGE:-…{php}}` the first `}` would end the expansion and
+# leave a stray `}` after a given SMOKE_IMAGE.
+default_image='opmin:smoke-php{php}'
+image_template="${SMOKE_IMAGE:-$default_image}"
 image="${image_template//\{php\}/$php}"
 base="${SMOKE_DIR:-$HOME/.cache/opmin-smoke}"
 

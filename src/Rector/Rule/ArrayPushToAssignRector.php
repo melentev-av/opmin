@@ -6,6 +6,7 @@ namespace Opmin\Rector\Rule;
 
 use Opmin\Rector\Support\FunctionBody;
 use Opmin\Rector\Support\GlobalFunctionCall;
+use Opmin\Rector\Support\Reprint;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Name;
@@ -193,8 +194,16 @@ final class ArrayPushToAssignRector extends AbstractRector
             }
         }
 
+        # A value printed as it was keeps no parentheses: `$x and $y` would assign `$x` only.
+        foreach ($values as $value) {
+            if (!Reprint::fits($value, Reprint::LOOSER_THAN_ASSIGN)) {
+                return null;
+            }
+        }
+
         $appends = [];
         foreach ($values as $value) {
+            Reprint::prepare($value, Reprint::LOOSER_THAN_ASSIGN);
             $appends[] = new Expr\Assign(new Expr\ArrayDimFetch(self::copy($target)), $value);
         }
 

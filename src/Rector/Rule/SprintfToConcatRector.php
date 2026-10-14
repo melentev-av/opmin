@@ -6,6 +6,7 @@ namespace Opmin\Rector\Rule;
 
 use Opmin\Rector\Support\FunctionBody;
 use Opmin\Rector\Support\GlobalFunctionCall;
+use Opmin\Rector\Support\Reprint;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Scalar;
@@ -41,11 +42,18 @@ use Testo\Bridge\Rector\Testing\TestRectorFixtures;
  * - an argument that is a local variable is read by `.` only when the concatenation reaches it, after
  *   the arguments right of it: none of them may write it (`sprintf('%s%s', $i, $i++)`).
  *
+ * An argument that binds looser than `.` (`?:`, `??`, `=`) is reprinted with parentheses
+ * ({@see Reprint}). A call that is an operand of `+`, `-`, `<<`, `>>` is left alone: php-parser would
+ * print the `.` there without the parentheses PHP 8 needs.
+ *
  * @internal
  */
 #[TestRectorFixtures('Fixture/SprintfToConcat')]
 final class SprintfToConcatRector extends AbstractRector
 {
+    /** Attribute of an operand of `+`, `-`, `<<`, `>>`: a `.` there is printed without parentheses. */
+    private const string IN_ARITHMETIC = 'opmin_in_arithmetic';
+
     public static function alias(): string
     {
         return 'sprintf';
@@ -82,6 +90,12 @@ final class SprintfToConcatRector extends AbstractRector
             # Nested functions are refactored on their own, with their own ignore marks.
             if ($n instanceof Expr\Closure || $n instanceof Stmt\Function_ || $n instanceof Stmt\ClassLike) {
                 return NodeVisitor::DONT_TRAVERSE_CHILDREN;
+            }
+
+            # The parent comes first: a `.` under `+`, `-`, `<<`, `>>` would be printed without its parentheses.
+            if ($n instanceof Expr\BinaryOp && Reprint::concatMisprintedUnder($n)) {
+                $n->left->setAttribute(self::IN_ARITHMETIC, true);
+                $n->right->setAttribute(self::IN_ARITHMETIC, true);
             }
 
             $concat = $n instanceof Expr\FuncCall ? $this->concat($n, $referenced) : null;
@@ -169,7 +183,7 @@ final class SprintfToConcatRector extends AbstractRector
      */
     private function concat(Expr\FuncCall $call, array $referenced): ?Expr
     {
-        if (!GlobalFunctionCall::plain($call, 'sprintf') || $call->getArgs() === []) {
+        if (!GlobalFunctionCall::plain($call, 'sprintf') || $call->getArgs() === [] || $call->getAttribute(self::IN_ARITHMETIC) === true) {
             return null;
         }
 
@@ -217,6 +231,19 @@ final class SprintfToConcatRector extends AbstractRector
 
         if ($exprs === []) {
             return new Scalar\String_('');
+        }
+
+        # An argument printed as it was keeps no parentheses: one that binds looser than `.` — or,
+        # alone, than anything — is reprinted, so the printer adds them.
+        $limit = \count($exprs) === 1 ? Reprint::ANYWHERE : Reprint::LOOSER_THAN_CONCAT;
+        foreach ($args as $arg) {
+            if (!Reprint::fits($arg, $limit)) {
+                return null;
+            }
+        }
+
+        foreach ($args as $arg) {
+            Reprint::prepare($arg, $limit);
         }
 
         if (\count($exprs) === 1) {

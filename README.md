@@ -251,10 +251,11 @@ opmin optimize --plan                  # say what the run would use and exit: no
   `RemoveUnusedClosureUseRector` (a by-value `use` of a scalar or array variable the closure never names),
   `OrIdenticalToInArrayRector` (`$s === 'a' || $s === 'b'` → `\in_array($s, ['a', 'b'], true)`: strict comparisons of
   one variable, property or element read without side effects with string and integer literals, `min_items`: 2),
-  `NullCheckTernaryToNullsafeRector` (`$x !== null ? $x->a() : null` → `$x?->a()`, `$x` a local variable),
-  `IfChainToMatchRector` (`if ($v === 1) return …; if ($v === 2) return …; return …;` → `return match`) and
-  `SwitchToMatchRector` (a `switch` of `return`s → `return match`, only where `==` and `===` agree: a native `int`
-  subject with int labels or a native `string` one with non-numeric string labels). For the
+  and `IfChainToMatchRector` (`if ($s === 'a') return …; if ($s === 'b') return …; return …;` → `return match`, string
+  labels only: with int labels `match` costs more than the chain). Off by default, as they are not cheaper by
+  execution cost on PHP 8.1–8.5: `NullCheckTernaryToNullsafeRector` (`$x !== null ? $x->a() : null` → `$x?->a()`,
+  +7…+67 % with the tracing JIT) and `SwitchToMatchRector` (a `switch` of `return`s → `return match`, +10…+16 % without
+  JIT); enable one with its options instead of `false` in `rector.custom_rules`. For the
   two extraction rules, a call of a pure built-in function (`\explode()`, `\strlen()`, `\htmlspecialchars()`…:
   side-effect free by PHPStan's function metadata, of an always compiled-in extension, minus a denylist of
   nondeterministic ones) with arguments of scalar native types runs no user code

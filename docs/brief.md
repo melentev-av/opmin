@@ -664,9 +664,9 @@ rector:
     Opmin\Rector\Rule\HoistLoopInvariantCountRector: {}
     Opmin\Rector\Rule\RemoveUnusedClosureUseRector: {}
     Opmin\Rector\Rule\OrIdenticalToInArrayRector: { min_items: 2 }
-    Opmin\Rector\Rule\NullCheckTernaryToNullsafeRector: {}
-    Opmin\Rector\Rule\IfChainToMatchRector: { min_arms: auto }
-    Opmin\Rector\Rule\SwitchToMatchRector: { min_arms: auto }
+    Opmin\Rector\Rule\NullCheckTernaryToNullsafeRector: false   # не дешевле по стоимости (с JIT +7…+67 %)
+    Opmin\Rector\Rule\IfChainToMatchRector: { min_arms: auto }   # только строковые метки
+    Opmin\Rector\Rule\SwitchToMatchRector: false                # не дешевле по стоимости (+10…+16 %)
   standard:              # стандартные правила Rector
     enabled: false       # одна строка: true — включить всю группу
     sets: [DEAD_CODE, EARLY_RETURN, CODE_QUALITY, UP_TO_PHP_TARGET]

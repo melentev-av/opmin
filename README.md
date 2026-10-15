@@ -261,7 +261,9 @@ opmin optimize --plan                  # say what the run would use and exit: no
   (`Opmin\Rector\Support\PureFunctionCall`).
 - Built-in function calls that have a cheaper form (opmin's rules too, proven by native types):
   - `SprintfToConcatRector`: `\sprintf('%s-%d', $s, $i)` → `$s . '-' . $i` — a literal format of `%s`, `%d`, `%%`
-    only, as many arguments as specifiers, each a `string` or an `int` (`%d`: an `int`).
+    only, as many arguments as specifiers, each a `string` or an `int` (`%d`: an `int`). Only for `php.target`
+    below 8.4: there PHP compiles such a `sprintf()` into a rope itself, and the rope is cheaper than the
+    concatenation (fewer opcodes, but more CPU instructions per call).
   - `ArrayPushToAssignRector`: `\array_push($a, $v);` → `$a[] = $v;` — one or two values, the result unused, a
     defined local `array` or a property that is surely initialized (a default value, never unset).
   - `StrStartsWithRector`: `\substr($s, 0, 3) === 'abc'`, `\strpos($s, $p) === 0` → `\str_starts_with($s, …)`

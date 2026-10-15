@@ -19,17 +19,18 @@ use PHPStan\Type\StringType;
 use PHPStan\Type\Type;
 use PHPStan\Type\TypeCombinator;
 use Rector\NodeTypeResolver\Node\AttributeKey;
+use Rector\Php\PhpVersionProvider;
 use Rector\Rector\AbstractRector;
 use Symplify\RuleDocGenerator\ValueObject\CodeSample\ConfiguredCodeSample;
 use Symplify\RuleDocGenerator\ValueObject\RuleDefinition;
-use Testo\Bridge\Rector\Testing\TestRectorFixtures;
 
 /**
  * `\sprintf('%s-%s', $a, $b)` → `$a . '-' . $b`: a call of `sprintf()` becomes concatenation.
  *
- * Measured on `\sprintf('%s-%s', $s, $s)`: −3 opcodes on PHP 8.1–8.3, −1 on 8.4+, where the compiler
- * turns such a `sprintf()` into a rope itself (and some forms gain nothing there: the pipeline
- * keeps only what saves opcodes).
+ * Only for a target below PHP 8.4. There the compiler turns such a `sprintf()` into a rope itself,
+ * and the rope is cheaper than the concatenation: `\sprintf('%s-%d', $s, $i)` saves 2 opcodes but
+ * costs 4 % more CPU instructions and 8 % more time per call on PHP 8.5 (callgrind, melentev-av/opmin#66).
+ * On PHP 8.1 the same rewrite costs 13 % fewer instructions.
  *
  * Fires only when the result is provably the same string:
  * - the format is a string literal of plain text, `%s`, `%d` and `%%` only — no flags, width,
@@ -46,13 +47,23 @@ use Testo\Bridge\Rector\Testing\TestRectorFixtures;
  * ({@see Reprint}). A call that is an operand of `+`, `-`, `<<`, `>>` is left alone: php-parser would
  * print the `.` there without the parentheses PHP 8 needs.
  *
+ * Not final: the fixtures run in subclasses with a fixed target (`tests/Rector/SprintfToConcatPhp83Rector.php`,
+ * `SprintfToConcatPhp84Rector.php`) — the bridge runs Rector with the PHP of the tests as the target.
+ *
  * @internal
+ * @psalm-suppress ClassMustBeFinal
  */
-#[TestRectorFixtures('Fixture/SprintfToConcat')]
-final class SprintfToConcatRector extends AbstractRector
+class SprintfToConcatRector extends AbstractRector
 {
+    /** The first target where the compiler turns `sprintf()` into a rope itself. */
+    private const int ROPE_SPRINTF = 80400;
+
     /** Attribute of an operand of `+`, `-`, `<<`, `>>`: a `.` there is printed without parentheses. */
     private const string IN_ARITHMETIC = 'opmin_in_arithmetic';
+
+    public function __construct(
+        private readonly PhpVersionProvider $phpVersionProvider,
+    ) {}
 
     public static function alias(): string
     {
@@ -80,7 +91,7 @@ final class SprintfToConcatRector extends AbstractRector
      */
     public function refactor(Node $node): ?Node
     {
-        if ($node->stmts === null || FunctionBody::ignored($node, self::alias())) {
+        if ($this->phpTarget() >= self::ROPE_SPRINTF || $node->stmts === null || FunctionBody::ignored($node, self::alias())) {
             return null;
         }
 
@@ -105,6 +116,14 @@ final class SprintfToConcatRector extends AbstractRector
         });
 
         return $changed ? $node : null;
+    }
+
+    /**
+     * `php.target` as `80300` (`$config->phpVersion()` of the run).
+     */
+    protected function phpTarget(): int
+    {
+        return $this->phpVersionProvider->provide();
     }
 
     /**

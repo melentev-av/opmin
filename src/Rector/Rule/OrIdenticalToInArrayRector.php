@@ -13,6 +13,7 @@ use PhpParser\Node\Scalar;
 use PhpParser\Node\Stmt;
 use PhpParser\NodeVisitor;
 use PHPStan\Analyser\Scope;
+use PHPStan\Reflection\ReflectionProvider;
 use Rector\Contract\Rector\ConfigurableRectorInterface;
 use Rector\NodeTypeResolver\Node\AttributeKey;
 use Rector\Rector\AbstractRector;
@@ -65,6 +66,7 @@ final class OrIdenticalToInArrayRector extends AbstractRector implements Configu
 
     public function __construct(
         private readonly ReflectionResolver $reflectionResolver,
+        private readonly ReflectionProvider $reflectionProvider,
     ) {}
 
     public static function alias(): string
@@ -268,7 +270,7 @@ final class OrIdenticalToInArrayRector extends AbstractRector implements Configu
 
         if ($subject instanceof Expr\PropertyFetch) {
             return $subject->var instanceof Expr\Variable
-                && ($this->properties ??= new ExtractRepeatedPropertyFetchRector($this->reflectionResolver))->safe($subject);
+                && ($this->properties ??= new ExtractRepeatedPropertyFetchRector($this->reflectionResolver, $this->reflectionProvider))->safe($subject);
         }
 
         return $subject instanceof Expr\ArrayDimFetch

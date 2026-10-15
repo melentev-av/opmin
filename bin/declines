@@ -12,6 +12,7 @@
  *   bin/declines --log=runtime/declines.jsonl src       # keep the raw log (one JSON line per group)
  *   bin/declines --no-effects src                       # without the project data: no stable properties
  *   bin/declines --effects=effects.json src             # with given project data (what-if: a fact relaxed)
+ *   bin/declines --closed-world src                     # protected/public properties as in an application
  *
  * Nothing is written to the analyzed files. The project-wide data of the rules (stable properties)
  * is built over the given paths, as `optimize` builds it over the project.
@@ -28,7 +29,7 @@ use Symfony\Component\Process\Process;
 
 require __DIR__ . '/../vendor/autoload.php';
 
-$options = \getopt('', ['root:', 'log:', 'no-effects', 'effects:'], $rest);
+$options = \getopt('', ['root:', 'log:', 'no-effects', 'effects:', 'closed-world'], $rest);
 $root = \realpath(\is_string($options['root'] ?? null) ? $options['root'] : __DIR__ . '/..');
 $root === false and fail('No such --root.');
 $paths = \array_slice($argv, $rest);
@@ -73,7 +74,7 @@ $cache = $work . '/cache-' . \bin2hex(\random_bytes(4));
     '    $config->paths(' . \var_export($absolute, true) . ');',
     '    $config->cacheDirectory(' . \var_export($cache, true) . ');',
     '    $config->parallel(processTimeout: 600, maxNumberOfProcess: 8, jobSize: 8);',
-    '    $config->ruleWithConfiguration(' . \var_export(ExtractRepeatedPropertyFetchRector::class, true) . ', ' . \var_export(['min_reads' => 'auto'] + $effects, true) . ');',
+    '    $config->ruleWithConfiguration(' . \var_export(ExtractRepeatedPropertyFetchRector::class, true) . ', ' . \var_export(['min_reads' => 'auto'] + $effects + (isset($options['closed-world']) ? [ExtractRepeatedPropertyFetchRector::CLOSED_WORLD => true] : []), true) . ');',
     '    $config->ruleWithConfiguration(' . \var_export(ExtractRepeatedArrayDimFetchRector::class, true) . ', ["min_reads" => "auto"]);',
     '};',
     '',

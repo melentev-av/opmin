@@ -38,6 +38,9 @@ final class ReferenceCollector extends NodeVisitorAbstract
     /** Methods that initialize a new object: only they may write a stable property. */
     private const array INITIALIZERS = ['__construct' => true, '__clone' => true, '__wakeup' => true, '__unserialize' => true];
 
+    /** Methods through which a subclass may serve reads of a property it unset. */
+    private const array MAGIC = ['__get' => true, '__set' => true, '__isset' => true, '__unset' => true];
+
     /** Methods that write a property through reflection (an existing object's). */
     private const array REFLECTION_WRITERS = [
         'setvalue' => true, 'setrawvalue' => true, 'setrawvaluewithoutlazyinitialization' => true,
@@ -69,6 +72,12 @@ final class ReferenceCollector extends NodeVisitorAbstract
     /** @var array<non-empty-string, true> */
     private array $closureWrites = [];
 
+    /** @var array<non-empty-string, true> */
+    private array $outsideWrites = [];
+
+    /** @var array<lowercase-string, true> */
+    private array $magicClasses = [];
+
     private bool $reinitializes = false;
     private bool $reflectionWrites = false;
     private bool $walksObjects = false;
@@ -81,7 +90,7 @@ final class ReferenceCollector extends NodeVisitorAbstract
     {
         $this->functions = $this->methods = $this->dynamicMethodScopes = $this->reflectedClasses = [];
         $this->dynamicFunctionCalls = false;
-        $this->classes = $this->functionLikes = $this->closureWrites = [];
+        $this->classes = $this->functionLikes = $this->closureWrites = $this->outsideWrites = $this->magicClasses = [];
         $this->reinitializes = $this->reflectionWrites = $this->walksObjects = false;
         $this->writes ??= new PropertyWrites(self::byReference(...), static fn(Expr $e): bool => $e instanceof Expr\Array_);
         (new NodeTraverser(new NameResolver(), $this))->traverse($stmts);
@@ -96,6 +105,8 @@ final class ReferenceCollector extends NodeVisitorAbstract
             reinitializes: $this->reinitializes,
             reflectionWrites: $this->reflectionWrites,
             walksObjects: $this->walksObjects,
+            outsideWrites: self::sortedNames($this->outsideWrites),
+            magicClasses: self::sorted($this->magicClasses),
         );
     }
 
@@ -206,11 +217,15 @@ final class ReferenceCollector extends NodeVisitorAbstract
         $this->walksObjects = $this->walksObjects || $this->writes->walksObject($node);
         $function = $this->functionLikes === [] ? null : $this->functionLikes[\array_key_last($this->functionLikes)];
         # A closure may be bound to any class: it writes the properties of that class.
-        if ($function !== null && $function[0]) {
-            foreach ($this->writes->of($node, $function[2]) as $write) {
-                $this->closureWrites[$write->name] = true;
-            }
+        $initializer = $function !== null && !$function[0] && $function[1] !== null && isset(self::INITIALIZERS[$function[1]]);
+        foreach ($this->writes->of($node, $function[2] ?? false) as $write) {
+            $function !== null && $function[0] and $this->closureWrites[$write->name] = true;
+            $initializer && $write->viaThis && !$write->reference or $this->outsideWrites[$write->name] = true;
         }
+
+        $class = $this->current();
+        $node instanceof Stmt\ClassMethod && $class !== null && isset(self::MAGIC[$node->name->toLowerString()])
+            and $this->magicClasses[$class] = true;
 
         $name = $node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall || $node instanceof Expr\StaticCall
             ? $node->name : null;

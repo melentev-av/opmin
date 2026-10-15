@@ -28,7 +28,7 @@ use PhpParser\ParserFactory;
 final class ReferenceIndex
 {
     /** Bump when the collected data changes. */
-    private const FORMAT = 2;
+    private const FORMAT = 3;
 
     /**
      * Never scanned. `.*` is every hidden entry — VCS, IDE, agent and CI tooling (`.agents/`,

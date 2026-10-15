@@ -33,6 +33,11 @@ final readonly class FileReferences
      *        (`setValue()`, `resetAsLazyGhost()`…): with a class in $reflectedClasses its properties change.
      * @param bool $walksObjects `array_walk()` or `new ArrayObject()` of what may be an object: it
      *        writes any property, private ones too, from any scope.
+     * @param list<non-empty-string> $outsideWrites Properties written or referenced (any object's)
+     *        other than as `$this->p` in an initializer — what a closed world must rule out for a
+     *        `protected`/`public` property to be stable; {@see PropertyWrites::ANY} for any property.
+     * @param list<lowercase-string> $magicClasses Classes declaring `__get()`, `__set()`, `__isset()`
+     *        or `__unset()`: a subclass of a property's class among them may unset it and serve reads.
      */
     public function __construct(
         public array $functions = [],
@@ -44,6 +49,8 @@ final readonly class FileReferences
         public bool $reinitializes = false,
         public bool $reflectionWrites = false,
         public bool $walksObjects = false,
+        public array $outsideWrites = [],
+        public array $magicClasses = [],
     ) {}
 
     /**
@@ -51,7 +58,7 @@ final readonly class FileReferences
      */
     public static function fromArray(array $data): self
     {
-        /** @var array{functions: list<lowercase-string>, methods: list<lowercase-string>, dynamic_function_calls: bool, dynamic_method_scopes: list<lowercase-string>, reflected_classes: list<lowercase-string>, closure_writes: list<non-empty-string>, reinitializes: bool, reflection_writes: bool, walks_objects: bool} $data */
+        /** @var array{functions: list<lowercase-string>, methods: list<lowercase-string>, dynamic_function_calls: bool, dynamic_method_scopes: list<lowercase-string>, reflected_classes: list<lowercase-string>, closure_writes: list<non-empty-string>, reinitializes: bool, reflection_writes: bool, walks_objects: bool, outside_writes?: list<non-empty-string>, magic_classes?: list<lowercase-string>} $data */
         return new self(
             $data['functions'],
             $data['methods'],
@@ -62,6 +69,8 @@ final readonly class FileReferences
             $data['reinitializes'],
             $data['reflection_writes'],
             $data['walks_objects'],
+            $data['outside_writes'] ?? [],
+            $data['magic_classes'] ?? [],
         );
     }
 
@@ -72,8 +81,12 @@ final readonly class FileReferences
     {
         $classes = \array_values(\array_unique([...$this->reflectedClasses, ...$other->reflectedClasses]));
         $writes = \array_values(\array_unique([...$this->closureWrites, ...$other->closureWrites]));
+        $outside = \array_values(\array_unique([...$this->outsideWrites, ...$other->outsideWrites]));
+        $magic = \array_values(\array_unique([...$this->magicClasses, ...$other->magicClasses]));
         \sort($classes, \SORT_STRING);
         \sort($writes, \SORT_STRING);
+        \sort($outside, \SORT_STRING);
+        \sort($magic, \SORT_STRING);
 
         return new self(
             reflectedClasses: $classes,
@@ -81,6 +94,8 @@ final readonly class FileReferences
             reinitializes: $this->reinitializes || $other->reinitializes,
             reflectionWrites: $this->reflectionWrites || $other->reflectionWrites,
             walksObjects: $this->walksObjects || $other->walksObjects,
+            outsideWrites: $outside,
+            magicClasses: $magic,
         );
     }
 
@@ -99,6 +114,8 @@ final readonly class FileReferences
             'reinitializes' => $this->reinitializes,
             'reflection_writes' => $this->reflectionWrites,
             'walks_objects' => $this->walksObjects,
+            'outside_writes' => $this->outsideWrites,
+            'magic_classes' => $this->magicClasses,
         ];
     }
 }

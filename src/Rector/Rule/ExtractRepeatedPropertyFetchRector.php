@@ -58,6 +58,13 @@ class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedReadRect
 {
     public const string EFFECTS = 'effects';
 
+    /**
+     * Experimental: the project is all the code there is (an application, not a library) — a
+     * `protected` or `public` property is stable when nothing in the project writes a property of
+     * that name outside the initializers and no project class with `__get()`… extends its class.
+     */
+    public const string CLOSED_WORLD = 'closed_world';
+
     /** Options that hold a path to a JSON file: the rule's cache is keyed on the file's content. */
     public const array FILE_OPTIONS = [self::EFFECTS];
 
@@ -68,6 +75,8 @@ class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedReadRect
 
     /** @var array<string, array<non-empty-string, true>> Stable properties by file and class. */
     private array $stable = [];
+
+    private bool $closedWorld = false;
 
     public function __construct(
         ReflectionResolver $reflectionResolver,
@@ -88,6 +97,7 @@ class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedReadRect
     public function configure(array $configuration): void
     {
         parent::configure($configuration);
+        $this->closedWorld = ($configuration[self::CLOSED_WORLD] ?? false) === true;
         /** @var mixed $effects */
         $effects = $configuration[self::EFFECTS] ?? null;
         if ($effects === null) {
@@ -150,6 +160,11 @@ class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedReadRect
         $property = $class->getNativeProperty($read->name->toString());
         # A subclass of a non-final class may unset an inherited property and add `__get()` (lazy
         # proxies do exactly that): then every read reaches `__get()`.
+        if ($this->closedWorld) {
+            return !$this->magicSubclass($property->getDeclaringClass())
+                && ($property->isReadOnly() || $this->surelyInitialized($class, $read->name->toString()) || $this->untouched($read->name->toString()));
+        }
+
         if (!$class->isFinal() && !$property->isPrivate()) {
             return false;
         }
@@ -230,6 +245,40 @@ class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedReadRect
     }
 
     /**
+     * Closed world: nothing in the project writes, references or unsets a property of the name
+     * other than as `$this->name` in an initializer.
+     */
+    private function untouched(string $name): bool
+    {
+        return $this->effects !== null
+            && !\in_array($name, $this->effects->outsideWrites, true) && !\in_array(PropertyWrites::ANY, $this->effects->outsideWrites, true)
+            && !\in_array($name, $this->effects->closureWrites, true) && !\in_array(PropertyWrites::ANY, $this->effects->closureWrites, true);
+    }
+
+    /**
+     * Closed world: a project class with `__get()`… is the class itself, a parent or a subclass.
+     */
+    private function magicSubclass(ClassReflection $class): bool
+    {
+        if ($this->effects === null) {
+            return true;
+        }
+
+        foreach ($this->effects->magicClasses as $name) {
+            if (!$this->reflectionProvider->hasClass($name)) {
+                return true;
+            }
+
+            $magic = $this->reflectionProvider->getClass($name);
+            if ($magic->getName() === $class->getName() || $magic->isSubclassOfClass($class) || $class->isSubclassOfClass($magic)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * A mutable property that cannot become undefined: an `unset()` one makes every read warn
      * (untyped) on its own. It is not public (nothing outside may unset it), declared in the class
      * itself, and the class never unsets it. An uninitialized typed property needs no guarantee:
@@ -295,6 +344,10 @@ class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedReadRect
         $name = $read->name->toString();
         $property = $class->getNativeProperty($name);
         $declaring = $property->getDeclaringClass();
+        if ($this->closedWorld && !$property->isPrivate()) {
+            return !$property->isStatic() && !$property->isHooked() && !$property->isVirtual()->yes()
+                && $this->untouched($name) && !$this->magicSubclass($declaring) && $this->globallyStable($declaring);
+        }
         if (!$property->isPrivate() || $property->isStatic() || $property->isHooked() || $property->isVirtual()->yes()
             || $property->getDeclaringTrait() !== null || $declaring->getName() !== $scope->getName() || $declaring->isAnonymous()
         ) {
@@ -305,6 +358,23 @@ class ExtractRepeatedPropertyFetchRector extends AbstractExtractRepeatedReadRect
         $this->stable[$key] ??= $this->stableProperties($declaring);
 
         return isset($this->stable[$key][$name]);
+    }
+
+    /**
+     * Closed world: no fact of the project writes the properties of the class bypassing it.
+     */
+    private function globallyStable(ClassReflection $class): bool
+    {
+        $facts = $this->effects;
+        if ($facts === null) {
+            return false;
+        }
+
+        $local = $this->fileReferences($class->getFileName());
+        $local === null or $facts = $facts->effectsWith($local);
+
+        return !$facts->reinitializes && !$facts->walksObjects
+            && !($facts->reflectionWrites && $this->reflected($class, $facts->reflectedClasses));
     }
 
     /**

@@ -5,6 +5,9 @@ written for upgrades and code quality, not for opcodes, and know nothing of opmi
 records which of them save opcodes, measured on PHP 8.1 and 8.5 with Rector 2.7.0 — the basis of the list
 `opmin init` writes and of the README.
 
+Opcodes are counted here; the execution cost of the listed rules — which may disagree — is in
+[rule-cost.md](rule-cost.md) (`bin/bench --cost`).
+
 Every claim here comes from a count, not from reading the rule:
 
 ```bash

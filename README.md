@@ -271,6 +271,8 @@ opmin optimize --plan                  # say what the run would use and exit: no
     (`!==` → `!\str_starts_with()`) — strict comparisons only, a length equal to the literal's, native strings.
 - Code can be excluded from every rule or from some: see [Excluding code](#excluding-code).
 - Which standard Rector rules save opcodes: [docs/standard-rules.md](docs/standard-rules.md).
+- What every rule costs to execute, before and after, on PHP 8.1–8.5 with and without JIT: [docs/rule-cost.md](docs/rule-cost.md)
+  (`bin/bench --cost`).
 
 ## Optimizing (Stage B: LLM, a Claude Code skill)
 

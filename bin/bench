@@ -9,6 +9,8 @@
  *   bin/bench                         # php.binary = php
  *   bin/bench --php=/usr/bin/php8.1   # another PHP (a Docker wrapper from `bin/playground wrapper 8.1` works too)
  *   bin/bench --only=fqn              # one experiment group: reads | dims | count | fqn | const | patterns | standard
+ *   bin/bench --cost                  # execution cost of the rules instead (callgrind, PHP 8.1–8.5, JIT off/on):
+ *                                     # bench/cost/run.php, results in docs/rule-cost.md
  *
  * `standard` runs standard Rector rules (docs/standard-rules.md) on code they rewrite and counts the result.
  */
@@ -27,6 +29,11 @@ use Opmin\Module\Php\PhpBinaryProbe;
 use Opmin\Module\Project\Project;
 
 require __DIR__ . '/../vendor/autoload.php';
+
+if (\in_array('--cost', $argv, true)) {
+    require __DIR__ . '/../bench/cost/run.php';
+    exit(benchCost($argv));
+}
 
 $options = \getopt('', ['php:', 'only:']);
 $php = (new PhpBinaryProbe())->probe(\is_string($options['php'] ?? null) && $options['php'] !== '' ? $options['php'] : 'php');

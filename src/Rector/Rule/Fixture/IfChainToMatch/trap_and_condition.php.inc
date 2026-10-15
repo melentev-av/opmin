@@ -2,12 +2,12 @@
 
 namespace App\IfMatchTrap18;
 
-function label(int $i, bool $b): string
+function label(string $i, bool $b): string
 {
-    if ($i === 1 && $b) {
+    if ($i === '1' && $b) {
         return 'one';
     }
-    if ($i === 2) {
+    if ($i === '2') {
         return 'two';
     }
 

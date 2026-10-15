@@ -2,12 +2,12 @@
 
 namespace App\IfMatchTrap8;
 
-function label(int $i, array &$log): string
+function label(string $i, array &$log): string
 {
-    if ($i === 1) {
+    if ($i === '1') {
         return 'one';
     }
-    if ($i === 2) {
+    if ($i === '2') {
         return 'two';
     }
     $log[] = $i;

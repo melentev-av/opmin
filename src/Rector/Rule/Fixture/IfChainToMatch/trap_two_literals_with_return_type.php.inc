@@ -2,12 +2,12 @@
 
 namespace App\IfMatchTrap21;
 
-function label(int $code): string
+function label(string $code): string
 {
-    if ($code === 1) {
+    if ($code === '1') {
         return 'one';
     }
-    if ($code === 2) {
+    if ($code === '2') {
         return 'two';
     }
 

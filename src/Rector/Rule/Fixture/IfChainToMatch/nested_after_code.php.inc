@@ -21,10 +21,10 @@ function describe(array $items, $mode)
 
     if ($out !== []) {
         // The mode decides.
-        if ($mode === 1) {
+        if ($mode === '1') {
             return [$out];
         }
-        if ($mode === 2) {
+        if ($mode === '2') {
             return $out;
         }
 
@@ -57,8 +57,8 @@ function describe(array $items, $mode)
     if ($out !== []) {
         // The mode decides.
         return match ($mode) {
-            1 => [$out],
-            2 => $out,
+            '1' => [$out],
+            '2' => $out,
             default => [],
         };
     }

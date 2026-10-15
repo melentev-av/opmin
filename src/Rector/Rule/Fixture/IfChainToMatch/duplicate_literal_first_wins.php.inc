@@ -2,15 +2,15 @@
 
 namespace App\IfMatch6;
 
-function pick(int $i): string
+function pick(string $i): string
 {
-    if ($i === 1) {
+    if ($i === '1') {
         return 'first';
     }
-    if ($i === 2) {
+    if ($i === '2') {
         return 'two';
     }
-    if ($i === 1) {
+    if ($i === '1') {
         return 'never';
     }
 
@@ -23,12 +23,12 @@ function pick(int $i): string
 
 namespace App\IfMatch6;
 
-function pick(int $i): string
+function pick(string $i): string
 {
     return match ($i) {
-        1 => 'first',
-        2 => 'two',
-        1 => 'never',
+        '1' => 'first',
+        '2' => 'two',
+        '1' => 'never',
         default => 'other',
     };
 }

@@ -2,9 +2,9 @@
 
 namespace App\IfMatchTrap13;
 
-function label(int $i): string
+function label(string $i): string
 {
-    if ($i === 1) {
+    if ($i === '1') {
         return 'one';
     }
 

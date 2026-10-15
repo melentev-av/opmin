@@ -4,17 +4,17 @@ namespace App\IfMatchTrap5;
 
 final class Box
 {
-    public function __get(string $name): int
+    public function __get(string $name): string
     {
-        return \random_int(1, 2);
+        return (string) \random_int(1, 2);
     }
 
     public function label(): string
     {
-        if ($this->code === 1) {
+        if ($this->code === '1') {
             return 'one';
         }
-        if ($this->code === 2) {
+        if ($this->code === '2') {
             return 'two';
         }
 

@@ -2,12 +2,12 @@
 
 namespace App\IfMatch8;
 
-function label(int $code): mixed
+function label(string $code): mixed
 {
-    if ($code === 1) {
+    if ($code === '1') {
         return 'one';
     }
-    if ($code === 2) {
+    if ($code === '2') {
         return 'two';
     }
 
@@ -20,11 +20,11 @@ function label(int $code): mixed
 
 namespace App\IfMatch8;
 
-function label(int $code): mixed
+function label(string $code): mixed
 {
     return match ($code) {
-        1 => 'one',
-        2 => 'two',
+        '1' => 'one',
+        '2' => 'two',
         default => 'many',
     };
 }

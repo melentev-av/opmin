@@ -2,11 +2,11 @@
 
 namespace App\IfMatchTrap19;
 
-function label(int $i, array &$log): string
+function label(string $i, array &$log): string
 {
-    if ($i === 1) {
+    if ($i === '1') {
         return 'one';
-    } elseif ($i === 2) {
+    } elseif ($i === '2') {
         return 'two';
     } else {
         $log[] = $i;

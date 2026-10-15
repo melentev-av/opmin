@@ -5,12 +5,12 @@ namespace App\IfMatchTrap16;
 final class Ignored
 {
     #[\Opmin\Ignore]
-    public function one(int $i): string
+    public function one(string $i): string
     {
-        if ($i === 1) {
+        if ($i === '1') {
             return 'one';
         }
-        if ($i === 2) {
+        if ($i === '2') {
             return 'two';
         }
 
@@ -18,12 +18,12 @@ final class Ignored
     }
 
     /** @opmin-ignore if_to_match */
-    public function two(int $i): string
+    public function two(string $i): string
     {
-        if ($i === 1) {
+        if ($i === '1') {
             return 'one';
         }
-        if ($i === 2) {
+        if ($i === '2') {
             return 'two';
         }
 

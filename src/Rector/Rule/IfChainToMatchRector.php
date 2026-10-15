@@ -12,18 +12,21 @@ use Symplify\RuleDocGenerator\ValueObject\RuleDefinition;
 use Testo\Bridge\Rector\Testing\TestRectorFixtures;
 
 /**
- * `if ($i === 1) { return 'a'; } if ($i === 2) { return 'b'; } return 'c';` →
- * `return match ($i) { 1 => 'a', 2 => 'b', default => 'c' };` (catalog B1).
+ * `if ($s === 'a') { return 1; } if ($s === 'b') { return 2; } return 0;` →
+ * `return match ($s) { 'a' => 1, 'b' => 2, default => 0 };` (catalog B1).
  *
- * Measured on PHP 8.1 and 8.5 without a return type: 2 literals −3, 3 literals −5, 5 literals −9
- * opcodes; with one and literal results: 2 literals 0, 3 literals −1, 5 literals −3 (`min_arms`,
- * {@see self::DEFAULT_MIN_ARMS_TYPED}). Literals of mixed types or constants save nothing (no jump
- * table), so they are left alone.
+ * String labels only. Measured by execution cost (callgrind, PHP 8.1–8.5, with and without the
+ * tracing JIT): the jump table of `match` makes a chain of string comparisons 15–76 % cheaper for
+ * every value but the first label (+16…+26 % there); for int labels `match` costs more than the chain
+ * up to 5 arms without JIT and at almost any size with JIT, so int chains are left alone. Opcodes:
+ * 2 literals −3, 3 literals −5, 5 literals −9 without a return type; with one and literal results:
+ * 2 literals 0, 3 literals −1, 5 literals −3 (`min_arms`, {@see self::DEFAULT_MIN_ARMS_TYPED}).
+ * Literals of mixed types or constants save nothing (no jump table), so they are left alone.
  *
  * Fires only when:
  * - every condition is `$v === <literal>` (or `<literal> === $v`, or several of them joined by `||`)
- *   of one local variable, all literals ints or all strings: `match` compares by `===` and takes the
- *   first matching arm, as the chain does, duplicates included;
+ *   of one local variable, all literals strings: `match` compares by `===` and takes the first
+ *   matching arm, as the chain does, duplicates included;
  * - the variable is provably defined (PHPStan): an undefined one warns once per comparison in the
  *   chain and once in `match`; nothing else runs between the comparisons, so it cannot change;
  * - every branch is exactly one `return <expr>;` and the chain ends with `return <expr>;` (or an
@@ -47,22 +50,22 @@ class IfChainToMatchRector extends AbstractReturnMatchRector
 
     public function getRuleDefinition(): RuleDefinition
     {
-        return new RuleDefinition('Replace a chain of `if ($v === literal) return` by `return match`', [
+        return new RuleDefinition('Replace a chain of `if ($v === \'literal\') return` by `return match`', [
             new ConfiguredCodeSample(
                 <<<'PHP'
-                    if ($code === 1) {
-                        return 'one';
+                    if ($unit === 'kb') {
+                        return 1024;
                     }
-                    if ($code === 2) {
-                        return 'two';
+                    if ($unit === 'mb') {
+                        return 1048576;
                     }
-                    return 'many';
+                    return 1;
                     PHP,
                 <<<'PHP'
-                    return match ($code) {
-                        1 => 'one',
-                        2 => 'two',
-                        default => 'many',
+                    return match ($unit) {
+                        'kb' => 1024,
+                        'mb' => 1048576,
+                        default => 1,
                     };
                     PHP,
                 [self::MIN_ARMS => 'auto'],
@@ -148,7 +151,7 @@ class IfChainToMatchRector extends AbstractReturnMatchRector
         [$var, $literal] = $cond->left instanceof Expr\Variable ? [$cond->left, $cond->right] : [$cond->right, $cond->left];
         $literalKind = self::literalKind($literal);
         if (!$var instanceof Expr\Variable || !\is_string($var->name) || \in_array($var->name, ['this', 'GLOBALS'], true)
-            || $literalKind === null || ($kind !== null && $kind !== $literalKind)
+            || $literalKind !== self::STRING || ($kind !== null && $kind !== $literalKind)
             || ($subject !== null && $subject->name !== $var->name)
         ) {
             return null;

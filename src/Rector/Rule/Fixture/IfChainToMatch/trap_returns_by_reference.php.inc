@@ -7,12 +7,12 @@ final class Registry
     private array $a = [];
     private array $b = [];
 
-    public function &pick(int $i): array
+    public function &pick(string $i): array
     {
-        if ($i === 1) {
+        if ($i === '1') {
             return $this->a;
         }
-        if ($i === 2) {
+        if ($i === '2') {
             return $this->b;
         }
 

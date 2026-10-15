@@ -7,10 +7,10 @@ function label(bool $b): string
     if ($b) {
         $i = 1;
     }
-    if ($i === 1) {
+    if ($i === '1') {
         return 'one';
     }
-    if ($i === 2) {
+    if ($i === '2') {
         return 'two';
     }
 

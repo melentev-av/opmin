@@ -2,12 +2,12 @@
 
 namespace App\IfMatchMin1;
 
-function label(int $code): string
+function label(string $code): string
 {
-    if ($code === 1 || $code === 2) {
+    if ($code === '1' || $code === '2') {
         return 'low';
     }
-    if ($code === 3) {
+    if ($code === '3') {
         return 'three';
     }
 
@@ -20,11 +20,11 @@ function label(int $code): string
 
 namespace App\IfMatchMin1;
 
-function label(int $code): string
+function label(string $code): string
 {
     return match ($code) {
-        1, 2 => 'low',
-        3 => 'three',
+        '1', '2' => 'low',
+        '3' => 'three',
         default => 'many',
     };
 }

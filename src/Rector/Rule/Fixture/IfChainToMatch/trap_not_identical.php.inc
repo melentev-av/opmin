@@ -2,12 +2,12 @@
 
 namespace App\IfMatchTrap2;
 
-function label(int $code): string
+function label(string $code): string
 {
     if ($code !== 1) {
         return 'not one';
     }
-    if ($code === 2) {
+    if ($code === '2') {
         return 'two';
     }
 

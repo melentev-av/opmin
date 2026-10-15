@@ -30,7 +30,7 @@ final class RuleCatalogTest
         yield 'alias with a typo' => [
             'fqm',
             'Unknown Rector rule `fqm` in --rector-rule. Did you mean `fqn`? Name a rule by its alias (fqn, property_fetch, array_dim_fetch, count, closure_use, sprintf, array_push,'
-            . ' str_starts_with, in_array, nullsafe, if_to_match, switch_to_match), the short class name of a rule of the run or the full class name.',
+            . ' str_starts_with, in_array, if_to_match, nullsafe, switch_to_match), the short class name of a rule of the run or the full class name.',
         ];
         yield 'short name with a typo' => [
             'HoistLoopInvariantCountRectr',
@@ -63,9 +63,7 @@ final class RuleCatalogTest
             'ArrayPushToAssignRector',
             'StrStartsWithRector',
             'OrIdenticalToInArrayRector',
-            'NullCheckTernaryToNullsafeRector',
             'IfChainToMatchRector',
-            'SwitchToMatchRector',
         ]);
         Assert::same($rules[0]->options, []);
         Assert::same($rules[1]->options, ['min_reads' => 'auto']);
@@ -83,7 +81,7 @@ final class RuleCatalogTest
 
         $rules = RuleCatalog::build($config, new Schema\RectorStandard(), null, [], '8.3');
 
-        Assert::same(\count($rules), \count((new Schema\Rector())->customRules) - 1);
+        Assert::same(\count($rules), \count(\array_filter((new Schema\Rector())->customRules, static fn(array|false $o): bool => $o !== false)) - 1);
     }
 
     public function standardSetsExpandIntoSingleRulesAfterOwnOnes(): void
@@ -117,7 +115,8 @@ final class RuleCatalogTest
         $standard = new Schema\RectorStandard();
         $standard->enabled = true;
 
-        Assert::same(\count(RuleCatalog::build(new Schema\Rector(), $standard, false, [], '8.3')), \count((new Schema\Rector())->customRules));
+        $enabled = \array_filter((new Schema\Rector())->customRules, static fn(array|false $o): bool => $o !== false);
+        Assert::same(\count(RuleCatalog::build(new Schema\Rector(), $standard, false, [], '8.3')), \count($enabled));
     }
 
     public function onlyTheGivenRules(): void

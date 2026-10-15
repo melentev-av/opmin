@@ -135,7 +135,7 @@
             "additionalProperties": false,
             "properties": {
                 "custom_rules": {
-                    "description": "opmin rules (enabled by default): FQCN => options, or false to disable a rule",
+                    "description": "opmin rules: FQCN => options, or false to disable a rule (the defaults disable some)",
                     "type": "object",
                     "default": {
                         "Opmin\\Rector\\Rule\\FullyQualifyGlobalCallsRector": [],
@@ -153,13 +153,11 @@
                         "Opmin\\Rector\\Rule\\OrIdenticalToInArrayRector": {
                             "min_items": 2
                         },
-                        "Opmin\\Rector\\Rule\\NullCheckTernaryToNullsafeRector": [],
+                        "Opmin\\Rector\\Rule\\NullCheckTernaryToNullsafeRector": false,
                         "Opmin\\Rector\\Rule\\IfChainToMatchRector": {
                             "min_arms": "auto"
                         },
-                        "Opmin\\Rector\\Rule\\SwitchToMatchRector": {
-                            "min_arms": "auto"
-                        }
+                        "Opmin\\Rector\\Rule\\SwitchToMatchRector": false
                     }
                 },
                 "max_passes": {

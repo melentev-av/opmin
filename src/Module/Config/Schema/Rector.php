@@ -20,7 +20,7 @@ final class Rector
      *
      * @var array<non-empty-string, array<string, mixed>|false>
      */
-    #[ConfigKey('rector.custom_rules', 'opmin rules (enabled by default): FQCN => options, or false to disable a rule')]
+    #[ConfigKey('rector.custom_rules', 'opmin rules: FQCN => options, or false to disable a rule (the defaults disable some)')]
     public array $customRules = [
         'Opmin\Rector\Rule\FullyQualifyGlobalCallsRector' => [],
         'Opmin\Rector\Rule\ExtractRepeatedPropertyFetchRector' => ['min_reads' => 'auto'],
@@ -31,9 +31,11 @@ final class Rector
         'Opmin\Rector\Rule\ArrayPushToAssignRector' => [],
         'Opmin\Rector\Rule\StrStartsWithRector' => [],
         'Opmin\Rector\Rule\OrIdenticalToInArrayRector' => ['min_items' => 2],
-        'Opmin\Rector\Rule\NullCheckTernaryToNullsafeRector' => [],
+        # Off by default: no cheaper by execution cost (callgrind, PHP 8.1–8.5): `?->` +7…+67 % with the
+        # tracing JIT, `switch` → `match` +10…+16 % without JIT. Set options instead of `false` to enable.
+        'Opmin\Rector\Rule\NullCheckTernaryToNullsafeRector' => false,
         'Opmin\Rector\Rule\IfChainToMatchRector' => ['min_arms' => 'auto'],
-        'Opmin\Rector\Rule\SwitchToMatchRector' => ['min_arms' => 'auto'],
+        'Opmin\Rector\Rule\SwitchToMatchRector' => false,
     ];
 
     /** @var positive-int */

@@ -52,6 +52,18 @@ final class OpcacheDumperTest
         Assert::string($batch[$files[2]])->contains('DECLARE_ANON_CLASS');
     }
 
+    public function assertionsAreCompiledOutWhateverTheUsersIni(): void
+    {
+        # With zend.assertions=1 (php.ini-development, no php.ini) assert() compiles to ASSERT_CHECK
+        # and a call; production (-1) runs none of it, so it must not be counted either.
+        $files = $this->files(['Asserts.php' => "<?php\nfunction positive(int \$x): int { \\assert(\$x > 0); return \$x; }\n"]);
+
+        $dump = $this->dump($files, batchSize: 1)[$files[0]];
+
+        Assert::string($dump)->contains('positive:');
+        Assert::string($dump)->notContains('ASSERT_CHECK');
+    }
+
     public function fileRedeclaringFunctionOfEarlierFileIsRetriedAlone(): void
     {
         # opcache_compile_file() declares top-level functions: in one process the second file fails.

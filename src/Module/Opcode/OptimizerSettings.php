@@ -19,7 +19,7 @@ final class OptimizerSettings
     /**
      * INI overrides of every compile run. They also neutralize the user's php.ini: no file cache,
      * no JIT, no preloading (it would compile and dump other files), no Xdebug (its develop mode
-     * adds EXT_STMT opcodes).
+     * adds EXT_STMT opcodes), assertions compiled out.
      *
      * @var array<non-empty-string, string>
      */
@@ -40,6 +40,9 @@ final class OptimizerSettings
         'opcache.optimization_level' => '0x7FFEBFFF',
         # Dump both phases: before the optimizer (ops_raw) and after it (ops_opt).
         'opcache.opt_debug_level' => '0x30000',
+        # As php.ini-production: assert() compiles to nothing. With `1` (php.ini-development, or no
+        # php.ini at all) every assert() adds ASSERT_CHECK and a call — code production never runs.
+        'zend.assertions' => '-1',
         'xdebug.mode' => 'off',
         'display_errors' => '1',
         'error_reporting' => '-1',

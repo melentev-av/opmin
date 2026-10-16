@@ -195,9 +195,7 @@
                                 "minLength": 1
                             },
                             "default": [
-                                "Rector\\CodeQuality\\Rector\\FuncCall\\SingleInArrayToCompareRector",
                                 "Rector\\CodeQuality\\Rector\\FuncCall\\SimplifyFuncGetArgsCountRector",
-                                "Rector\\CodeQuality\\Rector\\Identical\\StrlenZeroToIdenticalEmptyStringRector",
                                 "Rector\\CodeQuality\\Rector\\Ternary\\UnnecessaryTernaryExpressionRector",
                                 "Rector\\DeadCode\\Rector\\Assign\\RemoveUnusedVariableAssignRector",
                                 "Rector\\DeadCode\\Rector\\Return_\\RemoveDeadConditionAboveReturnRector"
@@ -210,7 +208,10 @@
                                 "type": "string",
                                 "minLength": 1
                             },
-                            "default": []
+                            "default": [
+                                "Rector\\CodeQuality\\Rector\\FuncCall\\SingleInArrayToCompareRector",
+                                "Rector\\CodeQuality\\Rector\\Identical\\StrlenZeroToIdenticalEmptyStringRector"
+                            ]
                         }
                     }
                 }

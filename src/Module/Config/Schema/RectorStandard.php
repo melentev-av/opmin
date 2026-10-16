@@ -28,9 +28,7 @@ final class RectorStandard
     #[ConfigKey('rector.standard.rules', 'Single standard rules (FQCN)', list: true)]
     # Rules that save opcodes, measured by `bin/bench --only=standard` (docs/standard-rules.md).
     public array $rules = [
-        'Rector\CodeQuality\Rector\FuncCall\SingleInArrayToCompareRector',
         'Rector\CodeQuality\Rector\FuncCall\SimplifyFuncGetArgsCountRector',
-        'Rector\CodeQuality\Rector\Identical\StrlenZeroToIdenticalEmptyStringRector',
         'Rector\CodeQuality\Rector\Ternary\UnnecessaryTernaryExpressionRector',
         'Rector\DeadCode\Rector\Assign\RemoveUnusedVariableAssignRector',
         'Rector\DeadCode\Rector\Return_\RemoveDeadConditionAboveReturnRector',
@@ -38,5 +36,11 @@ final class RectorStandard
 
     /** @var list<non-empty-string> */
     #[ConfigKey('rector.standard.skip', 'Rules to exclude from the sets above (FQCN)', list: true)]
-    public array $skip = [];
+    # Fewer opcodes, but more machine instructions per call with the tracing JIT (docs/rule-cost.md):
+    # `$s == 'a'` instead of `in_array($s, ['a'])` up to +105 %, `$s === ''` instead of `strlen($s) === 0` +26…+29 %.
+    # Both are in CODE_QUALITY, so they are skipped there too.
+    public array $skip = [
+        'Rector\CodeQuality\Rector\FuncCall\SingleInArrayToCompareRector',
+        'Rector\CodeQuality\Rector\Identical\StrlenZeroToIdenticalEmptyStringRector',
+    ];
 }

@@ -59,9 +59,9 @@ inputs that cost more beyond the tolerance, before → after instructions per ca
 | `IfChainToMatchRector` (string labels) | `Ifm` | −44 % | −58…−59 % | the first label: 215 → 250 / 87 → 106 instructions (+16…+22 %) |
 | `NullCheckTernaryToNullsafeRector` (off) | `Nulls` | −4 % | +20…+22 % | with JIT: `null` 62 → 100 (+61 %), an object +6…+11 % |
 | `SwitchToMatchRector` (off) | `Sw` | +11 % | +27…+29 % | almost every input, `match` costs 10–56 % more (a `switch` of ≥ 5 int or ≥ 2 string labels already jumps by a table) |
-| std `SingleInArrayToCompareRector` | `StdSingleInArray` | −7 % | +33…+36 % | with JIT: loose `== 'a'` +19…+105 %, strict miss +23 % |
+| std `SingleInArrayToCompareRector` (skipped) | `StdSingleInArray` | −7 % | +33…+36 % | with JIT: loose `== 'a'` +19…+105 %, strict miss +23 % |
 | std `SimplifyFuncGetArgsCountRector` | `StdFuncGetArgsCount` | −19…−28 % | −39…−41 % | no arguments: +37 % / +35 % |
-| std `StrlenZeroToIdenticalEmptyStringRector` | `StdStrlenZero` | −2 % | +26…+29 % | with JIT: `$s === ''` +22…+29 % |
+| std `StrlenZeroToIdenticalEmptyStringRector` (skipped) | `StdStrlenZero` | −2 % | +26…+29 % | with JIT: `$s === ''` +22…+29 % |
 | std `UnnecessaryTernaryExpressionRector` | `StdTernary` | −5 % | +5…+8 % | none (+3…+9 instructions) |
 | std `RemoveUnusedVariableAssignRector` | `StdUnusedAssign` | −42…−44 % | −68…−69 % | none |
 | std `RemoveDeadConditionAboveReturnRector` | `StdDeadCondition` | −6 % | −5 % | none |
@@ -76,5 +76,6 @@ not fired. Per input: `runtime/bench-cost/results.tsv` after a run.
 - `IfChainToMatchRector` rewrites only chains of string labels: int chains cost more as `match`.
 - `SprintfToConcatRector` runs only for a `php.target` below 8.4: from 8.4 the compiler makes the same
   rope out of `sprintf()` itself, and the concatenation costs more.
-- Open: `SingleInArrayToCompareRector` and `StrlenZeroToIdenticalEmptyStringRector` in `rector.standard.rules`
-  cost more with the JIT beyond the tolerance (the standard group is off by default).
+- `SingleInArrayToCompareRector` and `StrlenZeroToIdenticalEmptyStringRector` cost more with the JIT beyond
+  the tolerance: they are out of `rector.standard.rules` and in `rector.standard.skip`, so the `CODE_QUALITY`
+  set does not bring them back either (the standard group is off by default).

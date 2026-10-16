@@ -22,9 +22,9 @@ opmin optimize --with-standard-rector --dry-run # every rule of the configured s
 
 | Rule | Opcodes | In the default list |
 |---|---|---|
-| `CodeQuality\…\SingleInArrayToCompareRector` (`in_array($v, ['a'], true)` → `===`) | −7 on 8.5, −4 on 8.1 | yes |
+| `CodeQuality\…\SingleInArrayToCompareRector` (`in_array($v, ['a'], true)` → `===`) | −7 on 8.5, −4 on 8.1 | removed and skipped: costs more with the JIT ([rule-cost.md](rule-cost.md)) |
 | `CodeQuality\…\SimplifyFuncGetArgsCountRector` (`count(func_get_args())` → `func_num_args()`) | −3 | yes |
-| `CodeQuality\…\StrlenZeroToIdenticalEmptyStringRector` (`strlen($s) === 0` → `$s === ''`) | −3 | yes |
+| `CodeQuality\…\StrlenZeroToIdenticalEmptyStringRector` (`strlen($s) === 0` → `$s === ''`) | −3 | removed and skipped: costs more with the JIT ([rule-cost.md](rule-cost.md)) |
 | `CodeQuality\…\UnnecessaryTernaryExpressionRector` (`$a === 1 ? true : false` → `$a === 1`) | −2 | yes |
 | `DeadCode\…\RemoveDeadConditionAboveReturnRector` | −2 | yes |
 | `DeadCode\…\RemoveUnusedVariableAssignRector` | −1 | yes |

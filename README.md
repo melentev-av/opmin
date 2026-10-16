@@ -10,6 +10,10 @@ object state, calls to collaborators).
 
 As a CI guard, `opmin check` fails a pull request when functions grow in opcodes compared to a committed baseline.
 
+Which rules run by default is decided by their execution cost, not only by opcodes: every rule is measured in
+machine instructions per call before and after, on PHP 8.1–8.5 with and without the JIT
+([docs/rule-cost.md](docs/rule-cost.md)), and rules that save opcodes but cost more are off.
+
 > **Status: 0.x.** Counting, verification, both optimization stages, the report, the CI guard and delivery
 > (static binary, PHAR, Docker image, `doctor`, `self-update`, git packages) work. Formats and options may still
 > change before 1.0.
@@ -115,6 +119,10 @@ opmin diff before.json after.json                   # per function: fewer / more
 
 - Code is compiled by `php.binary` (your production PHP, 8.1–8.5) with OPcache, never executed and never by the
   PHP running opmin. `ops_opt` — opcodes after the optimizer — is the main metric; `ops_raw` is before it.
+- The compile settings are those of production whatever your php.ini says: OPcache with every default optimizer
+  pass, no JIT, no file cache or preloading, Xdebug off, `zend.assertions=-1` (`assert()` compiles to nothing).
+  They are part of `optimizer_hash`: reports and baselines taken before opmin pinned `zend.assertions` are not
+  comparable with new ones — take them again.
 - Every function, method, property hook (8.4+), closure and the code outside functions (`src/x.php::<main>`,
   counted but not optimized) gets a stable key: `App\Foo::bar`, `App\Foo::bar::{closure:2}`,
   `App\Foo::bar::{class:1}::baz` for anonymous classes — ordinals, not line numbers. Trait methods are counted
@@ -199,9 +207,9 @@ opmin optimize --plan                  # say what the run would use and exit: no
   `--plan` prints the header and exits with 0: no tests run, no files change, no run directory is written.
 
   ```
-  Optimizing 12 file(s) of /app with 4 rule(s), PHP 8.4.1 (target 8.1), git: a commit per accepted step.
+  Optimizing 12 file(s) of /app with 10 rule(s), PHP 8.4.1 (target 8.1), git: a commit per accepted step.
     Functions: 230, 214 of them optimizable
-    Rules: FullyQualifyGlobalCallsRector, ExtractRepeatedPropertyFetchRector, ExtractRepeatedArrayDimFetchRector, HoistLoopInvariantCountRector
+    Rules: FullyQualifyGlobalCallsRector, ExtractRepeatedPropertyFetchRector, ExtractRepeatedArrayDimFetchRector, HoistLoopInvariantCountRector, RemoveUnusedClosureUseRector, SprintfToConcatRector, ArrayPushToAssignRector, StrStartsWithRector, … 2 more
     Tests: phpunit, the tests that cover a changed function
     Coverage driver: yes (pcov or Xdebug in php.binary)
     PHPStan: vendor/bin/phpstan
@@ -243,7 +251,7 @@ opmin optimize --plan                  # say what the run would use and exit: no
   first verification: every step then runs the whole test suite.
 - A change rolled back for a reason of its own (no gain, a difference, not proven…) is not tried again in later
   passes while the function stays the same.
-- opmin's own rules, on by default, prove their safety conditions themselves (native types through PHPStan):
+- opmin's own rules prove their safety conditions themselves (native types through PHPStan). On by default:
   `FullyQualifyGlobalCallsRector` (`strlen()` → `\strlen()`, only when no namespaced function or test mock —
   php-mock, ClockMock — can shadow it), `ExtractRepeatedPropertyFetchRector` (readonly properties across calls,
   mutable ones while no user code runs, no `__get`/hooks), `ExtractRepeatedArrayDimFetchRector` (only keys proven to
@@ -254,11 +262,11 @@ opmin optimize --plan                  # say what the run would use and exit: no
   and `IfChainToMatchRector` (`if ($s === 'a') return …; if ($s === 'b') return …; return …;` → `return match`, string
   labels only: with int labels `match` costs more than the chain). Off by default, as they are not cheaper by
   execution cost on PHP 8.1–8.5: `NullCheckTernaryToNullsafeRector` (`$x !== null ? $x->a() : null` → `$x?->a()`,
-  +7…+67 % with the tracing JIT) and `SwitchToMatchRector` (a `switch` of `return`s → `return match`, +10…+16 % without
-  JIT); enable one with its options instead of `false` in `rector.custom_rules`. For the
-  two extraction rules, a call of a pure built-in function (`\explode()`, `\strlen()`, `\htmlspecialchars()`…:
-  side-effect free by PHPStan's function metadata, of an always compiled-in extension, minus a denylist of
-  nondeterministic ones) with arguments of scalar native types runs no user code
+  +20…+22 % with the tracing JIT, +61 % on `null`) and `SwitchToMatchRector` (a `switch` of `return`s → `return
+  match`, +11 % without JIT, +27…+29 % with it); enable one with its options instead of `false` in
+  `rector.custom_rules`. For the two extraction rules, a call of a pure built-in function (`\explode()`,
+  `\strlen()`, `\htmlspecialchars()`…: side-effect free by PHPStan's function metadata, of an always compiled-in
+  extension, minus a denylist of nondeterministic ones) with arguments of scalar native types runs no user code
   (`Opmin\Rector\Support\PureFunctionCall`).
 - Built-in function calls that have a cheaper form (opmin's rules too, proven by native types):
   - `SprintfToConcatRector`: `\sprintf('%s-%d', $s, $i)` → `$s . '-' . $i` — a literal format of `%s`, `%d`, `%%`
@@ -509,8 +517,9 @@ ignore:
 
   ```text
   [WARNING] src/Cart.php:12: `@opmin-ignore` lists `fqm`, which names no known rule, so it excludes nothing.
-            Did you mean `fqn`? Known names: fqn, property_fetch, array_dim_fetch, count, closure_use, llm, or the short
-            class name of a rule.
+            Did you mean `fqn`? Known names: fqn, property_fetch, array_dim_fetch, count, closure_use, sprintf,
+            array_push, str_starts_with, in_array, if_to_match, nullsafe, switch_to_match, llm, or the short class
+            name of a rule.
   ```
 
   It is a warning, not an error: a mark may name a standard Rector rule that this run does not enable.
@@ -526,9 +535,9 @@ ignore:
   | `array_push` | `ArrayPushToAssignRector` |
   | `str_starts_with` | `StrStartsWithRector` |
   | `in_array` | `OrIdenticalToInArrayRector` |
-  | `nullsafe` | `NullCheckTernaryToNullsafeRector` |
+  | `nullsafe` | `NullCheckTernaryToNullsafeRector` (off by default) |
   | `if_to_match` | `IfChainToMatchRector` |
-  | `switch_to_match` | `SwitchToMatchRector` |
+  | `switch_to_match` | `SwitchToMatchRector` (off by default) |
   | `llm` | Stage B: rewrites proposed by the model |
   | `simplifyifreturnboolrector`, … | a standard Rector rule by its short class name |
 
@@ -576,8 +585,9 @@ docker run --rm -v "$PWD:/out" ghcr.io/melentev-av/opmin:php8.4 sh -c \
 
 ## Results on real packages
 
-An example: real packages optimized in git package mode with Stage A (the four own Rector rules), then their own
-tests run on the patched code and stay green. Measured in CI; the run can be repeated by hand
+An example: real packages optimized in git package mode with Stage A (opmin 0.4: the four own Rector rules it had
+then — `FullyQualifyGlobalCalls`, the two extraction rules and `HoistLoopInvariantCount`), then their own tests
+run on the patched code and stay green. Measured in CI; the run can be repeated by hand
 ([smoke-real-packages.yml](.github/workflows/smoke-real-packages.yml), or `tests/Smoke/run.sh <package> <php>`
 locally).
 
@@ -657,8 +667,9 @@ IDE completion comes from the JSON Schema referenced in the first line of the ge
 
 ## What opmin is not
 
-- Not a profiler and not a guarantee of speed: fewer static opcodes is not always faster code
-  (`--guard-perf` measures time where benchmarks exist).
+- Not a profiler and not a guarantee of speed: fewer static opcodes is not always faster code — of 19 rewrites
+  measured, 11 changed opcodes and execution cost in opposite directions ([docs/rule-cost.md](docs/rule-cost.md));
+  `--guard-perf` measures time where benchmarks exist.
 - Not a code style tool: changes that do not reduce opcodes or cost too much readability are rejected.
 
 ## Development
@@ -669,6 +680,9 @@ composer psalm         # static analysis
 composer cs:diff       # code style
 make phar              # scoped PHAR in .build/phar/opmin.phar
 bin/playground init    # manual end-to-end scenarios in playground/ (git-ignored)
+bin/playground run --all  # every scenario: doctor, count, verify, baseline, check, optimize, tests
+bin/bench              # opcodes of the rules before → after on php.binary
+bin/bench --cost       # execution cost of the rules (callgrind, PHP 8.1–8.5 in Docker, JIT off and on)
 ```
 
 Branches: development happens in `develop`; `master` only receives release merges. Commits follow

@@ -18,7 +18,7 @@ for v in ${*:-8.1 8.2 8.3 8.4 8.5}; do
     docker run --rm -v "$PWD":/fixtures:ro -w /fixtures "php:$v-cli" php \
       -d opcache.enable=1 -d opcache.enable_cli=1 -d opcache.file_cache= -d opcache.file_cache_only=0 -d opcache.file_update_protection=0 \
       -d opcache.jit=disable -d opcache.optimization_level=0x7FFEBFFF -d opcache.opt_debug_level=0x30000 \
-      -d zend.assertions=-1 -d xdebug.mode=off -r 'exit(opcache_compile_file($argv[1]) ? 0 : 1);' "/fixtures/$f" \
+      -d zend.assertions=-1 -d xdebug.mode=off -d pcov.enabled=0 -r 'exit(opcache_compile_file($argv[1]) ? 0 : 1);' "/fixtures/$f" \
       2> "../Dumps/$v/${f%.php}.txt" >&2
     grep -q 'after optimizer' "../Dumps/$v/${f%.php}.txt" || { echo "no dump: $v $f" >&2; exit 1; }
     echo "$v $f: $(grep -c 'after optimizer' "../Dumps/$v/${f%.php}.txt") functions"

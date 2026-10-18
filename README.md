@@ -120,9 +120,10 @@ opmin diff before.json after.json                   # per function: fewer / more
 - Code is compiled by `php.binary` (your production PHP, 8.1–8.5) with OPcache, never executed and never by the
   PHP running opmin. `ops_opt` — opcodes after the optimizer — is the main metric; `ops_raw` is before it.
 - The compile settings are those of production whatever your php.ini says: OPcache with every default optimizer
-  pass, no JIT, no file cache or preloading, Xdebug off, `zend.assertions=-1` (`assert()` compiles to nothing).
-  They are part of `optimizer_hash`: reports and baselines taken before opmin pinned `zend.assertions` are not
-  comparable with new ones — take them again.
+  pass, no JIT, no file cache or preloading, Xdebug and pcov off (pcov turns jump tables off: a `switch` of int
+  labels loses its `SWITCH_LONG`), `zend.assertions=-1` (`assert()` compiles to nothing). They are part of
+  `optimizer_hash`: reports and baselines taken before opmin pinned `zend.assertions` and pcov are not comparable
+  with new ones — take them again.
 - Every function, method, property hook (8.4+), closure and the code outside functions (`src/x.php::<main>`,
   counted but not optimized) gets a stable key: `App\Foo::bar`, `App\Foo::bar::{closure:2}`,
   `App\Foo::bar::{class:1}::baz` for anonymous classes — ordinals, not line numbers. Trait methods are counted

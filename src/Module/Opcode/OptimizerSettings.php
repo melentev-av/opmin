@@ -19,7 +19,7 @@ final class OptimizerSettings
     /**
      * INI overrides of every compile run. They also neutralize the user's php.ini: no file cache,
      * no JIT, no preloading (it would compile and dump other files), no Xdebug (its develop mode
-     * adds EXT_STMT opcodes), assertions compiled out.
+     * adds EXT_STMT opcodes) or pcov (no jump tables), assertions compiled out.
      *
      * @var array<non-empty-string, string>
      */
@@ -44,6 +44,9 @@ final class OptimizerSettings
         # php.ini at all) every assert() adds ASSERT_CHECK and a call — code production never runs.
         'zend.assertions' => '-1',
         'xdebug.mode' => 'off',
+        # pcov, as Xdebug's coverage, turns jump tables off (ZEND_COMPILE_NO_JUMPTABLES): a `switch` of
+        # int labels without SWITCH_LONG, code production never runs.
+        'pcov.enabled' => '0',
         'display_errors' => '1',
         'error_reporting' => '-1',
         'log_errors' => '0',

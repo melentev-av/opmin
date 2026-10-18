@@ -566,7 +566,7 @@ final class Optimize extends Stage
                 $rule,
                 \count($step->accepted),
                 \count($step->rejected),
-                $step->gain() === 0 ? '' : '-' . $step->gain(),
+                $step->gain() === 0 ? '' : \sprintf('%+d', -$step->gain()),
                 $step->error ?? ($step->commit === null ? '' : \substr($step->commit, 0, 8)),
             ];
         }

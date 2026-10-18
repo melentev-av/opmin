@@ -18,7 +18,7 @@ final readonly class RuleSpec
      *        configure the rule) with every other rule of it skipped.
      * @param list<class-string> $skip The other rules of the set.
      * @param bool $custom One of opmin's own rules.
-     * @param bool $executedGain The rule saves executed opcodes: accepted when the static count does not grow.
+     * @param Gain $gain What the rule saves: how its changes are accepted.
      */
     public function __construct(
         public string $class,
@@ -26,11 +26,11 @@ final readonly class RuleSpec
         public ?string $set = null,
         public array $skip = [],
         public bool $custom = false,
-        public bool $executedGain = false,
+        public Gain $gain = Gain::Opcodes,
     ) {}
 
     /**
-     * @param array{class: class-string, options?: array<string, mixed>|null, set?: non-empty-string|null, skip?: list<class-string>, custom?: bool, executed_gain?: bool} $data
+     * @param array{class: class-string, options?: array<string, mixed>|null, set?: non-empty-string|null, skip?: list<class-string>, custom?: bool, gain?: string} $data
      */
     public static function fromArray(array $data): self
     {
@@ -40,7 +40,7 @@ final readonly class RuleSpec
             $data['set'] ?? null,
             $data['skip'] ?? [],
             $data['custom'] ?? false,
-            $data['executed_gain'] ?? false,
+            Gain::from($data['gain'] ?? Gain::Opcodes->value),
         );
     }
 
@@ -71,7 +71,7 @@ final readonly class RuleSpec
     }
 
     /**
-     * @return array{class: class-string, options: array<string, mixed>|null, set: non-empty-string|null, skip: list<class-string>, custom: bool, executed_gain: bool}
+     * @return array{class: class-string, options: array<string, mixed>|null, set: non-empty-string|null, skip: list<class-string>, custom: bool, gain: string}
      */
     public function toArray(): array
     {
@@ -81,7 +81,7 @@ final readonly class RuleSpec
             'set' => $this->set,
             'skip' => $this->skip,
             'custom' => $this->custom,
-            'executed_gain' => $this->executedGain,
+            'gain' => $this->gain->value,
         ];
     }
 
@@ -90,6 +90,6 @@ final readonly class RuleSpec
      */
     public function withOptions(array $options): self
     {
-        return new self($this->class, $options, $this->set, $this->skip, $this->custom, $this->executedGain);
+        return new self($this->class, $options, $this->set, $this->skip, $this->custom, $this->gain);
     }
 }

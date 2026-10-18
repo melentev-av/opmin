@@ -68,6 +68,7 @@ final class MarkdownReport
         self::advice($out, $report);
         self::functions($out, $report);
         self::executed($out, $report);
+        self::cheaper($out, $report);
         self::rejected($out, $report);
         self::counterexamples($out, $report);
         self::environment($out, $report);
@@ -151,7 +152,8 @@ final class MarkdownReport
             $out[] = '| ' . \implode(' | ', [
                 self::code($key) . '<br>' . self::cell((string) ($function['file'] ?? '')),
                 \sprintf('%s → %s', (string) ($function['ops_before'] ?? '?'), (string) ($function['ops_after'] ?? '?'))
-                    . (($function['executed_gain'] ?? false) === true && (int) ($function['saved'] ?? 0) === 0 ? ' (executed: fewer)' : ''),
+                    . (($function['executed_gain'] ?? false) === true && (int) ($function['saved'] ?? 0) === 0 ? ' (executed: fewer)' : '')
+                    . (($function['cost_gain'] ?? false) === true && (int) ($function['saved'] ?? 0) <= 0 ? ' (cheaper to run)' : ''),
                 self::cell(\implode(', ', \array_unique($by))),
                 self::cell((string) ($function['status'] ?? '')) . self::time($function['time_change_percent'] ?? null),
                 $coverage !== null ? (\is_int($function['inputs'] ?? null) ? "{$function['inputs']} inputs, " : '') . self::number($coverage) . '% of the original reached' : '—',
@@ -228,6 +230,31 @@ final class MarkdownReport
         $out[] = 'count, but fewer opcodes run per loop iteration.';
         $out[] = '';
         foreach ($executed as $key) {
+            $out[] = '- ' . self::code($key);
+        }
+
+        $out[] = '';
+    }
+
+    /**
+     * @param list<string> $out
+     * @param array<string, mixed> $report
+     */
+    private static function cheaper(array &$out, array $report): void
+    {
+        /** @var array<string, array<string, mixed>> $functions */
+        $functions = \is_array($report['functions'] ?? null) ? $report['functions'] : [];
+        $cheaper = \array_keys(\array_filter($functions, static fn(array $f): bool => ($f['cost_gain'] ?? false) === true));
+        if ($cheaper === []) {
+            return;
+        }
+
+        $out[] = '## Cheaper to run, not fewer opcodes';
+        $out[] = '';
+        $out[] = 'These changes come from rules measured cheaper to run (fewer CPU instructions per call on PHP 8.1–8.5,';
+        $out[] = 'with and without the JIT): the static count may stay or grow.';
+        $out[] = '';
+        foreach ($cheaper as $key) {
             $out[] = '- ' . self::code($key);
         }
 

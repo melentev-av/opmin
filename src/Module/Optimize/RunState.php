@@ -25,7 +25,7 @@ use Opmin\Module\Optimize\Rector\RuleSpec;
 final class RunState
 {
     public const FILE = 'state.json';
-    private const VERSION = 1;
+    private const VERSION = 2;
 
     public int $pass = 1;
 

@@ -6,6 +6,7 @@ namespace Opmin\Tests\Unit\Module\Optimize;
 
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Optimize\Readability;
+use Opmin\Module\Optimize\Rector\Gain;
 use PhpParser\Node\Stmt\Function_;
 use PhpParser\ParserFactory;
 use Testo\Assert;
@@ -48,15 +49,17 @@ final class ReadabilityTest
         Assert::same(Readability::patterns($function), ['nested_ternary' => 1, 'assignment_in_condition' => 1, 'goto' => 1]);
     }
 
-    #[DataSet([1, 1, false, null], 'a gain of one on one line')]
-    #[DataSet([0, 1, false, 'saves no opcodes'], 'no gain')]
-    #[DataSet([-2, 1, false, 'opcodes grew by 2'], 'growth')]
-    #[DataSet([1, 3, false, 'saves 1 opcode(s) for 3 changed line(s), less than readability.min_gain_per_line 0.5 per line'], 'not worth the lines')]
-    #[DataSet([0, 3, true, null], 'executed gain: not growing is enough')]
-    #[DataSet([-1, 1, true, 'opcodes grew by 1'], 'executed gain: growth')]
-    public function rejectsChangesNotWorthIt(int $gain, int $lines, bool $executed, ?string $reason): void
+    #[DataSet([1, 1, Gain::Opcodes, null], 'a gain of one on one line')]
+    #[DataSet([0, 1, Gain::Opcodes, 'saves no opcodes'], 'no gain')]
+    #[DataSet([-2, 1, Gain::Opcodes, 'opcodes grew by 2'], 'growth')]
+    #[DataSet([1, 3, Gain::Opcodes, 'saves 1 opcode(s) for 3 changed line(s), less than readability.min_gain_per_line 0.5 per line'], 'not worth the lines')]
+    #[DataSet([0, 3, Gain::Executed, null], 'executed gain: not growing is enough')]
+    #[DataSet([-1, 1, Gain::Executed, 'opcodes grew by 1'], 'executed gain: growth')]
+    #[DataSet([-2, 3, Gain::Cost, null], 'cost gain: growth is not a reason')]
+    #[DataSet([0, 3, Gain::Cost, null], 'cost gain: the same count')]
+    public function rejectsChangesNotWorthIt(int $gain, int $lines, Gain $kind, ?string $reason): void
     {
-        Assert::same((new Readability(new Schema\Readability()))->reject($gain, $lines, null, null, $executed), $reason);
+        Assert::same((new Readability(new Schema\Readability()))->reject($gain, $lines, null, null, $kind), $reason);
     }
 
     public function rejectsGrowingShape(): void

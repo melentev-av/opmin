@@ -16,6 +16,7 @@ use Opmin\Module\Lint\SyntaxChecker;
 use Opmin\Module\Opcode\CountResult;
 use Opmin\Module\Opcode\FunctionCount;
 use Opmin\Module\Opcode\OpcodeCounter;
+use Opmin\Module\Optimize\Rector\Gain;
 use Opmin\Module\Optimize\Rector\RectorRunner;
 use Opmin\Module\Optimize\Rector\RuleSpec;
 use Opmin\Module\Optimize\Review\Change;
@@ -467,7 +468,7 @@ final class Optimizer
     private function step(RuleSpec $rule, int $pass): StepReport
     {
         $step = new StepReport($rule->class, $pass);
-        $step->executedGain = $rule->executedGain;
+        $step->gainKind = $rule->gain;
         $this->progress->on(Event::rector(\count($this->paths)));
         try {
             $errors = $this->timings->measure('rector', fn() => $this->rector->run($rule, \array_values($this->paths)));
@@ -608,8 +609,9 @@ final class Optimizer
         if ($plan->atomic) {
             $hard = \array_filter($reasons, static fn(?string $r): bool => $r !== null && !\str_starts_with($r, 'gain ') && !\str_starts_with($r, 'opcodes grew'));
             $total = \array_sum($gains);
-            $grown = \array_filter($gains, static fn(int $g): bool => $g < 0);
-            $threshold = $this->readability->reject($total, (new LineDiff($current, $content))->changedLines(), null, null, $rule->executedGain);
+            # A rule cheaper by cost may add opcodes: growth is not a reason for it.
+            $grown = $rule->gain === Gain::Cost ? [] : \array_filter($gains, static fn(int $g): bool => $g < 0);
+            $threshold = $this->readability->reject($total, (new LineDiff($current, $content))->changedLines(), null, null, $rule->gain);
             if ($hard !== [] || $grown !== [] || $threshold !== null || $tops === []) {
                 $why = $hard !== [] ? \reset($hard) : ($grown !== [] ? 'opcodes grew in ' . \implode(', ', \array_keys($grown)) : ($threshold ?? 'changes outside functions only'));
                 $step->reject($relative, \implode(', ', $tops), "the file changes outside functions, so it is all or nothing: {$why}");
@@ -701,7 +703,7 @@ final class Optimizer
             ($before->docComment($top) ?? '') . ($before->source($top) ?? ''),
             ($after->docComment($top) ?? '') . ($after->source($top) ?? ''),
         ))->changedLines();
-        $why = $this->readability->reject($gain, $changedLines, $unit->node, $after->units[$top]->node, $rule->executedGain);
+        $why = $this->readability->reject($gain, $changedLines, $unit->node, $after->units[$top]->node, $rule->gain);
         if ($why !== null) {
             return [$gain, $why];
         }
@@ -960,7 +962,7 @@ final class Optimizer
             \array_push($checks, ...($plan->checks[$top] ?? []));
         }
 
-        return new Change($relative, $tops, $rule->class, $name, $gain, $status, $checks, $diff, $step->executedGain);
+        return new Change($relative, $tops, $rule->class, $name, $gain, $status, $checks, $diff, $step->gainKind);
     }
 
     private function unitAtLine(Units $units, int $line): ?string
@@ -1206,9 +1208,7 @@ final class Optimizer
 
     private function message(RuleSpec $rule, StepReport $step): string
     {
-        $title = $rule->executedGain && $step->gain() === 0
-            ? \sprintf('opmin: %s, fewer executed opcodes in %d function(s)', $rule->shortName(), \count($step->accepted))
-            : \sprintf('opmin: %s, -%d opcodes in %d function(s)', $rule->shortName(), $step->gain(), \count($step->accepted));
+        $title = \sprintf('opmin: %s, %s in %d function(s)', $rule->shortName(), $rule->gain->describe($step->gain()), \count($step->accepted));
         $rule->class === LlmCandidate::class and $title = \sprintf(
             'opmin: LLM rewrite of %s, -%d opcodes',
             \implode(', ', \array_column($step->accepted, 'function')),
@@ -1216,7 +1216,7 @@ final class Optimizer
         );
         $lines = [$title, '', 'Rule: ' . $rule->class];
         foreach ($step->accepted as $change) {
-            $lines[] = \sprintf('%s  -%d (%s)', $change['function'], $change['gain'], $change['status']);
+            $lines[] = \sprintf('%s  %+d (%s)', $change['function'], -$change['gain'], $change['status']);
         }
 
         return \implode("\n", $lines);

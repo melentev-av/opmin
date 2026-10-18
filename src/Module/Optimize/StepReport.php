@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Opmin\Module\Optimize;
 
+use Opmin\Module\Optimize\Rector\Gain;
 use Opmin\Module\Verification\FunctionResult;
 
 /**
@@ -25,8 +26,8 @@ final class StepReport
     public ?string $commit = null;
     public ?string $error = null;
 
-    /** The rule saves executed opcodes, not static ones (brief, «Важное замечание по метрике»). */
-    public bool $executedGain = false;
+    /** What the rule saves (brief, «Важное замечание по метрике»). */
+    public Gain $gainKind = Gain::Opcodes;
 
     /**
      * @param non-empty-string $rule FQCN.
@@ -66,11 +67,15 @@ final class StepReport
      */
     public static function fromArray(array $data, array $before = []): self
     {
-        /** @var array{rule: non-empty-string, pass: int, commit?: string|null, error?: string|null, executed_gain?: bool, accepted?: list<array{file: non-empty-string, function: non-empty-string, gain: int, status: string, checks?: list<array<string, mixed>>}>, rejected?: list<array{file: non-empty-string, function: string, reason: string, counterexample?: array<string, mixed>}>} $data */
+        /** @var array{rule: non-empty-string, pass: int, commit?: string|null, error?: string|null, executed_gain?: bool, cost_gain?: bool, accepted?: list<array{file: non-empty-string, function: non-empty-string, gain: int, status: string, checks?: list<array<string, mixed>>}>, rejected?: list<array{file: non-empty-string, function: string, reason: string, counterexample?: array<string, mixed>}>} $data */
         $step = new self($data['rule'], $data['pass']);
         $step->commit = $data['commit'] ?? null;
         $step->error = $data['error'] ?? null;
-        $step->executedGain = $data['executed_gain'] ?? false;
+        $step->gainKind = match (true) {
+            $data['cost_gain'] ?? false => Gain::Cost,
+            $data['executed_gain'] ?? false => Gain::Executed,
+            default => Gain::Opcodes,
+        };
         $step->accepted = $data['accepted'] ?? [];
         $step->rejected = $data['rejected'] ?? [];
         $step->before = $before;
@@ -102,7 +107,8 @@ final class StepReport
             'rule' => $this->rule,
             'pass' => $this->pass,
             'gain' => $this->gain(),
-            'executed_gain' => $this->executedGain,
+            'executed_gain' => $this->gainKind === Gain::Executed,
+            'cost_gain' => $this->gainKind === Gain::Cost,
             'commit' => $this->commit,
             'error' => $this->error,
             'accepted' => $this->accepted,

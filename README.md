@@ -326,7 +326,8 @@ Every run (`optimize`, `llm:finish`) writes `.opmin/runs/<ts>/report.md` for peo
   `--allow-unverified` is never the advice: it comes last, with a warning;
 - every changed function: before → after, what saved the opcodes (rule or LLM), how it is proven (`diff-tested`,
   `tests`, `unverified`), the branch coverage of the differential tests, the project's tests that run it, the flags
-  of dynamic constructs; changes that save executed opcodes rather than static ones are listed apart;
+  of dynamic constructs; changes that save executed opcodes rather than static ones are listed apart, and so are
+  changes of rules measured cheaper to run (`docs/rule-cost.md`), which may add an opcode or two;
 - every rolled-back change grouped by reason (a difference with its counterexample input, failing tests, PHPStan,
   not proven, signature, dynamic constructs, readability, no gain, excluded); in `report.json` each one has a
   `kind` (the group) and a machine-readable `cause` — what to fix first so that it could be kept, e.g.
@@ -397,7 +398,7 @@ opmin check --suggest                       # for grown functions: which Rector 
 - A function that grew by more than `check.tolerance` fails the check; a decrease, a new function and a removed
   one ask you to update the baseline (`--update-baseline` does it, keeping grown functions at their old counts —
   accepting growth is an explicit `opmin baseline`); a new function above `check.max_ops_new_function` is a
-  warning. `--suggest` applies every Stage A rule alone to temporary copies (the project is not touched) and
+  warning. Rules measured cheaper to run may add opcodes, so take the baseline again after `opmin optimize`. `--suggest` applies every Stage A rule alone to temporary copies (the project is not touched) and
   names the one that saves the most — unverified: `opmin optimize` proves the change.
 - Exit codes: `0` — nothing grew; `1` — opcodes grew (or a checked file cannot be compiled); `2` — no baseline,
   a baseline taken with another PHP minor version or optimizer settings (nothing is compared: rebuild it with

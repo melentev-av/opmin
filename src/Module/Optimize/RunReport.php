@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Opmin\Module\Optimize;
 
 use Internal\Path;
+use Opmin\Module\Optimize\Rector\Gain;
 use Opmin\Module\Project\Layout;
 use Opmin\Module\Report\Advice;
 use Opmin\Module\Report\Environment;
@@ -155,11 +156,13 @@ final class RunReport
                     'tests' => [],
                     'flags' => $this->functions[$top]['flags'] ?? [],
                     'executed_gain' => false,
+                    'cost_gain' => false,
                     'time_change_percent' => null,
                     'gains' => [],
                 ];
                 $entry['saved'] += $change['gain'];
-                $entry['executed_gain'] = $entry['executed_gain'] || $step->executedGain;
+                $entry['executed_gain'] = $entry['executed_gain'] || $step->gainKind === Gain::Executed;
+                $entry['cost_gain'] = $entry['cost_gain'] || $step->gainKind === Gain::Cost;
                 $entry['status'] = self::weaker($entry['status'], $change['status']);
                 foreach ($change['checks'] ?? [] as $check) {
                     # A function the differential test did not run (I/O, eval) has no coverage to show.
@@ -188,7 +191,8 @@ final class RunReport
                     'source' => $step->rule === LlmCandidate::class ? 'llm' : 'rector',
                     'pass' => $step->pass,
                     'gain' => $change['gain'],
-                    'executed_gain' => $step->executedGain,
+                    'executed_gain' => $step->gainKind === Gain::Executed,
+                    'cost_gain' => $step->gainKind === Gain::Cost,
                     'commit' => $step->commit,
                 ];
                 $result[$top] = $entry;

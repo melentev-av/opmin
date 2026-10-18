@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Opmin\Tests\Integration\Module\Optimize;
 
 use Opmin\Module\Config\Schema;
+use Opmin\Module\Optimize\Rector\Gain;
 use Opmin\Module\Optimize\Rector\RuleCatalog;
 use Opmin\Module\Optimize\Rector\RuleSpec;
 use Opmin\Rector\Rule\ExtractRepeatedPropertyFetchRector;
@@ -68,8 +69,8 @@ final class RuleCatalogTest
         Assert::same($rules[0]->options, []);
         Assert::same($rules[1]->options, ['min_reads' => 'auto']);
         Assert::same($rules[3]->options, null);
-        Assert::true($rules[3]->executedGain);
-        Assert::false($rules[0]->executedGain);
+        Assert::same($rules[3]->gain, Gain::Executed);
+        Assert::same($rules[0]->gain, Gain::Opcodes);
         Assert::same($rules[0]->alias(), 'fqn');
         Assert::true($rules[0]->custom);
     }

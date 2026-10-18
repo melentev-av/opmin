@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Opmin\Module\Optimize;
 
 use Opmin\Module\Config\Schema;
+use Opmin\Module\Optimize\Rector\Gain;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Stmt;
@@ -92,12 +93,13 @@ final readonly class Readability
      *
      * @param int $gain Opcodes saved (negative: grown).
      * @param int<0, max> $changedLines
-     * @param bool $executedGain The rule saves executed opcodes, not static ones: a gain of 0 is enough.
+     * @param Gain $kind What the rule saves: executed opcodes — a gain of 0 is enough; cost — the count
+     *        does not decide, the rule is cheaper by `bin/bench --cost`.
      */
-    public function reject(int $gain, int $changedLines, ?Node\FunctionLike $before, ?Node\FunctionLike $after, bool $executedGain): ?string
+    public function reject(int $gain, int $changedLines, ?Node\FunctionLike $before, ?Node\FunctionLike $after, Gain $kind): ?string
     {
         $minGain = \max(1, $this->config->minGain);
-        if ($executedGain ? $gain < 0 : $gain < $minGain) {
+        if ($kind !== Gain::Cost && ($kind === Gain::Executed ? $gain < 0 : $gain < $minGain)) {
             return match (true) {
                 $gain < 0 => 'opcodes grew by ' . -$gain,
                 $gain === 0 => 'saves no opcodes',
@@ -105,7 +107,7 @@ final readonly class Readability
             };
         }
 
-        if (!$executedGain && $changedLines > 0 && $gain / $changedLines < $this->config->minGainPerLine) {
+        if ($kind === Gain::Opcodes && $changedLines > 0 && $gain / $changedLines < $this->config->minGainPerLine) {
             return \sprintf(
                 'saves %d opcode(s) for %d changed line(s), less than readability.min_gain_per_line %s per line',
                 $gain,

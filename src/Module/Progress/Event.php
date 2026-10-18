@@ -162,6 +162,6 @@ final readonly class Event
             return 'no change';
         }
 
-        return \sprintf('kept %d, rolled back %d, %s', $this->kept, $this->rolledBack, $this->gain === 0 ? 'no gain' : "-{$this->gain} opcodes");
+        return \sprintf('kept %d, rolled back %d, %s', $this->kept, $this->rolledBack, $this->gain === 0 ? 'no gain' : \sprintf('%+d opcodes', -$this->gain));
     }
 }

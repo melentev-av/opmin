@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Opmin\Tests\Unit\Module\Report;
 
 use Opmin\Module\Optimize\LlmCandidate;
+use Opmin\Module\Optimize\Rector\Gain;
 use Opmin\Module\Optimize\RunReport;
 use Opmin\Module\Optimize\StepReport;
 use Opmin\Module\Report\Environment;
@@ -68,6 +69,28 @@ final class RunReportTest
         Assert::same(\array_column($data['advice'], 'cause'), ['not_proven.no_coverage_map', 'diff_test', 'signature.public_api', 'not_proven']);
     }
 
+    public function marksChangesCheaperToRun(): void
+    {
+        $report = new RunReport(10, '/nonexistent/runs/20261018-120000');
+        $report->opsAfter = 11;
+        $report->functions = ['App\Path::join' => ['file' => 'src/Path.php', 'ops_after' => 11, 'flags' => []]];
+        $step = new StepReport('Opmin\Rector\Rule\ConcatToInterpolationRector', 1);
+        $step->gainKind = Gain::Cost;
+        $step->accepted[] = ['file' => 'src/Path.php', 'function' => 'App\Path::join', 'gain' => -1, 'status' => 'diff-tested'];
+        $report->steps[] = $step;
+
+        $data = $report->toArray();
+        /** @var array<string, array<string, mixed>> $functions */
+        $functions = $data['functions'];
+        $join = $functions['App\Path::join'];
+        Assert::same([$join['ops_before'], $join['ops_after'], $join['saved'], $join['cost_gain'], $join['executed_gain']], [10, 11, -1, true, false]);
+        Assert::same(StepReport::fromArray($step->toArray())->gainKind, Gain::Cost);
+
+        $markdown = MarkdownReport::render($data, 'opmin optimize: 20261018-120000');
+        Assert::string($markdown)->contains('10 → 11 (cheaper to run)');
+        Assert::string($markdown)->contains("## Cheaper to run, not fewer opcodes\n");
+    }
+
     private static function report(): RunReport
     {
         $report = new RunReport(40, '/nonexistent/runs/20261007-120000');
@@ -100,7 +123,7 @@ final class RunReportTest
         $report->steps[] = $fqn;
 
         $hoist = new StepReport(HoistLoopInvariantCountRector::class, 1);
-        $hoist->executedGain = true;
+        $hoist->gainKind = Gain::Executed;
         $hoist->commit = 'bbbbbbbb22222222';
         $hoist->accepted[] = ['file' => 'src/Cart.php', 'function' => 'App\Cart::sum', 'gain' => 0, 'status' => 'diff-tested', 'checks' => [
             ['key' => 'App\Cart::sum', 'status' => 'diff-tested', 'coverage' => 92.5, 'inputs' => 180, 'tests' => [], 'time_change_percent' => -12.5],

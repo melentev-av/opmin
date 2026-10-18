@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Opmin\Module\Optimize\Review;
 
+use Opmin\Module\Optimize\Rector\Gain;
+
 /**
  * One change that passed every check, as the review shows it: the diff of the function (of the whole
  * file when the step changes it outside functions), the gain, the rule, how it is proven.
@@ -29,7 +31,7 @@ final readonly class Change
         public string $status,
         public array $checks,
         public string $diff,
-        public bool $executedGain = false,
+        public Gain $gainKind = Gain::Opcodes,
     ) {}
 
     /**
@@ -55,11 +57,9 @@ final readonly class Change
                 . (\is_float($check['time_change_percent'] ?? null) ? \sprintf(', time %+.1f%%', (float) $check['time_change_percent']) : '');
         }
 
-        $gain = $this->executedGain && $this->gain === 0 ? 'fewer executed opcodes' : "−{$this->gain} opcodes";
-
         return \sprintf(
             '%s, rule %s, checks: %s',
-            $gain,
+            $this->gainKind->describe($this->gain, '−'),
             $this->ruleName,
             $checks === [] ? $this->status : \implode('; ', \array_unique($checks)),
         );

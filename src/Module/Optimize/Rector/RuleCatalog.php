@@ -165,7 +165,7 @@ final class RuleCatalog
             $class,
             $configurable ? $options : null,
             custom: true,
-            executedGain: \defined($class . '::EXECUTED_GAIN') && \constant($class . '::EXECUTED_GAIN') === true,
+            gain: Gain::of($class),
         );
     }
 

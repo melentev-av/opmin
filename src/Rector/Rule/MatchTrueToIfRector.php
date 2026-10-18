@@ -20,8 +20,8 @@ use Testo\Bridge\Rector\Testing\TestRectorFixtures;
  * `return match (true) { $a > 1 => 'x', default => 'y' };` → `if ($a > 1) { return 'x'; } return 'y';`
  * and `$v = match (true) { … };` → `if (…) { $v = …; } elseif (…) { … } else { … }`.
  *
- * `match (true)` compares every condition with `true` (`IS_IDENTICAL` on PHP 8.1, `TYPE_CHECK` on 8.5)
- * before it jumps; `if` jumps on the condition itself: 24–29 % fewer CPU instructions per call without
+ * `match (true)` jumps into the arm and then to the end, and on PHP 8.5 compares every condition with
+ * `true` (`TYPE_CHECK`) first; `if` jumps past the arm on the condition itself (`tests/Cases/`): 24–29 % fewer CPU instructions per call without
  * the JIT, 14–16 % with the tracing JIT (`docs/rule-cost.md`). The `if` is one level deeper than the
  * `match`, so the rule allows one level more than `readability.max_nesting_increase`
  * ({@see self::NESTING_ALLOWANCE}). Off by default: it trades a common, readable form for speed.

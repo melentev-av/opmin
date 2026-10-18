@@ -269,6 +269,17 @@ Opcode counts depend on the PHP that compiles the code (`php.binary`), not on th
   to the container; without an init process PHP as PID 1 ignores it and the container outlives the client.
   `bin/playground run --all --php=8.4` runs the playground with such a php.binary: with pcov the project's tests
   get coverage maps, so selective test runs and the `tests` status of `opmin verify` are exercised too.
+- **What PHP does with the rewrites** — `tests/Cases/*.php`: one fact of the PHP compiler or optimizer a rule
+  relies on per file (`\sprintf()` is a rope from 8.4, `match (true)` jumps twice per arm…), a function `f()`
+  before and after, and per minor version the opcodes that disappear and appear and the sign of the count change.
+  `tests/Integration/PhpOptimizerCasesTest.php` checks them under `php.binary`, so the `🔢 Opcodes` job checks
+  every version; a version without an expectation fails, which is the point when a new PHP comes out. To fill
+  the expectations, print what each version does:
+  ```bash
+  TMPDIR=$PWD/playground/.tmp OPMIN_CASES_OBSERVE=1 OPMIN_TEST_PHP_BINARY=$PWD/playground/.bin/php8.1 \
+    vendor/bin/testo --filter=PhpOptimizerCasesTest
+  ```
+  The cost of the rules is not here: `bin/bench --cost` measures it (`docs/rule-cost.md`).
 - **Harness tests** — `tests/Integration/Module/Harness/WorkerTest.php` drives `harness/worker.php` under the same
   php.binary through the orchestrator's client: protocol, recipes, descriptions, `exit()`, fatal errors, timeouts.
 - **Property test of the whole chain** — `tests/Integration/Module/Opcode/CountPropertyTest.php` generates valid

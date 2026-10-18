@@ -35,6 +35,9 @@ final class Rector
         # Off by default: no cheaper by execution cost (callgrind, PHP 8.1–8.5): `?->` +7…+67 % with the
         # tracing JIT, `switch` → `match` +10…+16 % without JIT. Set options instead of `false` to enable.
         'Opmin\Rector\Rule\NullCheckTernaryToNullsafeRector' => false,
+        # Off by default: cheaper (−24…−29 % without JIT, −14…−16 % with it), but `if` reads worse than
+        # `match (true)`. Before IfChainToMatch, so that an `if` chain of string labels becomes `match ($v)`.
+        'Opmin\Rector\Rule\MatchTrueToIfRector' => false,
         'Opmin\Rector\Rule\IfChainToMatchRector' => ['min_arms' => 'auto'],
         'Opmin\Rector\Rule\SwitchToMatchRector' => false,
     ];

@@ -31,7 +31,7 @@ final class RuleCatalogTest
         yield 'alias with a typo' => [
             'fqm',
             'Unknown Rector rule `fqm` in --rector-rule. Did you mean `fqn`? Name a rule by its alias (fqn, property_fetch, array_dim_fetch, count, closure_use, sprintf, interpolate,'
-            . ' array_push, str_starts_with, in_array, if_to_match, nullsafe, switch_to_match), the short class name of a rule of the run or the full class name.',
+            . ' array_push, str_starts_with, in_array, if_to_match, nullsafe, match_to_if, switch_to_match), the short class name of a rule of the run or the full class name.',
         ];
         yield 'short name with a typo' => [
             'HoistLoopInvariantCountRectr',
@@ -160,7 +160,7 @@ final class RuleCatalogTest
 
         [$aliases, $short] = RuleCatalog::ignoreNames($config, $rules);
 
-        Assert::same($aliases, ['fqn', 'property_fetch', 'array_dim_fetch', 'count', 'closure_use', 'sprintf', 'interpolate', 'array_push', 'str_starts_with', 'in_array', 'nullsafe', 'if_to_match', 'switch_to_match', 'llm']);
+        Assert::same($aliases, ['fqn', 'property_fetch', 'array_dim_fetch', 'count', 'closure_use', 'sprintf', 'interpolate', 'array_push', 'str_starts_with', 'in_array', 'nullsafe', 'match_to_if', 'if_to_match', 'switch_to_match', 'llm']);
         Assert::same($short, [
             'FullyQualifyGlobalCallsRector',
             'SimplifyIfReturnBoolRector',
@@ -174,6 +174,7 @@ final class RuleCatalogTest
             'StrStartsWithRector',
             'OrIdenticalToInArrayRector',
             'NullCheckTernaryToNullsafeRector',
+            'MatchTrueToIfRector',
             'IfChainToMatchRector',
             'SwitchToMatchRector',
         ]);

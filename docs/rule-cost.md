@@ -54,6 +54,7 @@ inputs that cost more beyond the tolerance, before → after instructions per ca
 | `RemoveUnusedClosureUseRector` | `Cluse` | −8…−9 % | −9…−10 % | none |
 | `SprintfToConcatRector` | `Sprintf` | 8.1–8.3: −24…−26 %; 8.4–8.5: +18 % | 8.1–8.3: −21…−24 %; 8.4–8.5: +41…+42 % | 8.4–8.5: every form (+7…+74 %) — the rule runs only below 8.4 |
 | `ConcatToInterpolationRector` (measured 2026-10-18) | `Interp` | −15…−18 % | −30…−31 % | none (`$a . $b . $c` +1 % on 8.x without JIT) |
+| `MatchTrueToIfRector` (off, measured 2026-10-18) | `MatchIf` | −24…−29 % | −14…−16 % | none |
 | `ArrayPushToAssignRector` | `Apush` | −37…−40 % | −36…−42 % | none |
 | `StrStartsWithRector` | `Starts` | −34…−36 % | −41…−46 % | none |
 | `OrIdenticalToInArrayRector` | `Orid` | −48…−49 % | −58…−60 % | none |
@@ -80,6 +81,8 @@ not fired. Per input: `runtime/bench-cost/results.tsv` after a run.
 - `ConcatToInterpolationRector` adds an opcode (`ROPE_INIT`…`ROPE_END` for n − 1 `CONCAT`s) and is cheaper
   everywhere: −6…−30 % per form without JIT, −21…−49 % with it, more the longer the chain. It declares
   `COST_GAIN`: its changes are accepted although the count grows.
+- `MatchTrueToIfRector` is cheaper on every input, but off by default: the `if` chain is a level deeper and
+  reads worse than `match (true)`, a trade the user makes by enabling it.
 - `SingleInArrayToCompareRector` and `StrlenZeroToIdenticalEmptyStringRector` cost more with the JIT beyond
   the tolerance: they are out of `rector.standard.rules` and in `rector.standard.skip`, so the `CODE_QUALITY`
   set does not bring them back either (the standard group is off by default).

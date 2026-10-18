@@ -264,7 +264,11 @@ opmin optimize --plan                  # say what the run would use and exit: no
   execution cost on PHP 8.1–8.5: `NullCheckTernaryToNullsafeRector` (`$x !== null ? $x->a() : null` → `$x?->a()`,
   +20…+22 % with the tracing JIT, +61 % on `null`) and `SwitchToMatchRector` (a `switch` of `return`s → `return
   match`, +11 % without JIT, +27…+29 % with it); enable one with its options instead of `false` in
-  `rector.custom_rules`. For the two extraction rules, a call of a pure built-in function (`\explode()`,
+  `rector.custom_rules`. Also off by default, a trade of readability for speed without JIT:
+  `MatchTrueToIfRector` (`return match (true) { $n < 0 => 'neg', default => 'pos' };` → `if ($n < 0) { return
+  'neg'; } return 'pos';`, or an `if`/`elseif`/`else` of assignments to one local variable: conditions of native
+  type `bool`, one per arm, a `default` arm), −24…−29 % without JIT and −14…−16 % with it; the `if` is a level
+  deeper, which the rule allows over `readability.max_nesting_increase`. For the two extraction rules, a call of a pure built-in function (`\explode()`,
   `\strlen()`, `\htmlspecialchars()`…: side-effect free by PHPStan's function metadata, of an always compiled-in
   extension, minus a denylist of nondeterministic ones) with arguments of scalar native types runs no user code
   (`Opmin\Rector\Support\PureFunctionCall`).
@@ -527,8 +531,8 @@ ignore:
   ```text
   [WARNING] src/Cart.php:12: `@opmin-ignore` lists `fqm`, which names no known rule, so it excludes nothing.
             Did you mean `fqn`? Known names: fqn, property_fetch, array_dim_fetch, count, closure_use, sprintf,
-            interpolate, array_push, str_starts_with, in_array, if_to_match, nullsafe, switch_to_match, llm, or the
-            short class name of a rule.
+            interpolate, array_push, str_starts_with, in_array, if_to_match, nullsafe, match_to_if,
+            switch_to_match, llm, or the short class name of a rule.
   ```
 
   It is a warning, not an error: a mark may name a standard Rector rule that this run does not enable.
@@ -547,6 +551,7 @@ ignore:
   | `in_array` | `OrIdenticalToInArrayRector` |
   | `nullsafe` | `NullCheckTernaryToNullsafeRector` (off by default) |
   | `if_to_match` | `IfChainToMatchRector` |
+  | `match_to_if` | `MatchTrueToIfRector` (off by default) |
   | `switch_to_match` | `SwitchToMatchRector` (off by default) |
   | `llm` | Stage B: rewrites proposed by the model |
   | `simplifyifreturnboolrector`, … | a standard Rector rule by its short class name |

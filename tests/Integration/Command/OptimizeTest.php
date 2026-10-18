@@ -516,6 +516,38 @@ final class OptimizeTest
         Assert::same($code, 0, $out);
     }
 
+    public function aRuleMayAddTheNestingItAllows(): void
+    {
+        \file_put_contents($this->dir . '/src/Sign.php', <<<'PHP'
+            <?php
+
+            declare(strict_types=1);
+
+            namespace App;
+
+            final class Sign
+            {
+                public function name(int $n): string
+                {
+                    return match (true) {
+                        $n < 0 => 'negative',
+                        $n === 0 => 'zero',
+                        $n < 10 => 'small',
+                        default => 'large',
+                    };
+                }
+            }
+
+            PHP);
+        $this->commitAll();
+
+        [$code, $out, $err] = $this->opmin('optimize', '--format=none', '--rector-rule=match_to_if');
+
+        Assert::same($code, 0, $out . $err);
+        Assert::string((string) \file_get_contents($this->dir . '/src/Sign.php'))->contains("if (\$n < 0) {\n            return 'negative';\n        }");
+        Assert::same(\array_keys($this->report()['functions']), ['App\\Sign::name']);
+    }
+
     public function reviewAppliesWhatIsAcceptedAndRemembersWhatIsDeclined(): void
     {
         \file_put_contents($this->dir . '/src/Text.php', self::REVIEWED);

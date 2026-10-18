@@ -166,7 +166,19 @@ final class RuleCatalog
             $configurable ? $options : null,
             custom: true,
             gain: Gain::of($class),
+            nestingAllowance: self::nestingAllowance($class),
         );
+    }
+
+    /**
+     * @return int<0, max>
+     */
+    private static function nestingAllowance(string $class): int
+    {
+        /** @var mixed $allowance */
+        $allowance = \defined($class . '::NESTING_ALLOWANCE') ? \constant($class . '::NESTING_ALLOWANCE') : 0;
+
+        return \is_int($allowance) && $allowance > 0 ? $allowance : 0;
     }
 
     private static function single(string $class, string $key = 'rector.standard.rules'): RuleSpec

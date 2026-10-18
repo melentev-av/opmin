@@ -95,8 +95,9 @@ final readonly class Readability
      * @param int<0, max> $changedLines
      * @param Gain $kind What the rule saves: executed opcodes — a gain of 0 is enough; cost — the count
      *        does not decide, the rule is cheaper by `bin/bench --cost`.
+     * @param int<0, max> $nestingAllowance {@see self::compare()}.
      */
-    public function reject(int $gain, int $changedLines, ?Node\FunctionLike $before, ?Node\FunctionLike $after, Gain $kind): ?string
+    public function reject(int $gain, int $changedLines, ?Node\FunctionLike $before, ?Node\FunctionLike $after, Gain $kind, int $nestingAllowance = 0): ?string
     {
         $minGain = \max(1, $this->config->minGain);
         if ($kind !== Gain::Cost && ($kind === Gain::Executed ? $gain < 0 : $gain < $minGain)) {
@@ -116,13 +117,15 @@ final readonly class Readability
             );
         }
 
-        return $before === null || $after === null ? null : $this->compare($before, $after);
+        return $before === null || $after === null ? null : $this->compare($before, $after, $nestingAllowance);
     }
 
     /**
      * Why the shape of a unit got worse, or null.
+     *
+     * @param int<0, max> $nestingAllowance Levels the rule may add over `readability.max_nesting_increase`.
      */
-    public function compare(Node\FunctionLike $before, Node\FunctionLike $after): ?string
+    public function compare(Node\FunctionLike $before, Node\FunctionLike $after, int $nestingAllowance = 0): ?string
     {
         $complexity = self::complexity($after) - self::complexity($before);
         if ($complexity > $this->config->maxCyclomaticIncrease) {
@@ -130,8 +133,9 @@ final readonly class Readability
         }
 
         $nesting = self::nesting($after) - self::nesting($before);
-        if ($nesting > $this->config->maxNestingIncrease) {
-            return "nesting grew by {$nesting} (code more levels deep; readability.max_nesting_increase is {$this->config->maxNestingIncrease})";
+        if ($nesting > $this->config->maxNestingIncrease + $nestingAllowance) {
+            return "nesting grew by {$nesting} (code more levels deep; readability.max_nesting_increase is {$this->config->maxNestingIncrease}"
+                . ($nestingAllowance > 0 ? ", the rule allows {$nestingAllowance} more)" : ')');
         }
 
         $was = self::patterns($before);

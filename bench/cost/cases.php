@@ -217,6 +217,26 @@ return [
             'interp_rest' => ['v' => "['src', 'a', 'php']"],
         ],
     ],
+    'MatchIf' => [
+        'rule' => 'Opmin\Rector\Rule\MatchTrueToIfRector',
+        'options' => [],
+        'code' => <<<'PHP'
+            function mif2(int $n): string { return match (true) { $n < 0 => 'neg', default => 'pos' }; }
+            function mif3(int $n): string { return match (true) { $n < 0 => 'neg', $n === 0 => 'zero', default => 'pos' }; }
+            function mif5(int $n): int { return match (true) { $n < 10 => 1, $n < 100 => 2, $n < 1000 => 3, $n < 10000 => 4, default => 5 }; }
+            function mif_untyped(int $n) { return match (true) { $n < 0 => 'neg', $n === 0 => 'zero', default => 'pos' }; }
+            function mif_kind(mixed $v): string { return match (true) { \is_int($v) => 'int', \is_string($v) => 'string', $v instanceof \Countable => 'countable', default => 'other' }; }
+            function mif_assign(int $n): string { $s = match (true) { $n < 0 => 'neg', $n === 0 => 'zero', default => 'pos' }; return $s . '!'; }
+            PHP,
+        'inputs' => [
+            'mif2' => ['first' => '[-1]', 'default' => '[1]'],
+            'mif3' => ['first' => '[-1]', 'second' => '[0]', 'default' => '[1]'],
+            'mif5' => ['first' => '[5]', 'third' => '[500]', 'default' => '[50000]'],
+            'mif_untyped' => ['first' => '[-1]', 'default' => '[1]'],
+            'mif_kind' => ['int' => '[1]', 'countable' => '[new \\ArrayObject()]', 'default' => '[1.5]'],
+            'mif_assign' => ['first' => '[-1]', 'default' => '[1]'],
+        ],
+    ],
     'Apush' => [
         'rule' => 'Opmin\Rector\Rule\ArrayPushToAssignRector',
         'options' => [],

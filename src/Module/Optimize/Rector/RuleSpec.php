@@ -19,6 +19,8 @@ final readonly class RuleSpec
      * @param list<class-string> $skip The other rules of the set.
      * @param bool $custom One of opmin's own rules.
      * @param Gain $gain What the rule saves: how its changes are accepted.
+     * @param int<0, max> $nestingAllowance Levels of nesting the rule may add over
+     *        `readability.max_nesting_increase` (its `NESTING_ALLOWANCE`).
      */
     public function __construct(
         public string $class,
@@ -27,10 +29,11 @@ final readonly class RuleSpec
         public array $skip = [],
         public bool $custom = false,
         public Gain $gain = Gain::Opcodes,
+        public int $nestingAllowance = 0,
     ) {}
 
     /**
-     * @param array{class: class-string, options?: array<string, mixed>|null, set?: non-empty-string|null, skip?: list<class-string>, custom?: bool, gain?: string} $data
+     * @param array{class: class-string, options?: array<string, mixed>|null, set?: non-empty-string|null, skip?: list<class-string>, custom?: bool, gain?: string, nesting_allowance?: int<0, max>} $data
      */
     public static function fromArray(array $data): self
     {
@@ -41,6 +44,7 @@ final readonly class RuleSpec
             $data['skip'] ?? [],
             $data['custom'] ?? false,
             Gain::from($data['gain'] ?? Gain::Opcodes->value),
+            $data['nesting_allowance'] ?? 0,
         );
     }
 
@@ -71,7 +75,7 @@ final readonly class RuleSpec
     }
 
     /**
-     * @return array{class: class-string, options: array<string, mixed>|null, set: non-empty-string|null, skip: list<class-string>, custom: bool, gain: string}
+     * @return array{class: class-string, options: array<string, mixed>|null, set: non-empty-string|null, skip: list<class-string>, custom: bool, gain: string, nesting_allowance: int<0, max>}
      */
     public function toArray(): array
     {
@@ -82,6 +86,7 @@ final readonly class RuleSpec
             'skip' => $this->skip,
             'custom' => $this->custom,
             'gain' => $this->gain->value,
+            'nesting_allowance' => $this->nestingAllowance,
         ];
     }
 
@@ -90,6 +95,6 @@ final readonly class RuleSpec
      */
     public function withOptions(array $options): self
     {
-        return new self($this->class, $options, $this->set, $this->skip, $this->custom, $this->gain);
+        return new self($this->class, $options, $this->set, $this->skip, $this->custom, $this->gain, $this->nestingAllowance);
     }
 }

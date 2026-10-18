@@ -155,6 +155,7 @@
                             "min_items": 2
                         },
                         "Opmin\\Rector\\Rule\\NullCheckTernaryToNullsafeRector": false,
+                        "Opmin\\Rector\\Rule\\MatchTrueToIfRector": false,
                         "Opmin\\Rector\\Rule\\IfChainToMatchRector": {
                             "min_arms": "auto"
                         },

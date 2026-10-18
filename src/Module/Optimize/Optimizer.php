@@ -792,7 +792,7 @@ final class Optimizer
             ($before->docComment($top) ?? '') . ($before->source($top) ?? ''),
             ($after->docComment($top) ?? '') . ($after->source($top) ?? ''),
         ))->changedLines();
-        $why = $this->readability->reject($gain, $changedLines, $unit->node, $after->units[$top]->node, $rule->gain);
+        $why = $this->readability->reject($gain, $changedLines, $unit->node, $after->units[$top]->node, $rule->gain, $rule->nestingAllowance);
         if ($why !== null) {
             return [$gain, $why];
         }
@@ -804,7 +804,7 @@ final class Optimizer
                 continue;
             }
 
-            $why = ($key === $top ? null : $this->readability->compare($old, $new))
+            $why = ($key === $top ? null : $this->readability->compare($old, $new, $rule->nestingAllowance))
                 ?? $this->signatures->reject($old, $new, $before->docComment($key), $after->docComment($key), $before->units[$key]->class, $restrictions[$key]);
             if ($why !== null) {
                 return [$gain, $key === $top ? $why : "{$key}: {$why}"];

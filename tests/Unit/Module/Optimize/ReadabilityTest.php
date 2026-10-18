@@ -72,6 +72,13 @@ final class ReadabilityTest
         Assert::same($readability->compare(self::function('if ($a) {} if ($b) {}'), self::function('if ($a) { if ($b) {} }')), 'nesting grew by 1 (code more levels deep; readability.max_nesting_increase is 0)');
         Assert::same($readability->compare(self::function('$x = f(); if ($x) {}'), self::function('if ($x = f()) {}')), 'introduces assignment_in_condition (forbidden by readability.forbid_patterns)');
         Assert::same($readability->compare(self::function('return $a;'), self::function('return $a;')), null);
+        # A rule may allow more nesting (MatchTrueToIfRector::NESTING_ALLOWANCE).
+        $match = self::function('return match (true) { $a > 1 => 1, default => 2 };');
+        $if = self::function('if ($a > 1) { return 1; } return 2;');
+        Assert::same($readability->compare($match, $if), 'nesting grew by 1 (code more levels deep; readability.max_nesting_increase is 0)');
+        Assert::same($readability->compare($match, $if, 1), null);
+        $match3 = self::function('return match (true) { $a > 1 => 1, $b > 1 => 2, default => 3 };');
+        Assert::same($readability->compare($match3, self::function('if ($a > 1) { if ($b > 1) { return 2; } return 1; } return 3;'), 1), 'nesting grew by 2 (code more levels deep; readability.max_nesting_increase is 0, the rule allows 1 more)');
     }
 
     private static function function(string $body): Function_

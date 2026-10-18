@@ -404,7 +404,9 @@ opmin check --suggest                       # for grown functions: which Rector 
 - A function that grew by more than `check.tolerance` fails the check; a decrease, a new function and a removed
   one ask you to update the baseline (`--update-baseline` does it, keeping grown functions at their old counts —
   accepting growth is an explicit `opmin baseline`); a new function above `check.max_ops_new_function` is a
-  warning. Rules measured cheaper to run may add opcodes, so take the baseline again after `opmin optimize`. `--suggest` applies every Stage A rule alone to temporary copies (the project is not touched) and
+  warning. Rules measured cheaper to run may add opcodes: `opmin optimize` raises the entries of the functions they
+  changed in `opmin.baseline.json` by exactly that growth (a commit of its own in git), so the check passes them and
+  still fails on any other growth. `--suggest` applies every Stage A rule alone to temporary copies (the project is not touched) and
   names the one that saves the most — unverified: `opmin optimize` proves the change.
 - Exit codes: `0` — nothing grew; `1` — opcodes grew (or a checked file cannot be compiled); `2` — no baseline,
   a baseline taken with another PHP minor version or optimizer settings (nothing is compared: rebuild it with

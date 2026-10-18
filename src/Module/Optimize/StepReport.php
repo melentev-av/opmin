@@ -14,7 +14,7 @@ use Opmin\Module\Verification\FunctionResult;
  */
 final class StepReport
 {
-    /** @var list<array{file: non-empty-string, function: non-empty-string, gain: int, status: string, checks?: list<array<string, mixed>>}> */
+    /** @var list<array{file: non-empty-string, function: non-empty-string, gain: int, status: string, checks?: list<array<string, mixed>>, grown?: array<non-empty-string, int>}> */
     public array $accepted = [];
 
     /** @var list<array{file: non-empty-string, function: string, reason: string, counterexample?: array<string, mixed>}> */
@@ -67,7 +67,7 @@ final class StepReport
      */
     public static function fromArray(array $data, array $before = []): self
     {
-        /** @var array{rule: non-empty-string, pass: int, commit?: string|null, error?: string|null, executed_gain?: bool, cost_gain?: bool, accepted?: list<array{file: non-empty-string, function: non-empty-string, gain: int, status: string, checks?: list<array<string, mixed>>}>, rejected?: list<array{file: non-empty-string, function: string, reason: string, counterexample?: array<string, mixed>}>} $data */
+        /** @var array{rule: non-empty-string, pass: int, commit?: string|null, error?: string|null, executed_gain?: bool, cost_gain?: bool, accepted?: list<array{file: non-empty-string, function: non-empty-string, gain: int, status: string, checks?: list<array<string, mixed>>, grown?: array<non-empty-string, int>}>, rejected?: list<array{file: non-empty-string, function: string, reason: string, counterexample?: array<string, mixed>}>} $data */
         $step = new self($data['rule'], $data['pass']);
         $step->commit = $data['commit'] ?? null;
         $step->error = $data['error'] ?? null;

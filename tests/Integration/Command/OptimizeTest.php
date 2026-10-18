@@ -476,6 +476,46 @@ final class OptimizeTest
         Assert::same(\file_get_contents($this->dir . '/src/Text.php'), self::CODE);
     }
 
+    public function theGrowthOfRulesCheaperToRunRaisesTheBaseline(): void
+    {
+        \file_put_contents($this->dir . '/src/Path.php', <<<'PHP'
+            <?php
+
+            declare(strict_types=1);
+
+            namespace App;
+
+            final class Path
+            {
+                public function join(string $dir, string $name): string
+                {
+                    return $dir . '/' . $name . '.php';
+                }
+            }
+
+            PHP);
+        $this->commitAll();
+        [$code] = $this->opmin('baseline');
+        Assert::same($code, 0);
+        $this->git('add', 'opmin.baseline.json');
+        $this->git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'baseline');
+        /** @var array{functions: array<string, array{ops: int}>} $before */
+        $before = \json_decode((string) \file_get_contents($this->dir . '/opmin.baseline.json'), true, flags: \JSON_THROW_ON_ERROR);
+
+        [$code, $out, $err] = $this->opmin('optimize', '--format=none', '--rector-rule=interpolate');
+
+        Assert::same($code, 0, $out . $err);
+        Assert::string((string) \file_get_contents($this->dir . '/src/Path.php'))->contains('return "{$dir}/{$name}.php";');
+        /** @var array{functions: array<string, array{ops: int}>} $after */
+        $after = \json_decode((string) \file_get_contents($this->dir . '/opmin.baseline.json'), true, flags: \JSON_THROW_ON_ERROR);
+        $grown = $after['functions']['App\\Path::join']['ops'] - $before['functions']['App\\Path::join']['ops'];
+        Assert::true($grown > 0, "the baseline of App\\Path::join grew by {$grown}");
+        Assert::same($this->git('log', '-1', '--format=%s'), 'opmin: raise the baseline by the rules cheaper to run');
+        Assert::same($this->git('status', '--porcelain', '--', 'opmin.baseline.json'), '');
+        [$code, $out] = $this->opmin('check', '--all');
+        Assert::same($code, 0, $out);
+    }
+
     public function reviewAppliesWhatIsAcceptedAndRemembersWhatIsDeclined(): void
     {
         \file_put_contents($this->dir . '/src/Text.php', self::REVIEWED);

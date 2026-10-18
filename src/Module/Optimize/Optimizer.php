@@ -11,11 +11,14 @@ use Opmin\Module\Analysis\Flag;
 use Opmin\Module\Analysis\IgnoreMarks;
 use Opmin\Module\Analysis\ReferenceIndex;
 use Opmin\Module\Analysis\Restriction;
+use Opmin\Module\Check\Baseline;
+use Opmin\Module\Check\BaselineException;
 use Opmin\Module\Config\Schema;
 use Opmin\Module\Lint\SyntaxChecker;
 use Opmin\Module\Opcode\CountResult;
 use Opmin\Module\Opcode\FunctionCount;
 use Opmin\Module\Opcode\OpcodeCounter;
+use Opmin\Module\Opcode\OptimizerSettings;
 use Opmin\Module\Optimize\Rector\Gain;
 use Opmin\Module\Optimize\Rector\RectorRunner;
 use Opmin\Module\Optimize\Rector\RuleSpec;
@@ -305,6 +308,8 @@ final class Optimizer
             }
         }
 
+        $this->raiseBaseline($report);
+
         $report->timings = $this->timings->toArray();
     }
 
@@ -556,13 +561,14 @@ final class Optimizer
         $countsAfter = $this->timings->measure('count', fn() => $this->countContents([]));
         foreach ($accepted as $relative => $plan) {
             foreach ($plan->accepted as $top => $gain) {
+                $grown = $rule->gain === Gain::Cost ? $this->grown($relative, $plan->after->family($top), $countsAfter[$relative] ?? []) : [];
                 $step->accepted[] = [
                     'file' => $relative,
                     'function' => $top,
                     'gain' => $gain,
                     'status' => $plan->statuses[$top] ?? 'verified',
                     'checks' => $plan->checks[$top] ?? [],
-                ];
+                ] + ($grown === [] ? [] : ['grown' => $grown]);
             }
 
             $this->counts[$relative] = $countsAfter[$relative] ?? $this->counts[$relative];
@@ -575,6 +581,89 @@ final class Optimizer
             ));
         } catch (\RuntimeException $e) {
             $step->error = $e->getMessage();
+        }
+    }
+
+    /**
+     * Functions of a family whose count grew with the step, by how much.
+     *
+     * @param list<non-empty-string> $family
+     * @param array<non-empty-string, FunctionCount> $countsNew
+     * @return array<non-empty-string, int> Only growth: every value is positive.
+     */
+    private function grown(string $relative, array $family, array $countsNew): array
+    {
+        $grown = [];
+        foreach ($family as $key) {
+            $old = $this->counts[$relative][$key] ?? null;
+            $new = $countsNew[$key] ?? null;
+            $old === null || $new === null || $new->opsOpt <= $old->opsOpt or $grown[$key] = $new->opsOpt - $old->opsOpt;
+        }
+
+        return $grown;
+    }
+
+    /**
+     * Raises the entries of `opmin.baseline.json`, when the project has one, by the opcodes the rules
+     * cheaper to run added ({@see Gain::Cost}): `opmin check` passes them and still fails on any other
+     * growth. A function the baseline does not know stays out: the check reports it as new.
+     */
+    private function raiseBaseline(RunReport $report): void
+    {
+        /** @var array<non-empty-string, array{int, non-empty-string}> $grown Key => [opcodes, file]. */
+        $grown = [];
+        foreach ($report->steps as $step) {
+            foreach ($step->accepted as $change) {
+                foreach ($change['grown'] ?? [] as $key => $ops) {
+                    $grown[$key] = [($grown[$key][0] ?? 0) + $ops, $change['file']];
+                }
+            }
+        }
+
+        $file = $this->project->root->join(Baseline::FILE);
+        if ($grown === [] || !$file->isFile()) {
+            return;
+        }
+
+        try {
+            $baseline = Baseline::load($file);
+        } catch (BaselineException $e) {
+            $report->notes[] = Baseline::FILE . ' is not raised by the growth of the rules cheaper to run: ' . $e->getMessage();
+            return;
+        }
+
+        $why = $baseline->incompatibility($this->php->version, OptimizerSettings::hash($this->php));
+        if ($why !== null) {
+            $report->notes[] = Baseline::FILE . ' is not raised by the growth of the rules cheaper to run: ' . $why;
+            return;
+        }
+
+        $changes = [];
+        foreach ($grown as $key => [$ops, $relative]) {
+            # A function declared in two files has `#file` in one of them (Comparison::compare()).
+            foreach (["{$key}#{$relative}", $key] as $candidate) {
+                $entry = $baseline->functions[$candidate] ?? null;
+                if ($entry !== null) {
+                    $changes[$candidate] = ['ops' => \max(0, $entry['ops'] + $ops), 'file' => $entry['file']];
+                    break;
+                }
+            }
+        }
+
+        if ($changes === []) {
+            return;
+        }
+
+        $this->workspace->write($file, $baseline->with($changes, $baseline->opmin)->toJson());
+        $report->notes[] = \sprintf(
+            '%s: %d function(s) raised by the opcodes that rules cheaper to run added, so that `opmin check` passes them.',
+            Baseline::FILE,
+            \count($changes),
+        );
+        try {
+            $this->workspace->commit([$file], "opmin: raise the baseline by the rules cheaper to run\n\nThey add opcodes but cost less to execute (COST_GAIN).");
+        } catch (\RuntimeException $e) {
+            $report->notes[] = Baseline::FILE . ' is not committed: ' . $e->getMessage();
         }
     }
 

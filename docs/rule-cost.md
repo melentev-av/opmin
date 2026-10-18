@@ -53,6 +53,7 @@ inputs that cost more beyond the tolerance, before → after instructions per ca
 | `HoistLoopInvariantCountRector` | `Hoist` | −23…−38 % | −10…−13 % | none |
 | `RemoveUnusedClosureUseRector` | `Cluse` | −8…−9 % | −9…−10 % | none |
 | `SprintfToConcatRector` | `Sprintf` | 8.1–8.3: −24…−26 %; 8.4–8.5: +18 % | 8.1–8.3: −21…−24 %; 8.4–8.5: +41…+42 % | 8.4–8.5: every form (+7…+74 %) — the rule runs only below 8.4 |
+| `ConcatToInterpolationRector` (measured 2026-10-18) | `Interp` | −15…−18 % | −30…−31 % | none (`$a . $b . $c` +1 % on 8.x without JIT) |
 | `ArrayPushToAssignRector` | `Apush` | −37…−40 % | −36…−42 % | none |
 | `StrStartsWithRector` | `Starts` | −34…−36 % | −41…−46 % | none |
 | `OrIdenticalToInArrayRector` | `Orid` | −48…−49 % | −58…−60 % | none |
@@ -76,6 +77,9 @@ not fired. Per input: `runtime/bench-cost/results.tsv` after a run.
 - `IfChainToMatchRector` rewrites only chains of string labels: int chains cost more as `match`.
 - `SprintfToConcatRector` runs only for a `php.target` below 8.4: from 8.4 the compiler makes the same
   rope out of `sprintf()` itself, and the concatenation costs more.
+- `ConcatToInterpolationRector` adds an opcode (`ROPE_INIT`…`ROPE_END` for n − 1 `CONCAT`s) and is cheaper
+  everywhere: −6…−30 % per form without JIT, −21…−49 % with it, more the longer the chain. It declares
+  `COST_GAIN`: its changes are accepted although the count grows.
 - `SingleInArrayToCompareRector` and `StrlenZeroToIdenticalEmptyStringRector` cost more with the JIT beyond
   the tolerance: they are out of `rector.standard.rules` and in `rector.standard.skip`, so the `CODE_QUALITY`
   set does not bring them back either (the standard group is off by default).

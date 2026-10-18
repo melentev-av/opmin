@@ -110,6 +110,34 @@ final class FunctionBody
     }
 
     /**
+     * Whether evaluating `$expr` may write the local variable `$name`: an assignment, `++`/`--`,
+     * `eval`/`include`, or a call that gets it by reference or runs while it is bound by reference.
+     *
+     * @param array<string, true> $referenced {@see self::referencedVariables()}
+     */
+    public static function mayWrite(Expr $expr, string $name, array $referenced): bool
+    {
+        $finder = new NodeFinder();
+        foreach ($finder->findInstanceOf([$expr], Expr::class) as $node) {
+            if ($node instanceof Expr\Assign || $node instanceof Expr\AssignOp || $node instanceof Expr\AssignRef
+                || $node instanceof Expr\PreInc || $node instanceof Expr\PostInc || $node instanceof Expr\PreDec
+                || $node instanceof Expr\PostDec || $node instanceof Expr\Eval_ || $node instanceof Expr\Include_
+            ) {
+                return true;
+            }
+
+            # A call may write a variable passed to it by reference, or one bound by reference anywhere.
+            if ($node instanceof Expr\CallLike && (isset($referenced[$name])
+                || $finder->findFirst($node->getRawArgs(), static fn(Node $v): bool => $v instanceof Expr\Variable && $v->name === $name) !== null)
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * A free variable name derived from `$base`: `$base`, then `$base2`, `$base3`…
      *
      * @param array<string, true> $taken

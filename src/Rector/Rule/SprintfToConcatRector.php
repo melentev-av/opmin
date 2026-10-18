@@ -11,7 +11,6 @@ use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Scalar;
 use PhpParser\Node\Stmt;
-use PhpParser\NodeFinder;
 use PhpParser\NodeVisitor;
 use PHPStan\Analyser\Scope;
 use PHPStan\Type\IntegerType;
@@ -171,33 +170,6 @@ class SprintfToConcatRector extends AbstractRector
     }
 
     /**
-     * Whether evaluating `$expr` may write the local variable `$name`.
-     *
-     * @param array<string, true> $referenced
-     */
-    private static function mayWrite(Expr $expr, string $name, array $referenced): bool
-    {
-        $finder = new NodeFinder();
-        foreach ($finder->findInstanceOf([$expr], Expr::class) as $node) {
-            if ($node instanceof Expr\Assign || $node instanceof Expr\AssignOp || $node instanceof Expr\AssignRef
-                || $node instanceof Expr\PreInc || $node instanceof Expr\PostInc || $node instanceof Expr\PreDec
-                || $node instanceof Expr\PostDec || $node instanceof Expr\Eval_ || $node instanceof Expr\Include_
-            ) {
-                return true;
-            }
-
-            # A call may write a variable passed to it by reference, or one bound by reference anywhere.
-            if ($node instanceof Expr\CallLike && (isset($referenced[$name])
-                || $finder->findFirst($node->getRawArgs(), static fn(Node $v): bool => $v instanceof Expr\Variable && $v->name === $name) !== null)
-            ) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
      * @param array<string, true> $referenced
      */
     private function concat(Expr\FuncCall $call, array $referenced): ?Expr
@@ -238,7 +210,7 @@ class SprintfToConcatRector extends AbstractRector
 
             if ($arg instanceof Expr\Variable && \is_string($arg->name)) {
                 foreach (\array_slice($args, $next + 1) as $later) {
-                    if (self::mayWrite($later, $arg->name, $referenced)) {
+                    if (FunctionBody::mayWrite($later, $arg->name, $referenced)) {
                         return null;
                     }
                 }

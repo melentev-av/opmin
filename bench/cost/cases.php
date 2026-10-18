@@ -194,6 +194,29 @@ return [
             'sprintf1' => ['v' => "['hello']"],
         ],
     ],
+    'Interp' => [
+        'rule' => 'Opmin\Rector\Rule\ConcatToInterpolationRector',
+        'options' => [],
+        'code' => <<<'PHP'
+            final class Entry { public function __construct(public string $dir, public string $name) {} }
+            function interp3(string $a, string $b): string { return $a . '/' . $b; }
+            function interp3_vars(string $a, string $b, string $c): string { return $a . $b . $c; }
+            function interp5(string $a, string $b, string $c): string { return $a . '/' . $b . '/' . $c; }
+            function interp9(string $a, string $b, string $c, string $d, string $e): string { return $a . '/' . $b . '/' . $c . '/' . $d . '/' . $e; }
+            function interp_int(int $id, string $name): string { return '#' . $id . ': ' . $name; }
+            function interp_prop(Entry $e): string { return $e->dir . '/' . $e->name . '.php'; }
+            function interp_rest(string $a, string $b, string $c): string { return $a . '/' . $b . \strtoupper($c); }
+            PHP,
+        'inputs' => [
+            'interp3' => ['short' => "['src', 'a.php']", 'long' => "[{$long}, {$long}]"],
+            'interp3_vars' => ['short' => "['a', 'b', 'c']", 'long' => "[{$long}, {$long}, {$long}]"],
+            'interp5' => ['short' => "['src', 'Module', 'a.php']", 'long' => "[{$long}, {$long}, {$long}]"],
+            'interp9' => ['short' => "['a', 'b', 'c', 'd', 'e']"],
+            'interp_int' => ['v' => "[42, 'name']"],
+            'interp_prop' => ['v' => "[new %NS%\\Entry('src/Module', 'Name')]"],
+            'interp_rest' => ['v' => "['src', 'a', 'php']"],
+        ],
+    ],
     'Apush' => [
         'rule' => 'Opmin\Rector\Rule\ArrayPushToAssignRector',
         'options' => [],

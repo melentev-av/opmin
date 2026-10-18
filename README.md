@@ -207,9 +207,9 @@ opmin optimize --plan                  # say what the run would use and exit: no
   `--plan` prints the header and exits with 0: no tests run, no files change, no run directory is written.
 
   ```
-  Optimizing 12 file(s) of /app with 10 rule(s), PHP 8.4.1 (target 8.1), git: a commit per accepted step.
+  Optimizing 12 file(s) of /app with 11 rule(s), PHP 8.4.1 (target 8.1), git: a commit per accepted step.
     Functions: 230, 214 of them optimizable
-    Rules: FullyQualifyGlobalCallsRector, ExtractRepeatedPropertyFetchRector, ExtractRepeatedArrayDimFetchRector, HoistLoopInvariantCountRector, RemoveUnusedClosureUseRector, SprintfToConcatRector, ArrayPushToAssignRector, StrStartsWithRector, … 2 more
+    Rules: FullyQualifyGlobalCallsRector, ExtractRepeatedPropertyFetchRector, ExtractRepeatedArrayDimFetchRector, HoistLoopInvariantCountRector, RemoveUnusedClosureUseRector, SprintfToConcatRector, ConcatToInterpolationRector, ArrayPushToAssignRector, … 3 more
     Tests: phpunit, the tests that cover a changed function
     Coverage driver: yes (pcov or Xdebug in php.binary)
     PHPStan: vendor/bin/phpstan
@@ -273,6 +273,12 @@ opmin optimize --plan                  # say what the run would use and exit: no
     only, as many arguments as specifiers, each a `string` or an `int` (`%d`: an `int`). Only for `php.target`
     below 8.4: there PHP compiles such a `sprintf()` into a rope itself, and the rope is cheaper than the
     concatenation (fewer opcodes, but more CPU instructions per call).
+  - `ConcatToInterpolationRector`: `$dir . '/' . $name . '.php'` → `"{$dir}/{$name}.php"` — PHP builds a string
+    of three and more parts as a rope, one allocation instead of one per `.`: an opcode more, but 15–18 % fewer
+    CPU instructions per call on PHP 8.1–8.5 without JIT and 30 % fewer with it, so it is accepted by cost even
+    when the count grows. From the start of the chain up to the first operand that `{…}` cannot hold (variables,
+    properties, array elements with a literal or variable key, method calls on them, string and int literals);
+    the rest stays concatenated. A variable operand written by a later one (`$i . $this->f($i++)`) keeps the chain.
   - `ArrayPushToAssignRector`: `\array_push($a, $v);` → `$a[] = $v;` — one or two values, the result unused, a
     defined local `array` or a property that is surely initialized (a default value, never unset).
   - `StrStartsWithRector`: `\substr($s, 0, 3) === 'abc'`, `\strpos($s, $p) === 0` → `\str_starts_with($s, …)`
@@ -519,8 +525,8 @@ ignore:
   ```text
   [WARNING] src/Cart.php:12: `@opmin-ignore` lists `fqm`, which names no known rule, so it excludes nothing.
             Did you mean `fqn`? Known names: fqn, property_fetch, array_dim_fetch, count, closure_use, sprintf,
-            array_push, str_starts_with, in_array, if_to_match, nullsafe, switch_to_match, llm, or the short class
-            name of a rule.
+            interpolate, array_push, str_starts_with, in_array, if_to_match, nullsafe, switch_to_match, llm, or the
+            short class name of a rule.
   ```
 
   It is a warning, not an error: a mark may name a standard Rector rule that this run does not enable.
@@ -533,6 +539,7 @@ ignore:
   | `count` | `HoistLoopInvariantCountRector` |
   | `closure_use` | `RemoveUnusedClosureUseRector` |
   | `sprintf` | `SprintfToConcatRector` |
+  | `interpolate` | `ConcatToInterpolationRector` |
   | `array_push` | `ArrayPushToAssignRector` |
   | `str_starts_with` | `StrStartsWithRector` |
   | `in_array` | `OrIdenticalToInArrayRector` |

@@ -9,8 +9,8 @@ use Opmin\Module\Common\Cache\FileStore;
 use Opmin\Module\Opcode\CountCache;
 use Opmin\Module\Opcode\Dump\OpcacheDumper;
 use Opmin\Module\Opcode\OpcodeCounter;
+use Opmin\Module\Optimize\Rector\Gain;
 use Opmin\Module\Project\Project;
-use Opmin\Rector\Rule\HoistLoopInvariantCountRector;
 use Opmin\Tests\Integration\TestPhp;
 use Testo\Assert;
 use Testo\Data\DataProvider;
@@ -21,7 +21,8 @@ use Testo\Test;
 /**
  * The positive fixtures of opmin's own rules are worth it: the expected code has fewer opcodes after
  * the optimizer than the input under `php.binary` (brief, M3: «положительные кейсы дают выигрыш»).
- * {@see HoistLoopInvariantCountRector} gains executed opcodes only: its static count must not grow.
+ * A rule that gains executed opcodes ({@see Gain::Executed}) must not grow the static count; one cheaper
+ * to run ({@see Gain::Cost}) may grow it — `bin/bench --cost` measures its gain.
  */
 #[Test]
 final class RuleGainTest
@@ -31,7 +32,7 @@ final class RuleGainTest
     private string $dir = '';
 
     /**
-     * @return iterable<string, array{string, string, bool}> [input, expected, executed gain only]
+     * @return iterable<string, array{string, string, Gain}> [input, expected, what the rule gains]
      */
     public static function positiveFixtures(): iterable
     {
@@ -42,7 +43,9 @@ final class RuleGainTest
             }
 
             $rule = \basename(\dirname($file));
-            yield $rule . '/' . \basename($file, '.php.inc') => [$parts[0], $parts[1], $rule === 'HoistLoopInvariantCount'];
+            /** @var class-string $class */
+            $class = "Opmin\\Rector\\Rule\\{$rule}Rector";
+            yield $rule . '/' . \basename($file, '.php.inc') => [$parts[0], $parts[1], Gain::of($class)];
         }
     }
 
@@ -60,14 +63,17 @@ final class RuleGainTest
     }
 
     #[DataProvider('positiveFixtures')]
-    public function expectedCodeHasFewerOpcodes(string $input, string $expected, bool $executedOnly): void
+    public function expectedCodeHasFewerOpcodes(string $input, string $expected, Gain $gain): void
     {
         $before = $this->opcodes($input, 'before');
         $after = $this->opcodes($expected, 'after');
 
-        $executedOnly
-            ? Assert::true($after <= $before, "ops_opt grew: {$before} → {$after}")
-            : Assert::true($after < $before, "ops_opt did not drop: {$before} → {$after}");
+        match ($gain) {
+            Gain::Opcodes => Assert::true($after < $before, "ops_opt did not drop: {$before} → {$after}"),
+            Gain::Executed => Assert::true($after <= $before, "ops_opt grew: {$before} → {$after}"),
+            # Counted without errors is all: the static count is not the gain.
+            Gain::Cost => null,
+        };
     }
 
     private function opcodes(string $code, string $name): int

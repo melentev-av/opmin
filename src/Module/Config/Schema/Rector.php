@@ -28,6 +28,7 @@ final class Rector
         'Opmin\Rector\Rule\HoistLoopInvariantCountRector' => [],
         'Opmin\Rector\Rule\RemoveUnusedClosureUseRector' => [],
         'Opmin\Rector\Rule\SprintfToConcatRector' => [],
+        'Opmin\Rector\Rule\ConcatToInterpolationRector' => [],
         'Opmin\Rector\Rule\ArrayPushToAssignRector' => [],
         'Opmin\Rector\Rule\StrStartsWithRector' => [],
         'Opmin\Rector\Rule\OrIdenticalToInArrayRector' => ['min_items' => 2],

@@ -30,8 +30,8 @@ final class RuleCatalogTest
     {
         yield 'alias with a typo' => [
             'fqm',
-            'Unknown Rector rule `fqm` in --rector-rule. Did you mean `fqn`? Name a rule by its alias (fqn, property_fetch, array_dim_fetch, count, closure_use, sprintf, array_push,'
-            . ' str_starts_with, in_array, if_to_match, nullsafe, switch_to_match), the short class name of a rule of the run or the full class name.',
+            'Unknown Rector rule `fqm` in --rector-rule. Did you mean `fqn`? Name a rule by its alias (fqn, property_fetch, array_dim_fetch, count, closure_use, sprintf, interpolate,'
+            . ' array_push, str_starts_with, in_array, if_to_match, nullsafe, switch_to_match), the short class name of a rule of the run or the full class name.',
         ];
         yield 'short name with a typo' => [
             'HoistLoopInvariantCountRectr',
@@ -61,6 +61,7 @@ final class RuleCatalogTest
             'HoistLoopInvariantCountRector',
             'RemoveUnusedClosureUseRector',
             'SprintfToConcatRector',
+            'ConcatToInterpolationRector',
             'ArrayPushToAssignRector',
             'StrStartsWithRector',
             'OrIdenticalToInArrayRector',
@@ -71,6 +72,7 @@ final class RuleCatalogTest
         Assert::same($rules[3]->options, null);
         Assert::same($rules[3]->gain, Gain::Executed);
         Assert::same($rules[0]->gain, Gain::Opcodes);
+        Assert::same($rules[6]->gain, Gain::Cost);
         Assert::same($rules[0]->alias(), 'fqn');
         Assert::true($rules[0]->custom);
     }
@@ -158,7 +160,7 @@ final class RuleCatalogTest
 
         [$aliases, $short] = RuleCatalog::ignoreNames($config, $rules);
 
-        Assert::same($aliases, ['fqn', 'property_fetch', 'array_dim_fetch', 'count', 'closure_use', 'sprintf', 'array_push', 'str_starts_with', 'in_array', 'nullsafe', 'if_to_match', 'switch_to_match', 'llm']);
+        Assert::same($aliases, ['fqn', 'property_fetch', 'array_dim_fetch', 'count', 'closure_use', 'sprintf', 'interpolate', 'array_push', 'str_starts_with', 'in_array', 'nullsafe', 'if_to_match', 'switch_to_match', 'llm']);
         Assert::same($short, [
             'FullyQualifyGlobalCallsRector',
             'SimplifyIfReturnBoolRector',
@@ -167,6 +169,7 @@ final class RuleCatalogTest
             'HoistLoopInvariantCountRector',
             'RemoveUnusedClosureUseRector',
             'SprintfToConcatRector',
+            'ConcatToInterpolationRector',
             'ArrayPushToAssignRector',
             'StrStartsWithRector',
             'OrIdenticalToInArrayRector',

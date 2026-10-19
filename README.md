@@ -243,8 +243,9 @@ opmin optimize --plan                  # say what the run would use and exit: no
   callgrind, without the JIT and with the tracing JIT: both versions on up to `guard_cost.inputs` (8) of the inputs
   of its differential test, each input in a process of its own (a fork of the loaded worker), the harness's own call
   subtracted. Counts are deterministic, so a few percent on a small function show. A change is rolled back when, in
-  either mode, one input or the mean grows by more than both `guard_cost.max_regression_percent` (5) and
-  `guard_cost.max_regression_instructions` (15). It needs valgrind: on Linux it is `valgrind`; elsewhere set
+  either mode, the mean over the inputs grows by more than both `guard_cost.max_regression_percent` (5) and
+  `guard_cost.max_regression_instructions` (15). The mean, not the worst input: generated inputs favor boundary
+  values — an interpolated string costs more than `.` when its parts are empty — which production sees far less. It needs valgrind: on Linux it is `valgrind`; elsewhere set
   `guard_cost.valgrind` to a wrapper that runs valgrind where php.binary runs and `guard_cost.php` to the PHP it
   starts there (`php` in the container). It is slow: about 10–30 s per kept change.
 - Ctrl+C (SIGINT, SIGTERM) stops a run: the step under way is dropped — its tools got the signal too — and the
@@ -288,9 +289,10 @@ opmin optimize --plan                  # say what the run would use and exit: no
     below 8.4: there PHP compiles such a `sprintf()` into a rope itself, and the rope is cheaper than the
     concatenation (fewer opcodes, but more CPU instructions per call).
   - `ConcatToInterpolationRector`: `$dir . '/' . $name . '.php'` → `"{$dir}/{$name}.php"` — PHP builds a string
-    of three and more parts as a rope, one allocation instead of one per `.`: an opcode more, but 15–18 % fewer
-    CPU instructions per call on PHP 8.1–8.5 without JIT and 30 % fewer with it, so it is accepted by cost even
-    when the count grows. From the start of the chain up to the first operand that `{…}` cannot hold (variables,
+    of three and more parts as a rope, one allocation instead of one per `.`: an opcode more, but 9–12 % fewer
+    CPU instructions per call on PHP 8.1–8.5 without JIT and 28–30 % fewer with it, so it is accepted by cost even
+    when the count grows. Without JIT it costs more when the parts are empty strings (`.` then skips the
+    allocation): `docs/rule-cost.md`. From the start of the chain up to the first operand that `{…}` cannot hold (variables,
     properties, array elements with a literal or variable key, method calls on them, string and int literals);
     the rest stays concatenated. A variable operand written by a later one (`$i . $this->f($i++)`) keeps the chain.
   - `ArrayPushToAssignRector`: `\array_push($a, $v);` → `$a[] = $v;` — one or two values, the result unused, a

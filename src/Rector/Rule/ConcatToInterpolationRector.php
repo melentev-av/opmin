@@ -21,8 +21,10 @@ use Testo\Bridge\Rector\Testing\TestRectorFixtures;
  *
  * The compiler builds an interpolated string of three and more parts as a rope (`ROPE_INIT`,
  * `ROPE_ADD`, `ROPE_END`): one allocation of the result instead of one per `.`. It is an opcode more
- * than the chain, but 15–18 % fewer CPU instructions per call on PHP 8.1–8.5 without the JIT and 30 %
- * fewer with it (`docs/rule-cost.md`): the pipeline accepts it by cost ({@see self::COST_GAIN}).
+ * than the chain, but 9–12 % fewer CPU instructions per call on PHP 8.1–8.5 without the JIT and 28–30 %
+ * fewer with it (`docs/rule-cost.md`): the pipeline accepts it by cost ({@see self::COST_GAIN}). Without
+ * the JIT it costs more on empty operands — `.` returns the other operand without allocating, the rope
+ * always allocates — which the strings it rewrites (paths, keys, messages) rarely are.
  *
  * The chain is rewritten from its start up to the first operand `{…}` cannot hold: local variables,
  * property fetches, array elements with a literal or variable key, method calls on them, string and

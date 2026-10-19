@@ -208,9 +208,10 @@ return [
             function interp_rest(string $a, string $b, string $c): string { return $a . '/' . $b . \strtoupper($c); }
             PHP,
         'inputs' => [
-            'interp3' => ['short' => "['src', 'a.php']", 'long' => "[{$long}, {$long}]"],
+            # Empty operands: `.` returns the other operand without allocating, the rope always allocates.
+            'interp3' => ['short' => "['src', 'a.php']", 'long' => "[{$long}, {$long}]", 'empty' => "['', '']", 'one_empty' => "['', 'a.php']"],
             'interp3_vars' => ['short' => "['a', 'b', 'c']", 'long' => "[{$long}, {$long}, {$long}]"],
-            'interp5' => ['short' => "['src', 'Module', 'a.php']", 'long' => "[{$long}, {$long}, {$long}]"],
+            'interp5' => ['short' => "['src', 'Module', 'a.php']", 'long' => "[{$long}, {$long}, {$long}]", 'empty' => "['', '', '']"],
             'interp9' => ['short' => "['a', 'b', 'c', 'd', 'e']"],
             'interp_int' => ['v' => "[42, 'name']"],
             'interp_prop' => ['v' => "[new %NS%\\Entry('src/Module', 'Name')]"],

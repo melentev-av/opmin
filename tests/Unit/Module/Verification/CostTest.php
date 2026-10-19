@@ -18,17 +18,18 @@ final class CostTest
      * @param list<array{float, float}> $off
      * @param list<array{float, float}> $tracing
      */
-    #[DataSet([[[100.0, 90.0], [200.0, 180.0]], [[50.0, 45.0]], null], 'cheaper everywhere')]
-    #[DataSet([[[100.0, 112.0]], [[50.0, 45.0]], null], 'more by 12 %, but only 12 instructions')]
-    #[DataSet([[[1000.0, 1040.0]], [[50.0, 45.0]], null], 'more by 40 instructions, but only 4 %')]
-    #[DataSet([[[100.0, 90.0], [100.0, 90.0], [100.0, 120.0]], [[50.0, 45.0]], 'costs more without the JIT: +0 instructions per call (+0.0%), 1 of 3 inputs beyond guard_cost (5% and 15 instructions)'], 'one input beyond both')]
-    #[DataSet([[[100.0, 90.0]], [[400.0, 430.0], [400.0, 410.0]], 'costs more with the tracing JIT: +20 instructions per call (+5.0%), 1 of 2 inputs beyond guard_cost (5% and 15 instructions)'], 'with the JIT')]
-    #[DataSet([[[0.0, 20.0]], [[50.0, 45.0]], 'costs more without the JIT: +20 instructions per call (from nothing), 1 of 1 inputs beyond guard_cost (5% and 15 instructions)'], 'from nothing')]
-    public function rejectsOnlyWhatGrowsBeyondBothThresholds(array $off, array $tracing, ?string $reason): void
+    #[DataSet([[[100.0, 90.0], [200.0, 180.0]], [[50.0, 45.0]], true, null], 'cheaper everywhere')]
+    #[DataSet([[[100.0, 112.0]], [[50.0, 45.0]], true, null], 'more by 12 %, but only 12 instructions')]
+    #[DataSet([[[1000.0, 1040.0]], [[50.0, 45.0]], true, null], 'more by 40 instructions, but only 4 %')]
+    #[DataSet([[[100.0, 90.0], [100.0, 90.0], [100.0, 120.0]], [[50.0, 45.0]], true, 'costs more without the JIT: +0 instructions per call on average (+0.0%), 1 of 3 inputs beyond guard_cost (5% and 15 instructions)'], 'each input: one input beyond both')]
+    #[DataSet([[[100.0, 90.0], [100.0, 90.0], [100.0, 120.0]], [[50.0, 45.0]], false, null], 'the mean: one input beyond both is not enough')]
+    #[DataSet([[[100.0, 90.0]], [[400.0, 430.0], [400.0, 430.0]], false, 'costs more with the tracing JIT: +30 instructions per call on average (+7.5%), 2 of 2 inputs beyond guard_cost (5% and 15 instructions)'], 'the mean with the JIT')]
+    #[DataSet([[[0.0, 20.0]], [[50.0, 45.0]], false, 'costs more without the JIT: +20 instructions per call on average (from nothing), 1 of 1 inputs beyond guard_cost (5% and 15 instructions)'], 'from nothing')]
+    public function rejectsOnlyWhatGrowsBeyondBothThresholds(array $off, array $tracing, bool $eachInput, ?string $reason): void
     {
         $cost = new Cost([Cost::OFF => $off, Cost::TRACING => $tracing]);
 
-        Assert::same($cost->regression(5, 15), $reason);
+        Assert::same($cost->regression(5, 15, $eachInput), $reason);
     }
 
     public function meanOfEachModeForTheReport(): void

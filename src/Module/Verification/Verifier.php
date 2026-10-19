@@ -489,8 +489,9 @@ final class Verifier
                 ), $tests);
             }
 
+            # The inputs are generated, boundary values first: the mean decides, not the worst one.
             $costly = $this->guardCost !== null && $this->guardCost->enabled
-                ? $verdict->cost?->regression($this->guardCost->maxRegressionPercent, $this->guardCost->maxRegressionInstructions)
+                ? $verdict->cost?->regression($this->guardCost->maxRegressionPercent, $this->guardCost->maxRegressionInstructions, eachInput: false)
                 : null;
             if ($costly !== null) {
                 return new FunctionResult($key, 'rejected', $verdict, $costly, $tests);

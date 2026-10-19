@@ -25,23 +25,25 @@ final readonly class Cost
 
     /**
      * Why the changed version costs more than allowed, or null. A change costs more when, in either
-     * mode, one input or the mean over the inputs grows by more than both `$percent` and
-     * `$instructions` (melentev-av/opmin#66: one threshold alone flags noise on tiny or huge functions).
+     * mode, the mean over the inputs — and with `$eachInput` any one input — grows by more than both
+     * `$percent` and `$instructions` (melentev-av/opmin#66: one threshold alone flags noise on tiny or
+     * huge functions). Generated inputs favor boundary values (empty strings, zeros), which production
+     * sees far less often: on them only the mean decides.
      *
      * @param non-negative-int $percent
      * @param non-negative-int $instructions
      */
-    public function regression(int $percent, int $instructions): ?string
+    public function regression(int $percent, int $instructions, bool $eachInput = false): ?string
     {
         foreach ($this->modes as $mode => $pairs) {
             $beyond = \array_filter($pairs, static fn(array $p): bool => self::beyond($p[0], $p[1], $percent, $instructions));
             [$before, $after] = self::mean($pairs);
-            if ($beyond === [] && !self::beyond($before, $after, $percent, $instructions)) {
+            if (($beyond === [] || !$eachInput) && !self::beyond($before, $after, $percent, $instructions)) {
                 continue;
             }
 
             return \sprintf(
-                'costs more %s: %+.0f instructions per call (%s), %d of %d inputs beyond guard_cost (%d%% and %d instructions)',
+                'costs more %s: %+.0f instructions per call on average (%s), %d of %d inputs beyond guard_cost (%d%% and %d instructions)',
                 $mode === self::OFF ? 'without the JIT' : 'with the tracing JIT',
                 $after - $before,
                 self::percent($before, $after),

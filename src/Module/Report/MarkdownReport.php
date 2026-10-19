@@ -39,7 +39,12 @@ final class MarkdownReport
             '**%d → %d opcodes** (%s) in %d function(s); %d change(s) rolled back.',
             $before,
             $after,
-            $before === $after ? 'no change' : \sprintf('−%d, −%s%%', $before - $after, self::number((float) ($totals['percent'] ?? 0))),
+            $before === $after ? 'no change' : \sprintf(
+                '%2$s%1$d, %2$s%3$s%%',
+                \abs($before - $after),
+                $after < $before ? '−' : '+',
+                self::number(\abs((float) ($totals['percent'] ?? 0))),
+            ),
             (int) ($totals['functions_changed'] ?? 0),
             (int) ($totals['changes_rolled_back'] ?? 0),
         );

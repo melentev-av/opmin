@@ -602,7 +602,8 @@ final class Optimize extends Stage
             '%d → %d opcodes (%s). Report: %s%s',
             $report->opsBefore,
             $report->opsAfter,
-            $report->opsAfter === $report->opsBefore ? 'no change' : \sprintf('-%d', $report->opsBefore - $report->opsAfter),
+            # Rules cheaper to run may add opcodes: the change has either sign.
+            $report->opsAfter === $report->opsBefore ? 'no change' : \sprintf('%+d', $report->opsAfter - $report->opsBefore),
             $project->relative(Layout::report($runDir) ?? $runDir->join('report.md')),
             $report->patch === null ? '' : ', patch: ' . $report->patch . ($dryRun ? ' (dry run: files restored)' : ''),
         ));

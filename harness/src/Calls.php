@@ -97,11 +97,102 @@ final class Calls
      */
     public static function bench(array $request): array
     {
+        $iterations = \max(1, (int) ($request['iterations'] ?? 100));
+
+        return self::measured($request, static function (\Closure $call, \Closure $args) use ($iterations): array {
+            $ns = 0;
+            for ($i = 0; $i < $iterations; ++$i) {
+                $list = $args();
+                $start = \hrtime(true);
+                try {
+                    $call($list);
+                } catch (\Throwable) {
+                }
+
+                $ns += \hrtime(true) - $start;
+                \ob_get_length() > 1 << 20 and \ob_clean();
+            }
+
+            return ['ns' => $ns, 'iterations' => $iterations];
+        });
+    }
+
+    /**
+     * The `cost` command, for a worker under callgrind (`--dump-before=usleep`): `warm`, `n1` and `n2`
+     * calls on one input, each run closed by `usleep(0)`, where callgrind dumps its counters. The
+     * orchestrator takes (run of `n2` − run of `n1`) / (`n2` − `n1`) as the instructions of one call:
+     * whatever else the runs hold — the loop, the request — cancels out. The arguments of every call
+     * are built before the first run. With `baseline`, the same runs follow with a call that does
+     * nothing ({@see Invoker::noop()}): three more dumps, the cost of the harness's own call path.
+     *
+     * @param array<array-key, mixed> $request
+     * @return array<string, mixed>
+     */
+    public static function cost(array $request): array
+    {
+        $warm = \max(0, (int) ($request['warm'] ?? 100));
+        $n1 = \max(1, (int) ($request['n1'] ?? 200));
+        $n2 = \max($n1 + 1, (int) ($request['n2'] ?? 600));
+        $baseline = ($request['baseline'] ?? false) === true;
+        $input = (array) ($request['input'] ?? []);
+        $strict = (bool) ($input['strict'] ?? false);
+        $arity = \count((array) ($input['args'] ?? []));
+
+        return self::measured($request, static function (\Closure $call, \Closure $args) use ($warm, $n1, $n2, $baseline, $strict, $arity): array {
+            $lists = [];
+            foreach ([$warm, $n1, $n2] as $run => $n) {
+                for ($i = 0; $i < $n; ++$i) {
+                    $lists[$run][] = $args();
+                }
+            }
+
+            foreach ($baseline ? [$call, Invoker::noop($arity, $strict)] : [$call] as $measured) {
+                foreach ($lists as $run) {
+                    foreach ($run as $list) {
+                        try {
+                            $measured($list);
+                        } catch (\Throwable) {
+                        }
+
+                        \ob_get_length() > 1 << 20 and \ob_clean();
+                    }
+
+                    \usleep(0);
+                }
+            }
+
+            return ['warm' => $warm, 'n1' => $n1, 'n2' => $n2, 'baseline' => $baseline];
+        });
+    }
+
+    /**
+     * Output of the buffers from the given level up, which are closed.
+     */
+    public static function output(int $level): string
+    {
+        $output = '';
+        while (\ob_get_level() >= $level && \ob_get_level() > 0) {
+            $output = (string) \ob_get_clean() . $output;
+        }
+
+        return $output;
+    }
+
+    /**
+     * Runs `$run` with the target resolved once (reflection and `Closure::bind` stay out of it) and a
+     * builder of the arguments; output, warnings and exceptions are swallowed, globals and statics
+     * restored afterwards.
+     *
+     * @param array<array-key, mixed> $request
+     * @param \Closure(\Closure(list<mixed>): mixed, \Closure(): list<mixed>): array<string, mixed> $run
+     * @return array<string, mixed>
+     */
+    private static function measured(array $request, \Closure $run): array
+    {
         /** @var array<array-key, mixed> $target */
         $target = (array) ($request['target'] ?? []);
         /** @var array{args?: list<array<array-key, mixed>>, this?: array<array-key, mixed>|null, uses?: array<string, array<array-key, mixed>>, strict?: bool} $input */
         $input = (array) ($request['input'] ?? []);
-        $iterations = \max(1, (int) ($request['iterations'] ?? 100));
 
         $describer = new Describer();
         $journal = new Journal($describer);
@@ -127,26 +218,15 @@ final class Calls
                 return ['ok' => true, 'status' => 'unbuildable', 'exception' => $describer->exception($e)];
             }
 
-            $ns = 0;
             \ob_start();
-            for ($i = 0; $i < $iterations; ++$i) {
-                $args = $builder->buildList($input['args'] ?? []);
-                $start = \hrtime(true);
-                try {
-                    $call($args);
-                } catch (\Throwable) {
-                }
+            $result = $run($call, static fn(): array => $builder->buildList($input['args'] ?? []));
 
-                $ns += \hrtime(true) - $start;
-                \ob_get_length() > 1 << 20 and \ob_clean();
-            }
-
-            # Whether the timed code was compiled by OPcache with its optimizer, as in production.
+            # Whether the measured code was compiled by OPcache with its optimizer, as in production.
             $status = \function_exists('opcache_get_status') ? @\opcache_get_status(false) : false;
             $opcache = \is_array($status) && ($status['opcache_enabled'] ?? false) === true
                 && \function_exists('opcache_is_script_cached') && \opcache_is_script_cached((string) Invoker::location($target)[0]);
 
-            return ['ok' => true, 'status' => 'done', 'ns' => $ns, 'iterations' => $iterations, 'opcache' => $opcache];
+            return ['ok' => true, 'status' => 'done'] + $result + ['opcache' => $opcache];
         } finally {
             while (\ob_get_level() > $level) {
                 \ob_end_clean();
@@ -156,19 +236,6 @@ final class Calls
             Mocks::end();
             Isolation::restore($snapshot);
         }
-    }
-
-    /**
-     * Output of the buffers from the given level up, which are closed.
-     */
-    public static function output(int $level): string
-    {
-        $output = '';
-        while (\ob_get_level() >= $level && \ob_get_level() > 0) {
-            $output = (string) \ob_get_clean() . $output;
-        }
-
-        return $output;
     }
 
     /**

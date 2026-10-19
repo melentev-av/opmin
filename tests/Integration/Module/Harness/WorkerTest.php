@@ -60,6 +60,7 @@ final class WorkerTest
         function closures(int $k) { return function (int $x) use ($k) { return $x * $k; }; }
         function cwd() { return getcwd(); }
         function limit() { return ini_get('memory_limit'); }
+        function tally(bool $read = false) { static $n = 0; return $read ? $n : ++$n; }
         PHP;
 
     private string $dir;
@@ -338,6 +339,27 @@ final class WorkerTest
 
         Assert::same($result['status'], 'fatal');
         Assert::string((string) $result['calls'][0]['message'])->contains('Allowed memory size');
+    }
+
+    public function benchTimesTheCalls(): void
+    {
+        $this->load();
+
+        $response = $this->worker()->request(['cmd' => 'bench', 'target' => ['kind' => 'function', 'name' => 'App\typed'], 'input' => ['args' => [self::int(3)]], 'iterations' => 50]);
+
+        Assert::same([$response['status'], $response['iterations']], ['done', 50]);
+        Assert::true(\is_int($response['ns']) && $response['ns'] > 0);
+    }
+
+    public function costRunsTheWarmUpAndBothRunsOfCalls(): void
+    {
+        $this->load();
+
+        $response = $this->worker()->request(['cmd' => 'cost', 'target' => ['kind' => 'function', 'name' => 'App\tally'], 'input' => ['args' => []], 'warm' => 2, 'n1' => 3, 'n2' => 5]);
+        $read = $this->call(['kind' => 'function', 'name' => 'App\tally'], [['type' => 'bool', 'value' => true]]);
+
+        Assert::same([$response['status'], $response['warm'], $response['n1'], $response['n2']], ['done', 2, 3, 5]);
+        Assert::same($read['calls'][0]['value'], self::int(10));
     }
 
     public function unbuildableInputIsReported(): void

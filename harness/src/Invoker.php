@@ -53,9 +53,12 @@ final class Invoker
 
         function bound(?object $object, string $scope, string $name): \Closure
         {
-            return $object === null
-                ? \Closure::bind(static fn(array &$a): mixed => $scope::$name(...$a), null, $scope)
-                : \Closure::bind(fn(array &$a): mixed => $this->$name(...$a), $object, $scope);
+            # Resolved once: the measured calls look the method up by name no more.
+            $method = $object === null
+                ? \Closure::bind(static fn(): \Closure => \Closure::fromCallable([$scope, $name]), null, $scope)()
+                : \Closure::bind(fn(): \Closure => \Closure::fromCallable([$this, $name]), $object, $scope)();
+
+            return static fn(array &$a): mixed => $method(...$a);
         }
 
         function maker(string $class): \Closure
@@ -65,7 +68,9 @@ final class Invoker
 
         function named(string $name): \Closure
         {
-            return static fn(array &$a): mixed => $name(...$a);
+            $function = \Closure::fromCallable($name);
+
+            return static fn(array &$a): mixed => $function(...$a);
         }
 
         function wrapped(\Closure $closure): \Closure
@@ -197,6 +202,25 @@ final class Invoker
         } catch (\Throwable) {
             return [null, 0];
         }
+    }
+
+    /**
+     * A call that does nothing with `$arity` arguments, through the path {@see self::prepare()} takes
+     * for functions and methods (a resolved closure called with the arguments spread): what calling
+     * costs in the harness itself, subtracted by `cost`.
+     *
+     * @param non-negative-int $arity
+     * @return \Closure(list<mixed>): mixed
+     */
+    public static function noop(int $arity, bool $strict): \Closure
+    {
+        self::compile();
+        $params = \implode(', ', \array_map(static fn(int $i): string => "\$p{$i} = null", \range(0, $arity - 1)));
+        /** @var \Closure $noop */
+        $noop = eval('return static function (' . ($arity === 0 ? '' : $params) . ') { return null; };');
+
+        /** @var \Closure(list<mixed>): mixed */
+        return (($strict ? 'Opmin\Harness\Call\Strict\\' : 'Opmin\Harness\Call\Weak\\') . 'wrapped')($noop);
     }
 
     /**

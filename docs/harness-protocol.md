@@ -196,3 +196,19 @@ Response: `{"ok": true, "status": "done", "ns": 1234567, "iterations": 2000, "op
 file of the target was compiled by OPcache. The orchestrator starts bench workers with OPcache and the optimizer
 as in production (`opcache.optimization_level` of the counts, JIT off); the files of a version are served by the
 stream wrapper, and OPcache caches and optimizes them like plain files.
+
+### `cost`
+
+```json
+{"cmd": "cost", "target": <target>, "input": <input as in call>, "warm": 100, "n1": 200, "n2": 600, "baseline": true}
+```
+
+For a worker started under callgrind (`valgrind --tool=callgrind --dump-before=usleep`): `warm`, `n1` and `n2`
+calls on one input, each run closed by `usleep(0)`, so callgrind dumps its counters after every run — three dumps
+per request. The orchestrator takes (run of `n2` − run of `n1`) / (`n2` − `n1`) as the instructions of one call;
+the loop and the request cancel out. The arguments of every call are built before the first run; `this`, output,
+warnings and exceptions are handled as in `bench`. With `baseline`, the same three runs follow with a call that
+does nothing through the same path (by name, `Closure::bind` or a wrapper): three more dumps, the cost of the
+harness's own call per call, which the orchestrator subtracts.
+
+Response: `{"ok": true, "status": "done", "warm": 100, "n1": 200, "n2": 600, "baseline": true, "opcache": true}`.

@@ -31,6 +31,27 @@ final class Benchmark
     private bool $opcache = true;
 
     /**
+     * Up to `$count` inputs evenly spread over the list: boundary values come first, random ones later.
+     *
+     * @param list<Input> $inputs
+     * @return list<Input>
+     */
+    public static function spread(array $inputs, int $count): array
+    {
+        $total = \count($inputs);
+        if ($total <= $count) {
+            return $inputs;
+        }
+
+        $result = [];
+        for ($i = 0; $i < $count; ++$i) {
+            $result[] = $inputs[\intdiv($i * $total, $count)];
+        }
+
+        return $result;
+    }
+
+    /**
      * @param list<Input> $inputs Inputs both versions take (checked by the differential test).
      * @param array<string, mixed> $originalTarget
      * @param array<string, mixed> $changedTarget
@@ -93,27 +114,6 @@ final class Benchmark
             'rounds' => self::ROUNDS,
             'opcache' => $this->opcache,
         ];
-    }
-
-    /**
-     * Up to `$count` inputs evenly spread over the list: boundary values come first, random ones later.
-     *
-     * @param list<Input> $inputs
-     * @return list<Input>
-     */
-    private static function spread(array $inputs, int $count): array
-    {
-        $total = \count($inputs);
-        if ($total <= $count) {
-            return $inputs;
-        }
-
-        $result = [];
-        for ($i = 0; $i < $count; ++$i) {
-            $result[] = $inputs[\intdiv($i * $total, $count)];
-        }
-
-        return $result;
     }
 
     /**

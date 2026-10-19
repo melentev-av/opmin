@@ -193,6 +193,7 @@ opmin optimize --with-standard-rector  # also the standard Rector rules (off by 
 opmin optimize --review                # confirm every change: y / n / a (all of this rule) / q
 opmin optimize --resume                # continue the latest interrupted run (or --resume=.opmin/runs/<ts>)
 opmin optimize --guard-perf            # also roll back changes that make a function slower
+opmin optimize --guard-cost            # also roll back changes that cost more CPU instructions per call (callgrind)
 opmin optimize --rector-rule=fqn --rector-rule=count   # only these rules: alias, short or full class name
 opmin optimize --plan                  # say what the run would use and exit: nothing is changed or tested
 ```
@@ -238,6 +239,14 @@ opmin optimize --plan                  # say what the run would use and exit: no
   of its differential test, compiled by OPcache as in production, in alternating order over 7 rounds; the median
   change of the time goes to the report, and a change slower by more than `guard_perf.max_regression_percent`
   (5) is rolled back even with fewer opcodes. Changes proven only by the project's tests are not timed.
+- `--guard-cost` (or `guard_cost.enabled`) counts the CPU instructions per call of every diff-tested change under
+  callgrind, without the JIT and with the tracing JIT: both versions on up to `guard_cost.inputs` (8) of the inputs
+  of its differential test, each input in a process of its own (a fork of the loaded worker), the harness's own call
+  subtracted. Counts are deterministic, so a few percent on a small function show. A change is rolled back when, in
+  either mode, one input or the mean grows by more than both `guard_cost.max_regression_percent` (5) and
+  `guard_cost.max_regression_instructions` (15). It needs valgrind: on Linux it is `valgrind`; elsewhere set
+  `guard_cost.valgrind` to a wrapper that runs valgrind where php.binary runs and `guard_cost.php` to the PHP it
+  starts there (`php` in the container). It is slow: about 10–30 s per kept change.
 - Ctrl+C (SIGINT, SIGTERM) stops a run: the step under way is dropped — its tools got the signal too — and the
   report says the run was interrupted. Every step is saved to `.opmin/runs/<ts>/state.json`; `--resume` puts the files
   back to the last accepted step (also after a crash or `kill -9`, dropping an opmin commit the state missed) and

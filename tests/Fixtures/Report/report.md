@@ -33,7 +33,8 @@ OPcache of `php.binary` (see Environment).
   generated inputs and behaved the same (result, output, exceptions, warnings, changed arguments);
   `tests` — the generated inputs could not prove it (side effects, too little of the code reached),
   the project's tests that run the function pass; `unverified` — not proven, kept because
-  `verification.allow_unverified` is on. "time ±N%" is the speed change measured by `--guard-perf`.
+  `verification.allow_unverified` is on. "time ±N%" is the speed change measured by `--guard-perf`, "cost ±N% /
+  ±N% JIT" the change of CPU instructions per call without and with the tracing JIT counted by `--guard-cost`.
 - **Behavior check**: how many generated inputs both versions got, and how much of the original
   function's code those inputs reached. Below `verification.min_branch_coverage` the generated inputs
   alone do not prove a change. "—": not checked this way.

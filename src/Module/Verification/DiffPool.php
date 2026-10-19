@@ -94,13 +94,14 @@ final class DiffPool
     /**
      * @param list<DiffTask> $tasks
      * @param bool $measure Time both versions of every accepted function (guard-perf).
+     * @param CostMeter|null $cost Count their instructions under callgrind (guard-cost).
      * @return list<Verdict> In the order of the tasks.
      */
-    public function verify(array $tasks, bool $measure): array
+    public function verify(array $tasks, bool $measure, ?CostMeter $cost = null): array
     {
         $jobs = self::jobs($this->config->jobs, $this->config->memoryLimit);
         if ($jobs === 1 || \count($tasks) <= 1) {
-            $tester = $this->tester($measure, $this->timings);
+            $tester = $this->tester($measure, $this->timings, $cost);
             $verdicts = [];
             $tasks === [] or $this->progress->on(Event::diffTests(\count($tasks), 1));
             foreach ($tasks as $task) {
@@ -115,7 +116,7 @@ final class DiffPool
         $this->progress->on(Event::diffTests(\count($tasks), $jobs));
         $results = $this->timings->measure('diff_test.pool', fn(): array => $this->parallel($tasks, $jobs));
         $verdicts = [];
-        $tester = $measure ? $this->tester(false, $this->timings) : null;
+        $tester = $measure || $cost !== null ? $this->tester($measure, $this->timings, $cost) : null;
         foreach ($tasks as $i => $task) {
             [$verdict, $inputs] = $results[$i];
             $this->timings->add('diff_test', $verdict->seconds);
@@ -126,9 +127,9 @@ final class DiffPool
         return $verdicts;
     }
 
-    private function tester(bool $measure, Timings $timings): DiffTester
+    private function tester(bool $measure, Timings $timings, ?CostMeter $cost = null): DiffTester
     {
-        return new DiffTester($this->php, $this->config, $this->workDir, $this->corpus, measure: $measure, timings: $timings);
+        return new DiffTester($this->php, $this->config, $this->workDir, $this->corpus, measure: $measure, timings: $timings, cost: $cost);
     }
 
     /**

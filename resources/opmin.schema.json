@@ -414,6 +414,51 @@
                 }
             }
         },
+        "guard_cost": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "description": "Measure instructions per call under callgrind and roll back costlier code",
+                    "type": "boolean",
+                    "default": false
+                },
+                "max_regression_percent": {
+                    "description": "Allowed growth of instructions per call, %; a change is rolled back when it exceeds this and max_regression_instructions",
+                    "type": "integer",
+                    "default": 5
+                },
+                "max_regression_instructions": {
+                    "description": "Allowed growth of instructions per call; see max_regression_percent",
+                    "type": "integer",
+                    "default": 15
+                },
+                "inputs": {
+                    "description": "Inputs of the differential test measured per function",
+                    "type": "integer",
+                    "default": 8
+                },
+                "valgrind": {
+                    "description": "valgrind executable, or a wrapper that runs it where php.binary runs (Docker)",
+                    "type": "string",
+                    "minLength": 1,
+                    "default": "valgrind"
+                },
+                "php": {
+                    "description": "PHP executable valgrind starts; null — php.binary (set `php` when guard_cost.valgrind runs in a container)",
+                    "anyOf": [
+                        {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
+                }
+            }
+        },
         "check": {
             "type": "object",
             "additionalProperties": false,

@@ -79,6 +79,7 @@ final class DiffTester
         private readonly Instrumenter $instrumenter = new Instrumenter(),
         private readonly bool $measure = false,
         private readonly Timings $timings = new Timings(),
+        private readonly ?CostMeter $cost = null,
     ) {}
 
     public function verify(DiffTask $task): Verdict
@@ -86,19 +87,7 @@ final class DiffTester
         $start = \hrtime(true);
         $verdict = $this->run($task);
 
-        return new Verdict(
-            $verdict->key,
-            $verdict->status,
-            $verdict->reason,
-            $verdict->coverage,
-            $verdict->inputs,
-            $verdict->probes,
-            $verdict->counterexample,
-            $verdict->flags,
-            (float) (\hrtime(true) - $start) / 1e9,
-            $verdict->dead,
-            $verdict->perf,
-        );
+        return $verdict->with($verdict->perf, $verdict->cost, (float) (\hrtime(true) - $start) / 1e9);
     }
 
     /**
@@ -112,9 +101,9 @@ final class DiffTester
     }
 
     /**
-     * The verdict with the time of both versions on the given inputs, measured on its own: the guard-perf
-     * of a test that ran in another process ({@see DiffPool}), one after another so that nothing else
-     * runs at the same time.
+     * The verdict with the time (guard-perf) and the instructions (guard-cost) of both versions on the
+     * given inputs, measured on its own: for a test that ran in another process ({@see DiffPool}), one
+     * after another so that nothing else runs at the same time.
      *
      * @param list<Input> $inputs
      */
@@ -131,7 +120,11 @@ final class DiffTester
         FS::mkdir((string) $dir);
         $this->checkedInputs = $inputs;
         try {
-            return $this->timings->measure('diff_test.perf', fn(): Verdict => $this->withPerf($verdict, $task, $original, $changed, $dir));
+            $this->measure and $verdict = $this->timings->measure('diff_test.perf', fn(): Verdict => $this->withPerf($verdict, $task, $original, $changed, $dir));
+            $meter = $this->cost;
+            $meter === null or $verdict = $this->timings->measure('diff_test.cost', fn(): Verdict => $this->withCost($verdict, $task, $original, $changed, $dir, $meter));
+
+            return $verdict;
         } finally {
             FS::remove($dir);
         }
@@ -311,6 +304,13 @@ final class DiffTester
                 $verdict = $this->timings->measure('diff_test.perf', fn(): Verdict => $this->withPerf($verdict, $task, $original, $changed, $dir));
             }
 
+            if ($this->cost !== null && $verdict->accepted()) {
+                $originalSession->close();
+                $changedSession->close();
+                $meter = $this->cost;
+                $verdict = $this->timings->measure('diff_test.cost', fn(): Verdict => $this->withCost($verdict, $task, $original, $changed, $dir, $meter));
+            }
+
             return $verdict;
         } catch (HarnessException $e) {
             return new Verdict($task->key, VerdictStatus::Unverified, 'the harness cannot run the function: ' . $e->getMessage(), flags: $flags);
@@ -488,19 +488,28 @@ final class DiffTester
             $changedSession->close();
         }
 
-        return new Verdict(
-            $verdict->key,
-            $verdict->status,
-            $verdict->reason,
-            $verdict->coverage,
-            $verdict->inputs,
-            $verdict->probes,
-            $verdict->counterexample,
-            $verdict->flags,
-            $verdict->seconds,
-            $verdict->dead,
-            $perf,
-        );
+        return $verdict->with($perf, $verdict->cost);
+    }
+
+    /**
+     * The verdict with the instructions per call of both versions under callgrind (`--guard-cost`).
+     */
+    private function withCost(Verdict $verdict, DiffTask $task, Target $original, Target $changed, Path $dir, CostMeter $meter): Verdict
+    {
+        try {
+            $cost = $meter->measure(
+                $this->load($task, $original, $task->original, $dir, 'cost-original', false),
+                $this->load($task, $changed, $task->changed, $dir, 'cost-changed', false),
+                $original->call,
+                $changed->call,
+                $this->checkedInputs,
+                $dir,
+            );
+        } catch (HarnessException) {
+            $cost = null;
+        }
+
+        return $verdict->with($verdict->perf, $cost);
     }
 
     /**

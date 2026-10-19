@@ -94,6 +94,7 @@ final class Verifier
         private readonly Listener $progress = new Silent(),
         private readonly ?Schema\GuardPerf $guardPerf = null,
         private readonly Timings $timings = new Timings(),
+        private readonly ?Schema\GuardCost $guardCost = null,
     ) {}
 
     /**
@@ -189,7 +190,10 @@ final class Verifier
 
         $pool = new DiffPool($this->php, $this->verification, $work, $this->cacheDir->join('corpus'), $this->timings, $this->progress);
         $results = [];
-        foreach ($pool->verify($tasks, $this->guardPerf?->enabled ?? false) as $i => $verdict) {
+        $meter = $this->guardCost !== null && $this->guardCost->enabled
+            ? new CostMeter($this->php, $this->guardCost, $this->verification->memoryLimit)
+            : null;
+        foreach ($pool->verify($tasks, $this->guardPerf?->enabled ?? false, $meter) as $i => $verdict) {
             [$file, $relative, $original] = $owners[$i];
             $results[] = $this->decide($tasks[$i]->key, $verdict, $testsOf[(string) $file][$tasks[$i]->key] ?? [], $testResult?->success ?? false, $runner, $original, $relative, $counterexamples);
         }
@@ -483,6 +487,13 @@ final class Verifier
                     $verdict->perf['inputs'] ?? 0,
                     $this->guardPerf->maxRegressionPercent,
                 ), $tests);
+            }
+
+            $costly = $this->guardCost !== null && $this->guardCost->enabled
+                ? $verdict->cost?->regression($this->guardCost->maxRegressionPercent, $this->guardCost->maxRegressionInstructions)
+                : null;
+            if ($costly !== null) {
+                return new FunctionResult($key, 'rejected', $verdict, $costly, $tests);
             }
 
             return new FunctionResult($key, 'diff-tested', $verdict, '', $tests);

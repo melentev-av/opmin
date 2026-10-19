@@ -35,6 +35,7 @@ final class ConfigSchema
         Schema\Ignore::class,
         Schema\Llm::class,
         Schema\GuardPerf::class,
+        Schema\GuardCost::class,
         Schema\Check::class,
         Schema\Package::class,
         Schema\Git::class,

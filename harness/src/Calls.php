@@ -161,7 +161,8 @@ final class Calls
                 }
             }
 
-            return ['warm' => $warm, 'n1' => $n1, 'n2' => $n2, 'baseline' => $baseline];
+            # The process whose callgrind dumps hold the runs: a forked child has a file of its own.
+            return ['warm' => $warm, 'n1' => $n1, 'n2' => $n2, 'baseline' => $baseline, 'pid' => \getmypid()];
         });
     }
 

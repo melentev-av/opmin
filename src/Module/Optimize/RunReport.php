@@ -158,6 +158,7 @@ final class RunReport
                     'executed_gain' => false,
                     'cost_gain' => false,
                     'time_change_percent' => null,
+                    'cost_change_percent' => null,
                     'gains' => [],
                 ];
                 $entry['saved'] += $change['gain'];
@@ -178,6 +179,13 @@ final class RunReport
                     /** @var mixed $time */
                     $time = $check['time_change_percent'] ?? null;
                     \is_float($time) || \is_int($time) and $entry['time_change_percent'] = \max($entry['time_change_percent'] ?? -100.0, (float) $time);
+                    # The worst change of each JIT mode over the functions of the family.
+                    /** @var array<string, array{change_percent?: float|int|null}> $costs */
+                    $costs = \is_array($check['cost'] ?? null) ? $check['cost'] : [];
+                    foreach ($costs as $mode => $cost) {
+                        $percent = $cost['change_percent'] ?? null;
+                        $percent === null or $entry['cost_change_percent'][$mode] = \max($entry['cost_change_percent'][$mode] ?? -100.0, (float) $percent);
+                    }
                     /** @var mixed $inputs */
                     $inputs = $check['inputs'] ?? null;
                     \is_int($inputs) and $entry['inputs'] = \max($entry['inputs'] ?? 0, $inputs);

@@ -155,7 +155,7 @@ final class MarkdownReport
                     . (($function['executed_gain'] ?? false) === true && (int) ($function['saved'] ?? 0) === 0 ? ' (executed: fewer)' : '')
                     . (($function['cost_gain'] ?? false) === true && (int) ($function['saved'] ?? 0) <= 0 ? ' (cheaper to run)' : ''),
                 self::cell(\implode(', ', \array_unique($by))),
-                self::cell((string) ($function['status'] ?? '')) . self::time($function['time_change_percent'] ?? null),
+                self::cell((string) ($function['status'] ?? '')) . self::time($function['time_change_percent'] ?? null) . self::cost($function['cost_change_percent'] ?? null),
                 $coverage !== null ? (\is_int($function['inputs'] ?? null) ? "{$function['inputs']} inputs, " : '') . self::number($coverage) . '% of the original reached' : '—',
                 $runner ? (string) \count(self::strings($function['tests'] ?? null)) : '—',
                 self::cell(\implode(', ', self::strings($function['flags'] ?? null))),
@@ -168,7 +168,8 @@ final class MarkdownReport
         $out[] = '  generated inputs and behaved the same (result, output, exceptions, warnings, changed arguments);';
         $out[] = '  `tests` — the generated inputs could not prove it (side effects, too little of the code reached),';
         $out[] = '  the project\'s tests that run the function pass; `unverified` — not proven, kept because';
-        $out[] = '  `verification.allow_unverified` is on. "time ±N%" is the speed change measured by `--guard-perf`.';
+        $out[] = '  `verification.allow_unverified` is on. "time ±N%" is the speed change measured by `--guard-perf`, "cost ±N% /';
+        $out[] = '  ±N% JIT" the change of CPU instructions per call without and with the tracing JIT counted by `--guard-cost`.';
         $out[] = '- **Behavior check**: how many generated inputs both versions got, and how much of the original';
         $out[] = '  function\'s code those inputs reached. Below `verification.min_branch_coverage` the generated inputs';
         $out[] = '  alone do not prove a change. "—": not checked this way.';
@@ -390,6 +391,20 @@ final class MarkdownReport
     private static function time(mixed $percent): string
     {
         return \is_float($percent) || \is_int($percent) ? \sprintf(', time %+.1f%%', (float) $percent) : '';
+    }
+
+    /**
+     * ", cost −12.0% / −8.5% JIT" when `--guard-cost` counted the instructions.
+     */
+    private static function cost(mixed $percent): string
+    {
+        if (!\is_array($percent)) {
+            return '';
+        }
+
+        $format = static fn(mixed $p): string => \is_float($p) || \is_int($p) ? \sprintf('%+.1f%%', (float) $p) : '?';
+
+        return \sprintf(', cost %s / %s JIT', $format($percent['off'] ?? null), $format($percent['tracing'] ?? null));
     }
 
     /**

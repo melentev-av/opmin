@@ -30,6 +30,7 @@ use Opmin\Module\Project\Layout;
 use Opmin\Module\Project\Project;
 use Opmin\Module\Project\Targets;
 use Opmin\Module\Report\ConsoleSummary;
+use Opmin\Module\Verification\CostMeter;
 use Opmin\Module\Verification\Verifier;
 use Opmin\Rector\Rule\AbstractExtractRepeatedReadRector;
 use Opmin\Rector\Rule\FullyQualifyGlobalCallsRector;
@@ -72,7 +73,7 @@ final class Optimize extends Stage
     private const PACKAGE_ONLY = ['ref', 'no-docker', 'allow-scripts', 'force-public-api', 'yes'];
 
     /** Options passed on to the opmin that optimizes the clone of a git package. */
-    private const PACKAGE_FORWARDED = ['dry-run', 'guard-perf', 'with-standard-rector', 'without-standard-rector', 'allow-unverified'];
+    private const PACKAGE_FORWARDED = ['dry-run', 'guard-perf', 'guard-cost', 'with-standard-rector', 'without-standard-rector', 'allow-unverified'];
 
     public function configure(): void
     {
@@ -84,6 +85,7 @@ final class Optimize extends Stage
         $this->addOption('review', null, InputOption::VALUE_NONE, 'Confirm every change interactively');
         $this->addOption('resume', null, InputOption::VALUE_OPTIONAL, 'Continue an interrupted run: the latest one or the given run directory');
         $this->addOption('guard-perf', null, InputOption::VALUE_NONE, 'Roll back changes that make code slower');
+        $this->addOption('guard-cost', null, InputOption::VALUE_NONE, 'Roll back changes that cost more CPU instructions per call (callgrind)');
         $this->addOption('with-standard-rector', null, InputOption::VALUE_NONE, 'Enable the standard Rector rules for this run');
         $this->addOption('without-standard-rector', null, InputOption::VALUE_NONE, 'Disable the standard Rector rules for this run');
         $this->addOption('rector-rule', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Run only the given Rector rule (alias, short or full class name), repeatable');
@@ -147,12 +149,13 @@ final class Optimize extends Stage
             $php = (new PhpBinaryProbe())->probe($phpConfig->binary);
             [$project, $paths] = Targets::resolve($arguments, Path::create((string) \getcwd()), $projectConfig);
             $state = $resume ? $this->resumed($project, $input) : null;
-            /** @var array{dry_run?: bool, allow_unverified?: bool, allow_public_signatures?: bool, guard_perf?: bool, format?: string|null} $options */
+            /** @var array{dry_run?: bool, allow_unverified?: bool, allow_public_signatures?: bool, guard_perf?: bool, guard_cost?: bool, format?: string|null} $options */
             $options = $state?->options ?? [
                 'dry_run' => (bool) $input->getOption('dry-run'),
                 'allow_unverified' => (bool) $input->getOption('allow-unverified'),
                 'allow_public_signatures' => (bool) $input->getOption('allow-public-signatures'),
                 'guard_perf' => (bool) $input->getOption('guard-perf'),
+                'guard_cost' => (bool) $input->getOption('guard-cost'),
                 'format' => \is_string($input->getOption('format')) && $input->getOption('format') !== '' ? $input->getOption('format') : null,
             ];
             ($options['allow_unverified'] ?? false) and $verification->allowUnverified = true;
@@ -160,6 +163,14 @@ final class Optimize extends Stage
                 /** @var Schema\GuardPerf $guardPerf */
                 $guardPerf = $this->container->get(Schema\GuardPerf::class);
                 $guardPerf->enabled = true;
+            }
+
+            /** @var Schema\GuardCost $guardCost */
+            $guardCost = $this->container->get(Schema\GuardCost::class);
+            ($options['guard_cost'] ?? false) and $guardCost->enabled = true;
+            if ($guardCost->enabled) {
+                $why = (new CostMeter($php, $guardCost, $verification->memoryLimit))->unavailable();
+                $why === null or throw new \InvalidArgumentException($why);
             }
 
             $format = $options['format'] ?? null;

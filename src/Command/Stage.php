@@ -248,6 +248,8 @@ abstract class Stage extends Base
         $ignore = $this->container->get(Schema\Ignore::class);
         /** @var Schema\GuardPerf $guardPerf */
         $guardPerf = $this->container->get(Schema\GuardPerf::class);
+        /** @var Schema\GuardCost $guardCost */
+        $guardCost = $this->container->get(Schema\GuardCost::class);
 
         $timings = new Timings();
         try {
@@ -264,7 +266,7 @@ abstract class Stage extends Base
             $timings->measure('once.references', fn(): ReferenceIndex => ReferenceIndex::build($project, $cacheDir, $this->cacheStore())),
             new RectorRunner($project, $cacheDir, $phpTarget),
             Formatter::create($project, $php, $commands->format),
-            new Verifier($project, $php, $verification, $commands, $tests, $cacheDir, $phpTarget, $progress, $guardPerf, $timings),
+            new Verifier($project, $php, $verification, $commands, $tests, $cacheDir, $phpTarget, $progress, $guardPerf, $timings, $guardCost),
             $rectorConfig,
             $readability,
             $signatures,

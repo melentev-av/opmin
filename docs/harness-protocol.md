@@ -211,4 +211,7 @@ warnings and exceptions are handled as in `bench`. With `baseline`, the same thr
 does nothing through the same path (by name, `Closure::bind` or a wrapper): three more dumps, the cost of the
 harness's own call per call, which the orchestrator subtracts.
 
-Response: `{"ok": true, "status": "done", "warm": 100, "n1": 200, "n2": 600, "baseline": true, "opcache": true}`.
+`isolate: "fork"` with `timeout_ms` runs the request in a forked child, as for `call`: the JIT traces one input
+leaves behind do not shape the next one. `pid` names the process whose dumps (`<prefix>.<pid>.<n>`) hold the runs.
+
+Response: `{"ok": true, "status": "done", "warm": 100, "n1": 200, "n2": 600, "baseline": true, "pid": 123, "opcache": true}`.

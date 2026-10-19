@@ -39,6 +39,7 @@
             "executed_gain": true,
             "cost_gain": false,
             "time_change_percent": -12.5,
+            "cost_change_percent": null,
             "gains": [
                 {
                     "rule": "Opmin\\Rector\\Rule\\HoistLoopInvariantCountRector",
@@ -70,6 +71,7 @@
             "executed_gain": false,
             "cost_gain": false,
             "time_change_percent": null,
+            "cost_change_percent": null,
             "gains": [
                 {
                     "rule": "Opmin\\Rector\\Rule\\FullyQualifyGlobalCallsRector",

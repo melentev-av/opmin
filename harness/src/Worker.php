@@ -94,20 +94,20 @@ final class Worker
     }
 
     /**
-     * Runs the call in a child process and relays its response; the worker itself never runs the
-     * function, so the next call starts from the same state. The child's `exit()` and fatal errors
+     * Runs the request in a child process and relays its response; the worker itself never runs the
+     * function, so the next request starts from the same state. The child's `exit()` and fatal errors
      * are answered by its own shutdown handler; a hang is killed after `timeout_ms`.
      *
      * @param array<array-key, mixed> $request
+     * @param \Closure(array<array-key, mixed>): array<string, mixed> $run `call` or `cost`.
      * @return array<string, mixed>
      */
-    private function forked(array $request): array
+    private function forked(array $request, \Closure $run): array
     {
         $pair = \stream_socket_pair(\STREAM_PF_UNIX, \STREAM_SOCK_STREAM, \STREAM_IPPROTO_IP);
         $pid = $pair === false ? -1 : \pcntl_fork();
         if ($pair === false || $pid === -1) {
-            /** @var array<string, mixed> */
-            return Calls::call($request);
+            return $run($request);
         }
 
         if ($pid === 0) {
@@ -115,7 +115,7 @@ final class Worker
             # The child answers the worker over the pair, never reads the orchestrator's input.
             $this->hold = false;
             $this->out = $pair[1];
-            $this->send(Calls::call($request));
+            $this->send($run($request));
             $this->busy = false;
             exit(0);
         }
@@ -236,9 +236,10 @@ final class Worker
                 'load' => Loader::load($request),
                 'describe' => ['ok' => true, 'function' => Reflector::target((array) ($request['target'] ?? []))],
                 'class' => ['ok' => true, 'class' => Reflector::class((string) ($request['name'] ?? ''))],
-                'call' => ($request['isolate'] ?? null) === 'fork' && self::canFork() ? $this->forked($request) : Calls::call($request),
+                'call' => ($request['isolate'] ?? null) === 'fork' && self::canFork() ? $this->forked($request, Calls::call(...)) : Calls::call($request),
                 'bench' => Calls::bench($request),
-                'cost' => Calls::cost($request),
+                # A child of its own per input: the JIT traces of one input do not shape the next one.
+                'cost' => ($request['isolate'] ?? null) === 'fork' && self::canFork() ? $this->forked($request, Calls::cost(...)) : Calls::cost($request),
                 'shutdown' => ['ok' => true],
                 default => ['ok' => false, 'error' => "Unknown command `{$this->command}`"],
             };

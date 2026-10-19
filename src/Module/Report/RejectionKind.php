@@ -37,6 +37,7 @@ enum RejectionKind: string
         'rector:' => 'static_check',
         'the candidate cannot be parsed' => 'static_check',
         'slower' => 'performance',
+        'costs more' => 'performance',
         'declined in the review' => 'review',
     ];
 
@@ -86,7 +87,7 @@ enum RejectionKind: string
             self::Tests => 'project tests fail',
             self::DiffTest => 'differential test found a difference',
             self::NotProven => 'behavior not proven',
-            self::Performance => 'slower (guard-perf)',
+            self::Performance => 'slower or costlier (guard-perf, guard-cost)',
             self::Review => 'declined in the review',
             self::Other => 'other',
         };
@@ -107,7 +108,8 @@ enum RejectionKind: string
                 . 'its code (verification.min_branch_coverage), it has side effects or is nondeterministic, and no '
                 . 'project test runs it. «What to do next» says how to prove it.',
             self::Performance => '`--guard-perf` measured the changed function as slower than '
-                . 'guard_perf.max_regression_percent allows.',
+                . 'guard_perf.max_regression_percent allows, or `--guard-cost` counted more CPU instructions per call '
+                . 'than guard_cost.max_regression_percent and guard_cost.max_regression_instructions allow together.',
             self::Signature => 'The change would alter the signature or the docblock of the function, which the '
                 . '`signatures.*` settings do not allow.',
             self::Dynamic => 'The function uses something that makes any rewrite unsafe (eval, include, line numbers, '

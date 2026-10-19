@@ -24,6 +24,10 @@ final readonly class WorkerOptions
      *        error, `exit()`) but waits until it is stopped. On Windows the stdout socket of a PHP 8.2+ process
      *        loses what the orchestrator has not read yet when the process ends (#58): the answer read late
      *        would be a crash.
+     * @param bool $jit With {@see self::$opcache}: the tracing JIT instead of none.
+     * @param list<string> $wrap Command the worker is started under (callgrind for `--guard-cost`).
+     * @param non-empty-string|null $php The PHP executable that command starts instead of php.binary's path
+     *        (`php` inside a container whose wrapper runs valgrind).
      */
     public function __construct(
         public string $memoryLimit = '256M',
@@ -33,5 +37,8 @@ final readonly class WorkerOptions
         public ?string $cwd = null,
         public bool $opcache = false,
         public bool $holdUntilStopped = \PHP_OS_FAMILY === 'Windows',
+        public bool $jit = false,
+        public array $wrap = [],
+        public ?string $php = null,
     ) {}
 }

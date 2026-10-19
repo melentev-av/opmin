@@ -57,12 +57,16 @@ final class Worker
         $this->requests = 0;
         $opcache = $this->options->opcache ? [
             ...$this->php->loadArgs,
-            '-d', 'opcache.enable=1', '-d', 'opcache.enable_cli=1', '-d', 'opcache.jit=disable', '-d', 'opcache.file_cache=',
+            '-d', 'opcache.enable=1', '-d', 'opcache.enable_cli=1', '-d', 'opcache.file_cache=',
+            ...($this->options->jit ? ['-d', 'opcache.jit=tracing', '-d', 'opcache.jit_buffer_size=64M'] : ['-d', 'opcache.jit=disable']),
             '-d', 'opcache.preload=', '-d', 'opcache.file_update_protection=0',
             '-d', 'opcache.optimization_level=' . OptimizerSettings::INI['opcache.optimization_level'],
+            # Measured as in production: assert() compiled to nothing.
+            '-d', 'zend.assertions=-1',
         ] : ['-d', 'opcache.enable_cli=0'];
         $command = [
-            $this->php->path,
+            ...$this->options->wrap,
+            $this->options->php ?? $this->php->path,
             ...$opcache,
             '-d', 'memory_limit=' . $this->options->memoryLimit,
             # Generated inputs must never start a process or send mail, even through a call the flags miss

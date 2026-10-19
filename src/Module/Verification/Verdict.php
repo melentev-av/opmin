@@ -22,6 +22,7 @@ final readonly class Verdict
      * @param non-negative-int $dead Branches (or lines) of dead code left out of the coverage.
      * @param array{original_ns: float, changed_ns: float, change_percent: float, inputs: int, rounds: int, opcache: bool}|null $perf
      *        Time of both versions ({@see Benchmark}, `--guard-perf`); null — not measured.
+     * @param Cost|null $cost Instructions per call of both versions ({@see CostMeter}, `--guard-cost`); null — not measured.
      */
     public function __construct(
         public string $key,
@@ -35,7 +36,29 @@ final readonly class Verdict
         public float $seconds = 0.0,
         public int $dead = 0,
         public ?array $perf = null,
+        public ?Cost $cost = null,
     ) {}
+
+    /**
+     * @param array{original_ns: float, changed_ns: float, change_percent: float, inputs: int, rounds: int, opcache: bool}|null $perf
+     */
+    public function with(?array $perf, ?Cost $cost, ?float $seconds = null): self
+    {
+        return new self(
+            $this->key,
+            $this->status,
+            $this->reason,
+            $this->coverage,
+            $this->inputs,
+            $this->probes,
+            $this->counterexample,
+            $this->flags,
+            $seconds ?? $this->seconds,
+            $this->dead,
+            $perf,
+            $cost,
+        );
+    }
 
     public function accepted(): bool
     {
@@ -59,6 +82,7 @@ final readonly class Verdict
             'seconds' => \round($this->seconds, 3),
             'counterexample' => $this->counterexample?->toArray(),
             'perf' => $this->perf,
+            'cost' => $this->cost?->toArray(),
         ];
     }
 }

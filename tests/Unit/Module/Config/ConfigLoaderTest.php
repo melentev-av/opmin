@@ -60,7 +60,7 @@ final class ConfigLoaderTest
         yield 'key at the top level' => ["seed: 1\n", 'Unknown config key `seed` (opmin.yaml). Did you mean `verification.seed`?'];
         yield 'key in another section' => ["rector:\n  seed: 1\n", 'Unknown config key `rector.seed` (opmin.yaml). Did you mean `verification.seed`?'];
         yield 'key in another section with a typo' => ["rector:\n  sed: 1\n", 'Unknown config key `rector.sed` (opmin.yaml). Did you mean `verification.seed`?'];
-        yield 'key of several sections' => ["enabled: true\n", 'Unknown config key `enabled` (opmin.yaml). Did you mean `rector.standard.enabled` or `guard_perf.enabled`?'];
+        yield 'key of several sections' => ["enabled: true\n", 'Unknown config key `enabled` (opmin.yaml). Did you mean `rector.standard.enabled`, `guard_perf.enabled` or `guard_cost.enabled`?'];
         yield 'nothing close' => ["foo: 1\n", 'Unknown config key `foo` (opmin.yaml).'];
     }
 
